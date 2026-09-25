@@ -157,6 +157,30 @@ After correction, `summary()` also reports the GC and coverage bounds
 stored in `$outliers`, and marks `corrected = TRUE`. The fitted model is
 kept in `$fit`.
 
+## Resource use
+
+Fitting differentiates the likelihood window by window, so both runtime and peak
+memory scale with the number of windows that are fitted, and not with `cores`.
+Budget roughly **0.1 MB per window** (about 1 GB per 10,000 windows on top of a
+small baseline) and around 0.85 s per 1,000 windows at `cores = 4`. This
+walkthrough fits 34,000 windows and peaks near 3.6 GB, so fitting is practical up
+to a few tens of thousands of windows on a typical machine, while 350,000 windows
+would need roughly 36 GB. Raising `cores` shortens the fit substantially without
+changing the memory it needs.
+
+Fitted values also shift by around `1e-7` relative with `cores`, so a batch is
+better run as **one process per sample with `cores = 1`** than as one wide
+multi-threaded call. Results are then independent of the thread count, so a given
+sample gives the same answer whichever worker runs it; peak memory stays bounded
+per worker, and throughput comes from the number of workers rather than from
+threads, for example with `mirai` or `crew`, or a shell loop over samples with
+`OMP_NUM_THREADS=1` exported in each worker's environment.
+
+```{r batch-fits, eval = FALSE}
+# In each worker, with OMP_NUM_THREADS=1 exported in its environment:
+corrected <- correctReadCounts(rca, cores = 1L)
+```
+
 ## Plotting coverage profiles
 
 `plot()` on an RCA object can show raw (`"orig_cov"`) or GC-corrected

@@ -1,0 +1,23 @@
+/* Rules that must hold even if the enhancement script never runs. */
+
+/* Nothing in the widget is text a reader should be able to select, and
+   BioCircos keeps thousands of hidden dragText nodes that would otherwise
+   surface a text cursor over the plot. */
+.html-widget svg,
+.html-widget svg text {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.html-widget svg text {
+  pointer-events: none;
+}
+
+/* BioCircos appends its tooltips under the pointer and never opts them out of
+   hit testing, so they hold a hover open after the pointer has left a band.
+   They are display only. */
+[id^="BioCircos"][id$="Tooltip"] {
+  pointer-events: none;
+  -webkit-user-select: none;
+  user-select: none;
+}

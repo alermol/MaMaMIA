@@ -78,22 +78,44 @@ annotate_segment_coords <- function(segments, out) {
         )
 }
 
+#' Run code under a fixed seed, then restore the caller's RNG state.
 #' @noRd
-getSegments <- function(counts, chrom, maploc, alpha, undo.SD) {
-    CNA.object <- DNAcopy::CNA(
-        genomdat = counts,
-        chrom = chrom,
-        maploc = maploc,
-        data.type = "logratio"
-    ) |> DNAcopy::smooth.CNA()
-    DNAcopy::segment(
-        CNA.object,
-        verbose = 0,
-        undo.splits = "sdundo",
-        alpha = alpha,
-        min.width = 2,
-        undo.SD = undo.SD
+with_local_seed <- function(seed, code) {
+    has_state <- exists(".Random.seed", envir = globalenv(), inherits = FALSE)
+    previous <- if (has_state) get(".Random.seed", envir = globalenv()) else NULL
+    on.exit(
+        {
+            if (has_state) {
+                assign(".Random.seed", previous, envir = globalenv())
+            } else if (exists(".Random.seed", envir = globalenv(), inherits = FALSE)) {
+                rm(".Random.seed", envir = globalenv())
+            }
+        },
+        add = TRUE
     )
+
+    set.seed(as.integer(seed))
+    force(code)
+}
+
+#' @noRd
+getSegments <- function(counts, chrom, maploc, alpha, undo.SD, seed = 1L) {
+    with_local_seed(seed, {
+        CNA.object <- DNAcopy::CNA(
+            genomdat = counts,
+            chrom = chrom,
+            maploc = maploc,
+            data.type = "logratio"
+        ) |> DNAcopy::smooth.CNA()
+        DNAcopy::segment(
+            CNA.object,
+            verbose = 0,
+            undo.splits = "sdundo",
+            alpha = alpha,
+            min.width = 2,
+            undo.SD = undo.SD
+        )
+    })
 }
 
 #' @noRd
@@ -115,7 +137,8 @@ segment_pair_data <- function(pair_data, don, rec, meta, param, colname, thresho
         chrom = rep_len("1", nrow(pair_data)),
         maploc = pair_data$iid,
         alpha = param$alpha,
-        undo.SD = param$undo.SD
+        undo.SD = param$undo.SD,
+        seed = if (is.null(param$seed)) 1L else param$seed
     ) |>
         DNAcopy::segments.summary() |>
         dplyr::select(!dplyr::all_of(c("ID", "chrom"))) |>
@@ -135,7 +158,7 @@ segment_pair_data <- function(pair_data, don, rec, meta, param, colname, thresho
 }
 
 #' @noRd
-validate_segmentation_params <- function(alpha, min_width, undo_SD) {
+validate_segmentation_params <- function(alpha, min_width, undo_SD, seed = 1L) {
     if (alpha <= 0 || alpha > 1) {
         stop("1 >= alpha > 0 is not satisfied", call. = FALSE)
     }
@@ -148,7 +171,16 @@ validate_segmentation_params <- function(alpha, min_width, undo_SD) {
         stop("10 >= undo_SD > 0 is not satisfied", call. = FALSE)
     }
 
-    list(alpha = alpha, undo.SD = undo_SD, min.width = min_width)
+    if (!is.numeric(seed) || length(seed) != 1L || is.na(seed)) {
+        stop("seed must be a single number", call. = FALSE)
+    }
+
+    list(
+        alpha = alpha,
+        undo.SD = undo_SD,
+        min.width = min_width,
+        seed = as.integer(seed)
+    )
 }
 
 
@@ -475,4 +507,246 @@ reverse_paired_side <- function(df, chr_id_side, target_ids, value_cols) {
         }
     }
     df
+}
+
+#' @noRd
+hash_object <- function(x) {
+    path <- tempfile()
+    on.exit(unlink(path), add = TRUE)
+    saveRDS(x, path, version = 2)
+    unname(tools::md5sum(path))
+}
+
+#' Coverage-model call shared by fitting and cache-keying.
+#' @noRd
+coverage_model_call <- function(cores) {
+    substitute(
+        glmmTMB::glmmTMB(
+            cov ~ s(gc, k = 10) + subgenome,
+            ziformula = ~ s(gc, k = 10) + subgenome,
+            family = glmmTMB::nbinom2(),
+            data = ideal_data,
+            REML = TRUE,
+            control = glmmTMB::glmmTMBControl(parallel = list(n = Cores))
+        ),
+        list(Cores = cores)
+    )
+}
+
+#' Cache key for a fitted coverage model.
+#' @noRd
+fit_cache_key <- function(ideal_data, cores, model_call) {
+    spec <- as.list(model_call)
+    spec$data <- NULL
+    hash_object(list(
+        model = paste(deparse(as.call(spec)), collapse = " "),
+        chr_id = as.character(ideal_data$chr_id),
+        iid = as.integer(ideal_data$iid),
+        cov = as.numeric(ideal_data$cov),
+        gc = as.numeric(ideal_data$gc),
+        subgenome = as.character(ideal_data$subgenome),
+        cores = as.integer(cores),
+        package_version = as.character(utils::packageVersion("MaMaMIA")),
+        glmmTMB_version = as.character(utils::packageVersion("glmmTMB")),
+        R_version = as.character(getRversion())
+    ))
+}
+
+#' Cached-fit entry layout version.
+#' @noRd
+CACHE_LAYOUT_VERSION <- 1L
+
+#' @noRd
+read_cached_fit <- function(cache, key) {
+    if (is.null(cache) || !file.exists(cache)) {
+        return(NULL)
+    }
+    cached <- tryCatch(readRDS(cache), error = function(e) NULL)
+    if (!is.list(cached) ||
+        !identical(cached$format, CACHE_LAYOUT_VERSION) ||
+        !identical(cached$key, key)) {
+        return(NULL)
+    }
+    cached$fit
+}
+
+#' @noRd
+write_cached_fit <- function(cache, key, fit) {
+    if (is.null(cache)) {
+        return(invisible(NULL))
+    }
+    dir <- dirname(cache)
+    if (!dir.exists(dir)) {
+        dir.create(dir, recursive = TRUE, showWarnings = FALSE)
+    }
+    tmp <- paste0(cache, ".tmp")
+    written <- tryCatch(
+        {
+            saveRDS(
+                list(format = CACHE_LAYOUT_VERSION, key = key, fit = fit),
+                tmp,
+                version = 2
+            )
+            TRUE
+        },
+        error = function(e) FALSE
+    )
+    if (written) {
+        file.rename(tmp, cache)
+    }
+    invisible(NULL)
+}
+
+#' Fixed/random design columns of a stored mgcv smooth for new values.
+#' @noRd
+smooth_design <- function(sm, gc) {
+    ev <- eigen(sm$S[[1L]], symmetric = TRUE)
+    if (ev$vectors[1L, 1L] < 0) {
+        ev$vectors <- -ev$vectors
+    }
+    p_rank <- min(sm$rank, ncol(sm$X))
+    null_rank <- sm$df - sm$rank
+    scaling <- 1 / sqrt(c(ev$values[seq_len(p_rank)], rep(1, null_rank)))
+    basis <- mgcv::PredictMat(sm, data = data.frame(gc = gc)) %*%
+        t(t(ev$vectors) * scaling)
+    fixed <- if (p_rank < sm$df) {
+        basis[, (p_rank + 1L):sm$df, drop = FALSE]
+    } else {
+        matrix(0, nrow(basis), 0L)
+    }
+    list(
+        fixed = fixed,
+        random = basis[, seq_len(p_rank), drop = FALSE],
+        label = sm$label
+    )
+}
+
+#' Fixed/random design matrices for the fitted coverage model.
+#' @noRd
+glmmtmb_design <- function(fit, newdata) {
+    subgenomes <- levels(factor(fit$frame$subgenome))
+    if (anyNA(factor(newdata$subgenome, levels = subgenomes))) {
+        stop("unknown subgenome level", call. = FALSE)
+    }
+    dummies <- unname(stats::model.matrix(
+        ~ factor(newdata$subgenome, levels = subgenomes)
+    )[, -1L, drop = FALSE])
+
+    build <- function(part, coef_names) {
+        info <- fit$modelInfo$reTrms[[part]]$smooth_info
+        if (length(info) != 1L) {
+            stop("expected exactly one smooth in `", part, "`", call. = FALSE)
+        }
+        sd <- smooth_design(info[[1L]]$sm, newdata$gc)
+        expected <- c(
+            "(Intercept)",
+            paste0("subgenome", subgenomes[-1L]),
+            paste0(sd$label, seq_len(ncol(sd$fixed)))
+        )
+        if (!identical(expected, as.character(coef_names))) {
+            stop("unexpected fixed-effect structure in `", part, "`", call. = FALSE)
+        }
+        list(X = cbind(1, dummies, sd$fixed), Z = sd$random)
+    }
+
+    list(
+        cond = build("cond", names(glmmTMB::fixef(fit)$cond)),
+        zi = build("zi", names(glmmTMB::fixef(fit)$zi))
+    )
+}
+
+#' Design matrices from glmmTMB's prediction machinery.
+#' @noRd
+design_from_tmb <- function(fit, newdata) {
+    tmb <- stats::predict(fit, newdata = newdata, debug = TRUE)$data.tmb
+    if (is.null(dim(tmb$X))) {
+        stop("Fitted model exposes no dense conditional design matrix", call. = FALSE)
+    }
+    n_aug <- nrow(tmb$X)
+    n_new <- nrow(newdata)
+    if (n_aug != nrow(fit$frame) + n_new) {
+        stop("Unexpected augmented design size; cannot align predictions", call. = FALSE)
+    }
+    idx <- (n_aug - n_new + 1L):n_aug
+    trim <- function(M) {
+        as.matrix(M)[idx, , drop = FALSE]
+    }
+    list(
+        cond = list(X = trim(tmb$X), Z = trim(tmb$Z)),
+        zi = list(X = trim(tmb$Xzi), Z = trim(tmb$Zzi))
+    )
+}
+
+#' Mean response of the fitted ZINB coverage model for new data.
+#' @noRd
+eta_zinb_response <- function(fit, newdata) {
+    pars <- fit$fit$parfull
+    get_par <- function(name) {
+        out <- pars[names(pars) == name]
+        if (length(out) == 0L) {
+            stop("Fitted model has no `", name, "` parameter", call. = FALSE)
+        }
+        out
+    }
+
+    design <- tryCatch(
+        glmmtmb_design(fit, newdata),
+        error = function(e) NULL
+    )
+    if (is.null(design)) {
+        design <- design_from_tmb(fit, newdata)
+    }
+
+    eta_cond <- as.numeric(design$cond$X %*% get_par("beta")) +
+        as.numeric(design$cond$Z %*% get_par("b"))
+    eta_zi <- as.numeric(design$zi$X %*% get_par("betazi")) +
+        as.numeric(design$zi$Z %*% get_par("bzi"))
+
+    (1 - stats::plogis(eta_zi)) * exp(eta_cond)
+}
+
+#' Expected ZINB coverage at observed GC and at reference GC.
+#' @noRd
+predict_zinb_response <- function(fit, gc, subgenome, gc_ref) {
+    n <- length(gc)
+
+    fallback <- function() {
+        nd <- data.frame(gc = gc, subgenome = subgenome)
+        list(
+            actual = as.numeric(stats::predict(fit, newdata = nd, type = "response")),
+            ref = as.numeric(stats::predict(fit,
+                newdata = transform(nd, gc = gc_ref),
+                type = "response"
+            ))
+        )
+    }
+
+    ok <- !is.na(gc) & !is.na(subgenome)
+    if (!any(ok)) {
+        na <- rep(NA_real_, n)
+        return(list(actual = na, ref = na))
+    }
+
+    key <- function(g, s) paste(sprintf("%.17g", g), s, sep = "\r")
+    rows <- data.frame(gc = gc[ok], subgenome = as.character(subgenome[ok]))
+    row_keys <- key(rows$gc, rows$subgenome)
+    unique_rows <- rows[!duplicated(row_keys), , drop = FALSE]
+    unique_keys <- key(unique_rows$gc, unique_rows$subgenome)
+    subgenomes <- unique(unique_rows$subgenome)
+    ref_rows <- data.frame(gc = gc_ref, subgenome = subgenomes)
+
+    pred <- tryCatch(
+        eta_zinb_response(fit, rbind(unique_rows, ref_rows)),
+        error = function(e) NULL
+    )
+    if (is.null(pred) || length(pred) != nrow(unique_rows) + nrow(ref_rows)) {
+        return(fallback())
+    }
+
+    n_unique <- nrow(unique_rows)
+    actual <- rep(NA_real_, n)
+    actual[ok] <- pred[match(row_keys, unique_keys)]
+    ref <- rep(NA_real_, n)
+    ref[ok] <- pred[n_unique + match(rows$subgenome, subgenomes)]
+    list(actual = actual, ref = ref)
 }

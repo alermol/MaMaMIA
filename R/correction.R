@@ -68,7 +68,7 @@ RCA <- function(dcov, dgc, rcov, rgc, meta, presorted = TRUE) {
 
 #' @export
 #' @importFrom rlang .data
-correctReadCounts <- function(RCA, cores = 1L, verbose = TRUE) {
+correctReadCounts <- function(RCA, cores = 1L, verbose = TRUE, cache = NULL) {
     stopifnot("Input is not RCA object" = inherits(RCA, "RCA"))
 
     cov_outlier <- 0.01
@@ -116,22 +116,26 @@ correctReadCounts <- function(RCA, cores = 1L, verbose = TRUE) {
     if (verbose) {
         message("Correcting for GC bias using ", cores, " cores...")
     }
-    fit <- glmmTMB::glmmTMB(
-        cov ~ s(gc, k = 10) + subgenome,
-        ziformula = ~ s(gc, k = 10) + subgenome,
-        family = glmmTMB::nbinom2(),
-        data = dplyr::filter(RCA$data, .data$ideal),
-        REML = TRUE,
-        control = glmmTMB::glmmTMBControl(parallel = list(n = cores))
-    )
+    ideal_data <- dplyr::filter(RCA$data, .data$ideal)
+    fit_call <- coverage_model_call(cores)
+    cache_key <- if (is.null(cache)) NULL else fit_cache_key(ideal_data, cores, fit_call)
+    fit <- read_cached_fit(cache, cache_key)
+    if (is.null(fit)) {
+        fit <- eval(fit_call)
+        write_cached_fit(cache, cache_key, fit)
+    } else if (verbose) {
+        message("Reusing the cached model fit from ", cache)
+    }
 
     gc_ref <- stats::median(RCA$data$gc[RCA$data$ideal], na.rm = TRUE)
-    predict_actual <- stats::predict(fit, newdata = RCA$data, type = "response")
-    predict_ref <- stats::predict(fit,
-        newdata = transform(RCA$data, gc = gc_ref),
-        type = "response"
+    fitted_response <- predict_zinb_response(
+        fit,
+        gc = RCA$data$gc,
+        subgenome = RCA$data$subgenome,
+        gc_ref = gc_ref
     )
-    RCA$data$cor.gc <- RCA$data$cov * (predict_ref / (predict_actual + 1e-8))
+    RCA$data$cor.gc <- RCA$data$cov *
+        (fitted_response$ref / (fitted_response$actual + 1e-8))
 
     RCA$data$ideal <- RCA$data$ideal &
         RCA$data$cor.gc < stats::quantile(RCA$data$cor.gc,

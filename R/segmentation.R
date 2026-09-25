@@ -8,6 +8,7 @@ segments <- function(RCA,
                      alpha = 0.001,
                      min_width = 2,
                      undo_SD = 1,
+                     seed = 1L,
                      verbose = TRUE) {
     stopifnot("Input is not RCA object" = inherits(RCA, "RCA"))
     stopifnot("Coverage must be corrected before segmentation" = RCA$corrected)
@@ -22,7 +23,7 @@ segments <- function(RCA,
         "median" = "seg.median"
     )
 
-    param <- validate_segmentation_params(alpha, min_width, undo_SD)
+    param <- validate_segmentation_params(alpha, min_width, undo_SD, seed)
 
     target_pairs_df <- validate_target_pairs(target_pairs, RCA$meta$don_chr_ids, RCA$meta$rec_chr_ids)
 

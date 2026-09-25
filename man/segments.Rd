@@ -11,6 +11,7 @@ segments(
   alpha = 0.001,
   min_width = 2,
   undo_SD = 1,
+  seed = 1L,
   verbose = TRUE
 )
 }
@@ -46,6 +47,11 @@ with \code{min.width = 2}; this argument is applied as a post-filter.}
 to keep a split under \code{undo.splits = "sdundo"} (default \code{1}).
 Must satisfy \code{0 < undo_SD <= 10}. Larger values prune more splits.}
 
+\item{seed}{Integer seed used for the permutation-based p-values computed by
+\code{DNAcopy::segment()} (default \code{1L}). CBS is stochastic, so fixing the
+seed makes repeated calls on the same object reproducible. The caller's RNG
+state is restored afterwards.}
+
 \item{verbose}{Logical; if \code{TRUE} (default), print a progress message.}
 }
 \value{
@@ -60,7 +66,8 @@ An object of class \code{ISA}: a list with components
     (\code{seg.median} or \code{seg.mean} at or above the chosen threshold),
     annotated with donor and recipient chromosome metadata. Segments shorter
     than \code{min_width} windows are excluded.}
-  \item{\code{param}}{Resolved segmentation settings: \code{alpha}, and \code{undo.SD}.}
+  \item{\code{param}}{Resolved segmentation settings: \code{alpha},
+    \code{undo.SD}, and \code{seed}.}
   \item{\code{meta}}{Chromosome metadata restricted to chromosomes in
     \code{target_pairs}, plus \code{don_chr_ids}, \code{rec_chr_ids},
     \code{target_pairs} (a data frame with columns \code{chr_id.don} and
