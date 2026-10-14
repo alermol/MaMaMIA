@@ -1,70 +1,6 @@
-#' @export
-#' @importFrom rlang .data
-RCA <- function(dcov, dgc, rcov, rgc, meta, presorted = TRUE) {
-    dcov <- as_window_df(dcov, "cov", "dcov")
-    dgc <- as_window_df(dgc, "gc", "dgc")
-    rcov <- as_window_df(rcov, "cov", "rcov")
-    rgc <- as_window_df(rgc, "gc", "rgc")
-
-    if (!presorted) {
-        message("Sorting...")
-        dcov <- dplyr::arrange(dcov, dplyr::across(c("chr_id", "start", "stop")))
-        rcov <- dplyr::arrange(rcov, dplyr::across(c("chr_id", "start", "stop")))
-        dgc <- dplyr::arrange(dgc, dplyr::across(c("chr_id", "start", "stop")))
-        rgc <- dplyr::arrange(rgc, dplyr::across(c("chr_id", "start", "stop")))
-    }
-
-    validate_windows_tiled(dcov, "dcov")
-    validate_windows_tiled(dgc, "dgc")
-    validate_windows_tiled(rcov, "rcov")
-    validate_windows_tiled(rgc, "rgc")
-
-    # Validate meta info
-    meta <- as_meta_df(meta)
-
-    don_chr_ids <- unique(dcov[["chr_id"]])
-    rec_chr_ids <- unique(rcov[["chr_id"]])
-    stopifnot(setequal(meta$chr_id, c(don_chr_ids, rec_chr_ids)), length(intersect(don_chr_ids, rec_chr_ids)) == 0)
-
-    don_subgenomes <- unique(meta$subgenome[meta$chr_id %in% don_chr_ids])
-    rec_subgenomes <- unique(meta$subgenome[meta$chr_id %in% rec_chr_ids])
-    if (length(intersect(don_subgenomes, rec_subgenomes)) > 0L) {
-        stop(
-            "Donor and recipient subgenome labels must be disjoint; shared: ",
-            paste(intersect(don_subgenomes, rec_subgenomes), collapse = ", "),
-            call. = FALSE
-        )
-    }
-
-    don_data <- dplyr::inner_join(dcov, dgc, by = c("chr_id", "start", "stop"))
-    stopifnot(length(unique(c(
-        nrow(dcov), nrow(dgc), nrow(don_data)
-    ))) == 1)
-
-    rec_data <- dplyr::inner_join(rcov, rgc, by = c("chr_id", "start", "stop"))
-    stopifnot(length(unique(c(
-        nrow(rcov), nrow(rgc), nrow(rec_data)
-    ))) == 1)
-
-    full_data <- dplyr::bind_rows(rec_data, don_data)
-    validate_equal_n_windows(full_data$chr_id)
-
-    full_data <- full_data |>
-        dplyr::left_join(meta, by = "chr_id") |>
-        dplyr::group_by(.data$chr_id) |>
-        dplyr::mutate(iid = dplyr::row_number(), .after = "chr_id") |>
-        dplyr::ungroup()
-
-    structure(list(
-        data = full_data,
-        meta = list(
-            meta = meta,
-            don_chr_ids = don_chr_ids,
-            rec_chr_ids = rec_chr_ids
-        ),
-        corrected = FALSE
-    ), class = "RCA")
-}
+## GC-bias correction of RCA coverage: fit a zero-inflated negative binomial
+## model on the ideal windows, then scale every window by the model's expected
+## response at the reference GC value of its subgenome.
 
 #' @export
 #' @importFrom rlang .data
@@ -161,200 +97,161 @@ correctReadCounts <- function(RCA, cores = 1L, verbose = TRUE, cache = NULL) {
     return(RCA)
 }
 
-#' @rdname reverseWindows
-#' @export
-reverseWindows.RCA <- function(x, chr_ids, ...) {
-    stopifnot("Input is not RCA object" = inherits(x, "RCA"))
+## The ZINB response is evaluated once for the distinct (GC, subgenome) pairs.
+## The design matrices are assembled from the smooth stored in the fit instead
+## of glmmTMB's `predict(debug = TRUE)`, which is two orders of magnitude
+## slower; if that structure is unavailable, `predict()` is used as a fallback.
 
-    chr_ids <- as.character(chr_ids)
-    if (length(chr_ids) == 0L) {
-        warning("No chromosomes requested; returning input unchanged",
-            call. = FALSE
-        )
-        return(x)
+#' Fixed/random design columns of a stored mgcv smooth for new values.
+#' @noRd
+smooth_design <- function(sm, gc) {
+    ev <- eigen(sm$S[[1L]], symmetric = TRUE)
+    if (ev$vectors[1L, 1L] < 0) {
+        ev$vectors <- -ev$vectors
     }
-    unknown <- setdiff(chr_ids, unique(as.character(x$data$chr_id)))
-    stopifnot(
-        "Some chromosome IDs in `chr_ids` are not present in the object" =
-            length(unknown) == 0L
-    )
-
-    value_cols <- intersect(
-        names(x$data),
-        c("cov", "gc", "cor.gc", "valid", "ideal")
-    )
-    x$data <- reverse_chr_value_cols(x$data, chr_ids, value_cols)
-
-    return(x)
-}
-
-
-#' @exportS3Method base::plot
-#' @importFrom rlang .data
-plot.RCA <- function(x,
-                     plot.type = c("orig_cov", "corr_cov"),
-                     show_outliers = FALSE,
-                     ...) {
-    plot_type <- match.arg(plot.type)
-
-    if (!x$corrected) {
-        warning("Correction of GC-bias was not performed. See correctReadCounts().")
-        warning("Fallback to original coverage with outliers")
-        plot_type <- "orig_cov"
-        show_outliers <- TRUE
-    }
-
-    if (show_outliers == TRUE) {
-        plotting_df <- x$data
+    p_rank <- min(sm$rank, ncol(sm$X))
+    null_rank <- sm$df - sm$rank
+    scaling <- 1 / sqrt(c(ev$values[seq_len(p_rank)], rep(1, null_rank)))
+    basis <- mgcv::PredictMat(sm, data = data.frame(gc = gc)) %*%
+        t(t(ev$vectors) * scaling)
+    fixed <- if (p_rank < sm$df) {
+        basis[, (p_rank + 1L):sm$df, drop = FALSE]
     } else {
-        plotting_df <- dplyr::filter(x$data, .data$ideal == TRUE)
+        matrix(0, nrow(basis), 0L)
     }
-    if (nrow(plotting_df) == 0L) {
-        stop("No windows available to plot (empty data after filtering)",
-            call. = FALSE
-        )
-    }
-    plotting_df$color <- (match(plotting_df$chr_id, unique(plotting_df$chr_id)) - 1) %% 2
-    plotting_df$x <- seq_len(nrow(plotting_df))
-
-    breaks <- plotting_df |>
-        dplyr::mutate(rn = .data$x) |>
-        dplyr::group_by(.data$chr_name) |>
-        dplyr::reframe(pos = min(.data$rn) + (diff(range(.data$rn)) / 2))
-
-    plot <- ggplot2::ggplot(plotting_df, ggplot2::aes(x = .data$x, color = factor(.data$color))) +
-        ggplot2::theme_bw() +
-        ggplot2::scale_x_continuous(
-            expand = ggplot2::expansion(mult = c(0.01, 0.01)),
-            breaks = breaks$pos,
-            labels = breaks$chr_name
-        ) +
-        ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0, 0.1)), name = "Coverage") +
-        ggplot2::scale_color_manual(values = c("grey60", "grey80")) +
-        ggplot2::theme(
-            aspect.ratio = 1 / 5,
-            legend.position = "none",
-            panel.grid = ggplot2::element_blank(),
-            axis.title.x = ggplot2::element_blank(),
-            axis.ticks.x = ggplot2::element_blank()
-        )
-
-    if (plot_type == "orig_cov") {
-        plot + ggplot2::geom_point(
-            size = 0.5,
-            mapping = ggplot2::aes(y = .data$cov)
-        )
-    } else {
-        plot + ggplot2::geom_point(
-            size = 0.5,
-            mapping = ggplot2::aes(y = .data$cor.gc)
-        )
-    }
+    list(
+        fixed = fixed,
+        random = basis[, seq_len(p_rank), drop = FALSE],
+        label = sm$label
+    )
 }
 
-#' @exportS3Method base::subset
-subset.RCA <- function(x,
-                       don_chromlist = NULL,
-                       rec_chromlist = NULL,
-                       don_subgenomes = NULL,
-                       rec_subgenomes = NULL,
-                       ...) {
-    target_chrs <- resolve_chr_targets(
-        x$meta$meta,
-        don_chromlist,
-        rec_chromlist,
-        don_subgenomes,
-        rec_subgenomes,
-        don_chr_ids = x$meta$don_chr_ids,
-        rec_chr_ids = x$meta$rec_chr_ids
-    )
+#' Fixed/random design matrices for the fitted coverage model.
+#' @noRd
+glmmtmb_design <- function(fit, newdata) {
+    subgenomes <- levels(factor(fit$frame$subgenome))
+    if (anyNA(factor(newdata$subgenome, levels = subgenomes))) {
+        stop("unknown subgenome level", call. = FALSE)
+    }
+    dummies <- unname(stats::model.matrix(
+        ~ factor(newdata$subgenome, levels = subgenomes)
+    )[, -1L, drop = FALSE])
 
-    x$data <- dplyr::filter(x$data, .data$chr_id %in% c(target_chrs[[1]], target_chrs[[2]]))
-    x$meta$meta <- dplyr::filter(
-        x$meta$meta,
-        .data$chr_id %in% c(target_chrs[[1]], target_chrs[[2]])
-    )
-    x$meta$rec_chr_ids <- target_chrs[[2]]
-    x$meta$don_chr_ids <- target_chrs[[1]]
-
-    return(x)
-}
-
-
-#' @exportS3Method base::print
-print.RCA <- function(x, ...) {
-    n_chr <- length(unique(x$data$chr_id))
-    cat(
-        "RCA object: ",
-        n_chr,
-        " chromosomes (",
-        length(x$meta$don_chr_ids),
-        " donor / ",
-        length(x$meta$rec_chr_ids),
-        " recipient), ",
-        nrow(x$data),
-        " windows, GC-corrected: ",
-        x$corrected,
-        "\n",
-        sep = ""
-    )
-    invisible(x)
-}
-
-#' @exportS3Method base::summary
-summary.RCA <- function(object, ...) {
-    subgenomes <- unique(object$meta$meta$subgenome)
-    chromosomes_per_subgenome <- stats::setNames(vapply(subgenomes, \(d) {
-        length(unique(object$meta$meta$chr_id[object$meta$meta$subgenome == d]))
-    }, integer(1L)), subgenomes)
-
-    out <- list(
-        n_chromosomes = length(unique(object$data$chr_id)),
-        n_subgenomes = length(subgenomes),
-        chromosomes_per_subgenome = chromosomes_per_subgenome,
-        corrected = object$corrected,
-        outliers = if (isTRUE(object$corrected)) {
-            object$outliers
-        } else {
-            NULL
+    build <- function(part, coef_names) {
+        info <- fit$modelInfo$reTrms[[part]]$smooth_info
+        if (length(info) != 1L) {
+            stop("expected exactly one smooth in `", part, "`", call. = FALSE)
         }
+        sd <- smooth_design(info[[1L]]$sm, newdata$gc)
+        expected <- c(
+            "(Intercept)",
+            paste0("subgenome", subgenomes[-1L]),
+            paste0(sd$label, seq_len(ncol(sd$fixed)))
+        )
+        if (!identical(expected, as.character(coef_names))) {
+            stop("unexpected fixed-effect structure in `", part, "`", call. = FALSE)
+        }
+        list(X = cbind(1, dummies, sd$fixed), Z = sd$random)
+    }
+
+    list(
+        cond = build("cond", names(glmmTMB::fixef(fit)$cond)),
+        zi = build("zi", names(glmmTMB::fixef(fit)$zi))
     )
-    class(out) <- "summary.RCA"
-    out
 }
 
-#' @exportS3Method base::print
-print.summary.RCA <- function(x, ...) {
-    cat(
-        sprintf(
-            "RCA Summary: %d chromosomes in %d subgenome(s): %s\n",
-            x$n_chromosomes,
-            x$n_subgenomes,
-            paste(
-                sprintf(
-                    "%s: %d",
-                    names(x$chromosomes_per_subgenome),
-                    x$chromosomes_per_subgenome
-                ),
-                collapse = "; "
-            )
-        )
+#' Design matrices from glmmTMB's prediction machinery.
+#' @noRd
+design_from_tmb <- function(fit, newdata) {
+    tmb <- stats::predict(fit, newdata = newdata, debug = TRUE)$data.tmb
+    if (is.null(dim(tmb$X))) {
+        stop("Fitted model exposes no dense conditional design matrix", call. = FALSE)
+    }
+    n_aug <- nrow(tmb$X)
+    n_new <- nrow(newdata)
+    if (n_aug != nrow(fit$frame) + n_new) {
+        stop("Unexpected augmented design size; cannot align predictions", call. = FALSE)
+    }
+    idx <- (n_aug - n_new + 1L):n_aug
+    trim <- function(M) {
+        as.matrix(M)[idx, , drop = FALSE]
+    }
+    list(
+        cond = list(X = trim(tmb$X), Z = trim(tmb$Z)),
+        zi = list(X = trim(tmb$Xzi), Z = trim(tmb$Zzi))
     )
+}
 
-    cat("GC-bias corrected:", if (isTRUE(x$corrected)) {
-        "Yes"
-    } else {
-        "No"
-    }, "\n")
-    if (isTRUE(x$corrected) && !is.null(x$outliers)) {
-        cat(
-            sprintf(
-                "Outlier thresholds | Coverage upper: %.2f, GC lower: %.3f, GC upper: %.3f\n",
-                x$outliers$cov_upper_bound,
-                x$outliers$gc_lower_bound,
-                x$outliers$gc_upper_bound
-            )
+#' Mean response of the fitted ZINB coverage model for new data.
+#' @noRd
+eta_zinb_response <- function(fit, newdata) {
+    pars <- fit$fit$parfull
+    get_par <- function(name) {
+        out <- pars[names(pars) == name]
+        if (length(out) == 0L) {
+            stop("Fitted model has no `", name, "` parameter", call. = FALSE)
+        }
+        out
+    }
+
+    design <- tryCatch(
+        glmmtmb_design(fit, newdata),
+        error = function(e) NULL
+    )
+    if (is.null(design)) {
+        design <- design_from_tmb(fit, newdata)
+    }
+
+    eta_cond <- as.numeric(design$cond$X %*% get_par("beta")) +
+        as.numeric(design$cond$Z %*% get_par("b"))
+    eta_zi <- as.numeric(design$zi$X %*% get_par("betazi")) +
+        as.numeric(design$zi$Z %*% get_par("bzi"))
+
+    (1 - stats::plogis(eta_zi)) * exp(eta_cond)
+}
+
+#' Expected ZINB coverage at observed GC and at reference GC.
+#' @noRd
+predict_zinb_response <- function(fit, gc, subgenome, gc_ref) {
+    n <- length(gc)
+
+    fallback <- function() {
+        nd <- data.frame(gc = gc, subgenome = subgenome)
+        list(
+            actual = as.numeric(stats::predict(fit, newdata = nd, type = "response")),
+            ref = as.numeric(stats::predict(fit,
+                newdata = transform(nd, gc = gc_ref),
+                type = "response"
+            ))
         )
     }
-    invisible(x)
+
+    ok <- !is.na(gc) & !is.na(subgenome)
+    if (!any(ok)) {
+        na <- rep(NA_real_, n)
+        return(list(actual = na, ref = na))
+    }
+
+    key <- function(g, s) paste(sprintf("%.17g", g), s, sep = "\r")
+    rows <- data.frame(gc = gc[ok], subgenome = as.character(subgenome[ok]))
+    row_keys <- key(rows$gc, rows$subgenome)
+    unique_rows <- rows[!duplicated(row_keys), , drop = FALSE]
+    unique_keys <- key(unique_rows$gc, unique_rows$subgenome)
+    subgenomes <- unique(unique_rows$subgenome)
+    ref_rows <- data.frame(gc = gc_ref, subgenome = subgenomes)
+
+    pred <- tryCatch(
+        eta_zinb_response(fit, rbind(unique_rows, ref_rows)),
+        error = function(e) NULL
+    )
+    if (is.null(pred) || length(pred) != nrow(unique_rows) + nrow(ref_rows)) {
+        return(fallback())
+    }
+
+    n_unique <- nrow(unique_rows)
+    actual <- rep(NA_real_, n)
+    actual[ok] <- pred[match(row_keys, unique_keys)]
+    ref <- rep(NA_real_, n)
+    ref[ok] <- pred[n_unique + match(rows$subgenome, subgenomes)]
+    list(actual = actual, ref = ref)
 }

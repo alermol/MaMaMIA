@@ -86,7 +86,7 @@ test_that("selection toggles from the table and from a band click", {
 })
 
 ## The circos widget test is commented out together with the BioCircos
-## dependency and the corresponding code in R/dashboard.R. Reinstate both
+## dependency and the corresponding code in R/circos.R. Reinstate both
 ## together.
 # test_that("the circos stacks difference, spans and size-classed links", {
 #     testthat::skip_if_not_installed("BioCircos")

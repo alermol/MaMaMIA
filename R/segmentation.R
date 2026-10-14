@@ -1,3 +1,8 @@
+## Pairwise segmentation: join each donor chromosome with its recipient
+## counterpart on the corrected coverage difference, cut the difference profile
+## into segments with circular binary segmentation (CBS), and flag the segments
+## whose summary metric passes the call threshold.
+
 #' @export
 #' @importFrom rlang .data
 segments <- function(RCA,
@@ -33,28 +38,30 @@ segments <- function(RCA,
         message("Performing segmentation...")
     }
 
+    ## Windows of one donor-recipient pair, matched by window index (`iid`),
+    ## restricted to the windows that are ideal on both sides.
+    pair_data <- function(don_chr, rec_chr) {
+        dplyr::inner_join(
+            by_chr_split[[as.character(don_chr)]],
+            by_chr_split[[as.character(rec_chr)]],
+            by = "iid",
+            suffix = c(".don", ".rec")
+        ) |>
+            dplyr::filter(.data$ideal.don & .data$ideal.rec) |>
+            dplyr::mutate(diff = .data$cor.gc.don - .data$cor.gc.rec)
+    }
+
     prepared_data <- target_pairs_df |>
         dplyr::mutate(
-            data = purrr::map2(.data$chr_id.don, .data$chr_id.rec, \(x, y) {
-                don_data <- by_chr_split[[as.character(x)]]
-                rec_data <- by_chr_split[[as.character(y)]]
-                dplyr::inner_join(don_data,
-                    rec_data,
-                    by = "iid",
-                    suffix = c(".don", ".rec")
-                ) |>
-                    dplyr::filter(.data$ideal.don &
-                        .data$ideal.rec) |>
-                    dplyr::mutate(diff = .data$cor.gc.don - .data$cor.gc.rec)
-            }),
-            segments = purrr::pmap(list(
-                .data$data, .data$chr_id.don, .data$chr_id.rec
-            ), segment_pair_data,
-            meta = RCA$meta$meta,
-            param = param,
-            colname = colname,
-            threshold = threshold,
-            min_width = min_width
+            data = purrr::map2(.data$chr_id.don, .data$chr_id.rec, pair_data),
+            segments = purrr::pmap(
+                list(.data$data, .data$chr_id.don, .data$chr_id.rec),
+                segment_pair_data,
+                meta = RCA$meta$meta,
+                param = param,
+                colname = colname,
+                threshold = threshold,
+                min_width = min_width
             ),
             .keep = "unused"
         )
@@ -85,554 +92,189 @@ segments <- function(RCA,
     )
 }
 
-#' @rdname reverseWindows
-#' @export
-#' @importFrom rlang .data
-reverseWindows.ISA <- function(x, chr_ids, ...) {
-    stopifnot("Input is not ISA object" = inherits(x, "ISA"))
+## Internal segmentation helpers ----------------------------------------------
 
-    chr_ids <- as.character(chr_ids)
-    if (length(chr_ids) == 0L) {
-        warning("No chromosomes requested; returning input unchanged",
+#' @noRd
+validate_segmentation_params <- function(alpha, min_width, undo_SD, seed = 1L) {
+    if (alpha <= 0 || alpha > 1) {
+        stop("1 >= alpha > 0 is not satisfied", call. = FALSE)
+    }
+
+    if (min_width < 2) {
+        stop("min_width must be >=2", call. = FALSE)
+    }
+
+    if (undo_SD <= 0 || undo_SD > 10) {
+        stop("10 >= undo_SD > 0 is not satisfied", call. = FALSE)
+    }
+
+    if (!is.numeric(seed) || length(seed) != 1L || is.na(seed)) {
+        stop("seed must be a single number", call. = FALSE)
+    }
+
+    list(
+        alpha = alpha,
+        undo.SD = undo_SD,
+        min.width = min_width,
+        seed = as.integer(seed)
+    )
+}
+
+#' @noRd
+validate_target_pairs <- function(target_pairs, don_chr_ids, rec_chr_ids) {
+    if (length(target_pairs) < 1L || is.null(names(target_pairs)) ||
+        any(!nzchar(names(target_pairs)))) {
+        stop(
+            "`target_pairs` must be a non-empty named vector of donor -> recipient chr_id",
             call. = FALSE
         )
-        return(x)
     }
-    known <- c(
-        as.character(x$meta$don_chr_ids),
-        as.character(x$meta$rec_chr_ids)
-    )
-    unknown <- setdiff(chr_ids, known)
+
+    target_don <- as.character(names(target_pairs))
+    target_rec <- as.character(unname(target_pairs))
     stopifnot(
-        "Some chromosome IDs in `chr_ids` are not present in the object" =
-            length(unknown) == 0L
+        "Some donor chromosome IDs in target_pairs are not present" =
+            all(target_don %in% don_chr_ids)
+    )
+    stopifnot(
+        "Some recipient chromosome IDs in target_pairs are not present" =
+            all(target_rec %in% rec_chr_ids)
     )
 
-    don_targets <- intersect(chr_ids, as.character(x$meta$don_chr_ids))
-    rec_targets <- intersect(chr_ids, as.character(x$meta$rec_chr_ids))
-
-    don_cols <- intersect(
-        names(x$out),
-        paste0(c("cov", "gc", "cor.gc", "valid", "ideal"), ".don")
+    pairs <- data.frame(
+        chr_id.don = target_don,
+        chr_id.rec = target_rec,
+        stringsAsFactors = FALSE
     )
-    rec_cols <- intersect(
-        names(x$out),
-        paste0(c("cov", "gc", "cor.gc", "valid", "ideal"), ".rec")
-    )
+    pairs <- pairs[!duplicated(pairs), , drop = FALSE]
+    rownames(pairs) <- seq_len(nrow(pairs))
+    pairs
+}
 
-    # Reverse the donor-side value vectors for the requested donor chromosomes,
-    # within each (donor, recipient) pair so row order is preserved.
-    if (!is.null(x$out) && nrow(x$out) > 0L &&
-        length(don_targets) > 0L && length(don_cols) > 0L) {
-        x$out <- reverse_paired_side(
-            x$out, chr_id_side = "chr_id.don",
-            target_ids = don_targets, value_cols = don_cols
-        )
-    }
-
-    # Reverse the recipient-side value vectors.
-    if (!is.null(x$out) && nrow(x$out) > 0L &&
-        length(rec_targets) > 0L && length(rec_cols) > 0L) {
-        x$out <- reverse_paired_side(
-            x$out, chr_id_side = "chr_id.rec",
-            target_ids = rec_targets, value_cols = rec_cols
-        )
-    }
-
-    # Recompute the derived difference so it stays consistent with the reversed
-    # cor.gc vectors.
-    if (!is.null(x$out) && nrow(x$out) > 0L) {
-        x$out <- dplyr::mutate(
-            x$out,
-            diff = .data$cor.gc.don - .data$cor.gc.rec
-        )
-    }
-
-    # Re-run CBS for every pair containing a reversed chromosome, since those
-    # pairs' difference profiles have changed orientation. Unaffected pairs'
-    # segments are kept as-is.
-    affected_pairs <- dplyr::filter(
-        x$meta$target_pairs,
-        .data$chr_id.don %in% chr_ids | .data$chr_id.rec %in% chr_ids
-    )
-    if (!is.null(x$out) && nrow(x$out) > 0L && nrow(affected_pairs) > 0L) {
-        affected_segments <- purrr::pmap(
-            list(affected_pairs$chr_id.don, affected_pairs$chr_id.rec),
-            \(don, rec) {
-                pair_rows <- dplyr::filter(
-                    x$out,
-                    .data$chr_id.don == !!don & .data$chr_id.rec == !!rec
-                )
-                segment_pair_data(
-                    pair_rows,
-                    don = don,
-                    rec = rec,
-                    meta = x$meta$meta,
-                    param = x$param,
-                    colname = x$meta$metrics,
-                    threshold = x$meta$metrics_threshold,
-                    min_width = x$param$min.width
-                )
+#' Run code under a fixed seed, then restore the caller's RNG state.
+#' @noRd
+with_local_seed <- function(seed, code) {
+    has_state <- exists(".Random.seed", envir = globalenv(), inherits = FALSE)
+    previous <- if (has_state) get(".Random.seed", envir = globalenv()) else NULL
+    on.exit(
+        {
+            if (has_state) {
+                assign(".Random.seed", previous, envir = globalenv())
+            } else if (exists(".Random.seed", envir = globalenv(), inherits = FALSE)) {
+                rm(".Random.seed", envir = globalenv())
             }
+        },
+        add = TRUE
+    )
+
+    set.seed(as.integer(seed))
+    force(code)
+}
+
+#' @noRd
+getSegments <- function(counts, chrom, maploc, alpha, undo.SD, seed = 1L) {
+    with_local_seed(seed, {
+        CNA.object <- DNAcopy::CNA(
+            genomdat = counts,
+            chrom = chrom,
+            maploc = maploc,
+            data.type = "logratio"
+        ) |> DNAcopy::smooth.CNA()
+        DNAcopy::segment(
+            CNA.object,
+            verbose = 0,
+            undo.splits = "sdundo",
+            alpha = alpha,
+            min.width = 2,
+            undo.SD = undo.SD
         )
-        x$segments <- dplyr::bind_rows(
-            dplyr::anti_join(
-                x$segments,
-                affected_pairs,
-                by = c("chr_id.don", "chr_id.rec")
+    })
+}
+
+#' @noRd
+segment_pair_data <- function(pair_data, don, rec, meta, param, colname, threshold, min_width) {
+    if (nrow(pair_data) < 2L) {
+        warning(
+            sprintf(
+                "Skipping donor %s / recipient %s: need at least 2 ideal windows for CBS, got %d",
+                don,
+                rec,
+                nrow(pair_data)
             ),
-            purrr::compact(affected_segments)
+            call. = FALSE
         )
+        return(NULL)
     }
-
-    # Keep the underlying per-window table aligned as well.
-    if (!is.null(x$data) && nrow(x$data) > 0L) {
-        value_cols <- intersect(
-            names(x$data),
-            c("cov", "gc", "cor.gc", "valid", "ideal")
-        )
-        x$data <- reverse_chr_value_cols(x$data, chr_ids, value_cols)
-    }
-
-    return(x)
-}
-
-
-#' @exportS3Method base::subset
-#' @importFrom rlang .data
-subset.ISA <- function(x,
-                       min_width = NULL,
-                       min_segment_median = NULL,
-                       min_segment_mean = NULL,
-                       threshold_type = NULL,
-                       target_pairs = NULL,
-                       ...) {
-    if (!is.null(threshold_type)) {
-        stopifnot(
-            "Threshold types must be 'mean' or 'median'" =
-                !is.na(match(
-                    threshold_type, c("mean", "median")
-                ))
-        )
-        new_metrics <- ifelse(threshold_type == "mean", "seg.mean", "seg.median")
-        if (!identical(new_metrics, x$meta$metrics)) {
-            if (identical(threshold_type, "mean") &&
-                is.null(min_segment_mean)) {
-                stop(paste0(
-                    c(
-                        "When switching threshold_type to 'mean', ",
-                        "supply min_segment_mean"
-                    ),
-                    collapse = ""
-                ), call. = FALSE)
-            }
-            if (identical(threshold_type, "median") &&
-                is.null(min_segment_median)) {
-                stop(
-                    "When switching threshold_type to 'median', supply min_segment_median",
-                    call. = FALSE
-                )
-            }
-        }
-        x$meta$metrics <- new_metrics
-    }
-
-    stopifnot(
-        "Only median or mean threshold could be used" = is.null(min_segment_mean) ||
-            is.null(min_segment_median)
-    )
-    if (!is.null(min_segment_mean)) {
-        stopifnot("Metrics in current ISA is not mean" = x$meta$metrics == "seg.mean")
-        x$meta$metrics_threshold <- min_segment_mean
-    }
-
-    if (!is.null(min_segment_median)) {
-        stopifnot("Metrics in current ISA is not median" = x$meta$metrics == "seg.median")
-        x$meta$metrics_threshold <- min_segment_median
-    }
-
-    x$segments$putative_introgression <- x$segments[[x$meta$metrics]] >= x$meta$metrics_threshold
-
-    if (!is.null(target_pairs)) {
-        target_pairs_df <- validate_target_pairs(target_pairs, x$meta$don_chr_ids, x$meta$rec_chr_ids)
-        x$meta$target_pairs <- target_pairs_df
-        x$meta$don_chr_ids <- unique(target_pairs_df$chr_id.don)
-        x$meta$rec_chr_ids <- unique(target_pairs_df$chr_id.rec)
-
-        keep_chrs <- c(x$meta$don_chr_ids, x$meta$rec_chr_ids)
-        x$meta$meta <- dplyr::filter(x$meta$meta, .data$chr_id %in% keep_chrs)
-        x$data <- dplyr::filter(x$data, .data$chr_id %in% keep_chrs)
-
-        x$out <- dplyr::semi_join(x$out,
-            x$meta$target_pairs,
-            by = c("chr_id.don", "chr_id.rec")
-        )
-
-        x$segments <- dplyr::semi_join(x$segments,
-            x$meta$target_pairs,
-            by = c("chr_id.don", "chr_id.rec")
-        )
-    }
-
-    if (!is.null(min_width)) {
-        stopifnot("min.width must be >=2" = min_width >= 2)
-        x$segments <- dplyr::filter(
-            x$segments,
-            (.data$loc.end - .data$loc.start + 1) >= min_width
-        )
-        x$param$min.width <- min_width
-    }
-
-    return(x)
-}
-
-
-#' @exportS3Method base::plot
-#' @importFrom rlang .data
-plot.ISA <- function(x,
-                     plot.type = c("mirror", "diff"),
-                     all_segments = FALSE,
-                     ...) {
-    plot_type <- match.arg(plot.type)
-
-    if (is.null(x$out) || nrow(x$out) == 0L) {
-        stop("No pairwise windows available to plot", call. = FALSE)
-    }
-
-    # Add throughout number of windows
-    x$out$iid.e2e <- seq_along(x$out$iid)
-
-    # Convert windows coordinates into end-to-end scale
-    x$segments <- dplyr::inner_join(
-        x$segments,
-        dplyr::select(x$out, dplyr::all_of(
-            c("chr_id.don", "chr_id.rec", "iid", "iid.e2e")
-        )),
-        by = c(
-            "chr_id.don" = "chr_id.don",
-            "chr_id.rec" = "chr_id.rec",
-            "loc.start" = "iid"
-        )
+    getSegments(
+        counts = pair_data$diff,
+        chrom = rep_len("1", nrow(pair_data)),
+        maploc = pair_data$iid,
+        alpha = param$alpha,
+        undo.SD = param$undo.SD,
+        seed = if (is.null(param$seed)) 1L else param$seed
     ) |>
+        DNAcopy::segments.summary() |>
+        dplyr::select(!dplyr::all_of(c("ID", "chrom"))) |>
+        dplyr::mutate(
+            putative_introgression = .data[[colname]] >= threshold,
+            chr_id.don = don,
+            chr_id.rec = rec,
+            .before = 1L
+        ) |>
+        dplyr::inner_join(meta, by = c("chr_id.don" = "chr_id")) |>
         dplyr::inner_join(
-            dplyr::select(x$out, dplyr::all_of(
-                c("chr_id.don", "chr_id.rec", "iid", "iid.e2e")
-            )),
-            by = c(
-                "chr_id.don" = "chr_id.don",
-                "chr_id.rec" = "chr_id.rec",
-                "loc.end" = "iid"
-            ),
-            suffix = c(".start", ".end")
+            meta,
+            by = c("chr_id.rec" = "chr_id"),
+            suffix = c(".don", ".rec")
         ) |>
-        (\(x) {
-            if (!all_segments) {
-                dplyr::filter(x, .data$putative_introgression)
-            } else {
-                x
-            }
-        })()
-
-
-    # Color of each chromosome
-    x$out$color.don <- (match(x$out$chr_name.don, unique(x$out$chr_name.don)) - 1) %% 2
-    x$out$color.rec <- (match(x$out$chr_name.rec, unique(x$out$chr_name.rec)) - 1) %% 2
-
-    # Calculate break coordinates
-    breaks <- x$out |>
-        dplyr::group_by(.data$chr_name.don, .data$chr_name.rec) |>
-        dplyr::reframe(pos = min(.data$iid.e2e) + (diff(range(.data$iid.e2e)) / 2))
-
-    plot <- ggplot2::ggplot(data = x$out) +
-        ggplot2::theme_bw() +
-        ggplot2::scale_x_continuous(
-            expand = ggplot2::expansion(mult = c(0.01, 0.01)),
-            breaks = breaks$pos,
-            labels = paste(breaks$chr_name.don, breaks$chr_name.rec, sep = "/")
-        ) +
-        ggplot2::theme(
-            aspect.ratio = 1 / 5,
-            axis.title.x = ggplot2::element_blank(),
-            axis.ticks.x = ggplot2::element_blank(),
-            panel.grid = ggplot2::element_blank(),
-            legend.position = "none"
-        )
-
-    if (plot_type == "mirror") {
-        don_offset <- round(max(x$out$cor.gc.don, na.rm = TRUE) * 0.1)
-        rec_offset <- round(max(x$out$cor.gc.rec, na.rm = TRUE) * 0.1)
-        max_y <- max(c(x$out$cor.gc.don + don_offset,
-                       x$out$cor.gc.rec + rec_offset))
-        
-        plot + ggplot2::geom_point(
-            mapping = ggplot2::aes(
-                x = .data$iid.e2e,
-                y = .data$cor.gc.don + don_offset,
-                color = factor(.data$color.don)
-            ),
-            size = 0.5
-        ) +
-            ggplot2::scale_color_manual(values = c("grey60", "grey80")) +
-            ggnewscale::new_scale_color() +
-            ggplot2::geom_point(
-                mapping = ggplot2::aes(
-                    x = .data$iid.e2e,
-                    y = -.data$cor.gc.rec - rec_offset,
-                    color = factor(.data$color.rec)
-                ),
-                size = 0.5
-            ) +
-            ggplot2::scale_color_manual(values = c("grey80", "grey60")) +
-            ggplot2::scale_y_continuous(
-                expand = ggplot2::expansion(mult = c(0.03, 0.03)),
-                labels = \(x) gsub("-", "", x),
-                name = "Coverage",
-                limits = c(-max_y, max_y)
-            )
-    } else {
-        max_y <- max(abs(x$out$diff))
-        plot +
-            ggplot2::geom_point(
-                mapping = ggplot2::aes(
-                    x = .data$iid.e2e,
-                    y = .data$diff,
-                    color = factor(.data$color.don)
-                ),
-                size = 0.5
-            ) +
-            ggplot2::geom_hline(
-                yintercept = 0,
-                color = "green",
-                linetype = "dashed",
-                linewidth = 1
-            ) +
-            ggplot2::geom_segment(
-                data = x$segments,
-                mapping = ggplot2::aes(
-                    x = .data$iid.e2e.start,
-                    y = .data[[x$meta$metrics]],
-                    xend = .data$iid.e2e.end,
-                    yend = .data[[x$meta$metrics]]
-                ),
-                color = "orangered",
-                linewidth = 1
-            ) +
-            ggplot2::scale_color_manual(values = c("grey60", "grey80")) + 
-            ggplot2::scale_y_continuous(
-                expand = ggplot2::expansion(mult = c(0.03, 0.03)),
-                labels = \(x) gsub("-", "", x),
-                name = "Coverage",
-                limits = c(-max_y, max_y)
-            )
-    }
+        dplyr::filter((.data$loc.end - .data$loc.start + 1) >= min_width)
 }
 
-
-#' @exportS3Method base::print
-print.ISA <- function(x, ...) {
-    n_putative <- if (!is.null(x$segments) &&
-        "putative_introgression" %in% names(x$segments)) {
-        sum(x$segments$putative_introgression, na.rm = TRUE)
-    } else {
-        0L
-    }
-    cat(
-        "ISA object: ",
-        nrow(x$meta$target_pairs),
-        " pair(s), ",
-        nrow(x$segments),
-        " segment(s), ",
-        n_putative,
-        " putative introgression(s), metric: ",
-        x$meta$metrics,
-        "\n",
-        sep = ""
+#' @noRd
+empty_segments <- function() {
+    data.frame(
+        chr_id.don = character(),
+        chr_id.rec = character(),
+        loc.start = integer(),
+        loc.end = integer(),
+        num.mark = integer(),
+        seg.mean = numeric(),
+        seg.sd = numeric(),
+        seg.median = numeric(),
+        seg.mad = numeric(),
+        putative_introgression = logical(),
+        chr_name.don = character(),
+        subgenome.don = character(),
+        chr_name.rec = character(),
+        subgenome.rec = character(),
+        stringsAsFactors = FALSE
     )
-    invisible(x)
 }
 
-#' @exportS3Method base::summary
-#' @importFrom rlang .data
-summary.ISA <- function(object,
-                        unit = c("bp", "Kb", "Mb", "Gb"),
-                        digits = 2,
-                        ...) {
-    unit <- match.arg(unit)
-    stopifnot("Argument digits must be non-negative" = digits >= 0)
-
-    intro_data <- annotate_segment_coords(
-        dplyr::filter(object$segments, .data$putative_introgression),
-        object$out
-    ) |>
-        dplyr::select(dplyr::all_of(
-            c(
-                "chr_id.don",
-                "chr_name.don",
-                "subgenome.don",
-                "start.don",
-                "stop.don",
-                "chr_id.rec",
-                "chr_name.rec",
-                "subgenome.rec",
-                "start.rec",
-                "stop.rec"
-            )
-        )) |>
-        dplyr::mutate(
-            length.don = .data$stop.don - .data$start.don,
-            .after = "stop.don"
+#' @noRd
+annotate_segment_coords <- function(segments, out) {
+    merge_data <- dplyr::select(out, dplyr::all_of(
+        c(
+            "iid",
+            "chr_id.don",
+            "start.don",
+            "stop.don",
+            "chr_id.rec",
+            "start.rec",
+            "stop.rec"
+        )
+    ))
+    segments |>
+        dplyr::inner_join(
+            y = dplyr::select(merge_data, !dplyr::all_of(c(
+                "stop.don", "stop.rec"
+            ))),
+            by = c("chr_id.don", "chr_id.rec", "loc.start" = "iid")
         ) |>
-        dplyr::mutate(
-            length.rec = .data$stop.rec - .data$start.rec,
-            .after = "stop.rec"
+        dplyr::inner_join(
+            y = dplyr::select(merge_data, !dplyr::all_of(c(
+                "start.don", "start.rec"
+            ))),
+            by = c("chr_id.don", "chr_id.rec", "loc.end" = "iid")
         )
-
-    out <- list(
-        introgressions = intro_data,
-        n_introgressions = nrow(intro_data),
-        unit = unit,
-        digits = digits
-    )
-    class(out) <- "summary.ISA"
-    out
-}
-
-#' @exportS3Method base::print
-print.summary.ISA <- function(x, ...) {
-    scale_factor <- list(
-        "bp" = 1,
-        "Kb" = 1e3,
-        "Mb" = 1e6,
-        "Gb" = 1e9
-    )
-
-    if (x$n_introgressions == 0L) {
-        cat("No putative introgressions found\n")
-    } else {
-        cat(
-            "Putative introgressions found:",
-            x$n_introgressions,
-            "\n"
-        )
-        cat(
-            "Coordinates and length reported in",
-            x$unit,
-            "scale",
-            "\n\n"
-        )
-        for (i in seq_len(x$n_introgressions)) {
-            intro_info <- as.list(x$introgressions[i, ])
-            cat("Segment", i, "\n")
-            coords <- vapply(
-                c(
-                    intro_info$start.don,
-                    intro_info$stop.don,
-                    intro_info$start.rec,
-                    intro_info$stop.rec,
-                    intro_info$length.don,
-                    intro_info$length.rec
-                ),
-                \(v) round(v / scale_factor[[x$unit]], digits = x$digits),
-                numeric(1)
-            )
-
-            data.frame(
-                row.names = c("Donor", "Recipient"),
-                "Chromosome" = c(
-                    intro_info$chr_name.don,
-                    intro_info$chr_name.rec
-                ),
-                "Subgenome" = c(
-                    intro_info$subgenome.don,
-                    intro_info$subgenome.rec
-                ),
-                "From" = coords[c(1, 3)],
-                "To" = coords[c(2, 4)],
-                "Length" = coords[c(5, 6)]
-            ) |> print()
-            cat("\n")
-        }
-    }
-    invisible(x)
-}
-
-
-#' @export
-#' @importFrom rlang .data
-writeToBedpe <- function(ISA, file) {
-    stopifnot("Input is not ISA object" = inherits(ISA, "ISA"))
-
-    output_colnames <- c(
-        "chrom1",
-        "start1",
-        "end1",
-        "chrom2",
-        "start2",
-        "end2",
-        "name",
-        "score",
-        "strand1",
-        "strand2",
-        "chrom_name1",
-        "chrom_name2",
-        "subgen_name1",
-        "subgen_name2"
-    )
-
-    putative <- dplyr::filter(ISA$segments, .data$putative_introgression)
-
-    if (nrow(putative) == 0L) {
-        warning("No putative introgressions to write; writing header only",
-            call. = FALSE
-        )
-        empty <- data.frame(matrix(
-            ncol = length(output_colnames),
-            nrow = 0L,
-            dimnames = list(NULL, output_colnames)
-        ))
-        utils::write.table(
-            empty,
-            file,
-            sep = "\t",
-            quote = FALSE,
-            row.names = FALSE
-        )
-        message("Output was written in ", file)
-        return(invisible(NULL))
-    }
-
-    annotate_segment_coords(putative, ISA$out) |>
-        dplyr::select(dplyr::all_of(
-            c(
-                "chr_id.don",
-                "start.don",
-                "stop.don",
-                "chr_id.rec",
-                "start.rec",
-                "stop.rec",
-                ISA$meta$metrics,
-                "chr_name.don",
-                "chr_name.rec",
-                "subgenome.don",
-                "subgenome.rec"
-            )
-        )) |>
-        dplyr::mutate(
-            name = paste("PIS", seq_len(dplyr::n()), sep = ""),
-            .after = "stop.rec"
-        ) |>
-        dplyr::mutate(
-            strand1 = ".",
-            strand2 = ".",
-            .after = ISA$meta$metrics
-        ) |>
-        stats::setNames(output_colnames) |>
-        utils::write.table(file,
-            sep = "\t",
-            quote = FALSE,
-            row.names = FALSE
-        )
-
-    message("Output was written in ", file)
-    invisible(NULL)
 }

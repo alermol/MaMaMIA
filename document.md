@@ -94,7 +94,7 @@
 - Среда выполнения: R (заявлено >= 4.6.0). Файл `renv.lock` указывает R 4.6.1 и Bioconductor 3.23 — удобно использовать `renv::restore()` для восстановления зависимостей.
 - Основные зависимости (импорт/реккоменд): `DNAcopy`, `glmmTMB`, `dplyr`, `ggplot2`, `mgcv`, `purrr`, `ggnewscale` и т.д.; для интерактивного дашборда — `shiny`, `BioCircos`, `bslib`, `DT`, `shinyWidgets`, `htmlwidgets` (см. `DESCRIPTION` и `R/dashboard.R`).
 - Структура репозитория (ключевые элементы):
-  - `R/` — реализация основных функций: коррекция покрытия (`correction.R`), сегментация (`segmentation.R`), конструирование RCA/ISA и дашборд (`dashboard.R`), утилиты (`internal.R`, `reverseWindows.R`).
+  - `R/` — реализация основных функций: классы (`RCA.R`, `ISA.R`), коррекция покрытия (`correction.R`, кеш подгонки — `fit-cache.R`), сегментация (`segmentation.R`), ввод данных (`input.R`), валидация (`validation.R`), экспорт BEDPE (`bedpe.R`), разворот хромосом (`reverseWindows.R`), дашборд (`dashboard.R`, отключённый circos — `circos.R`) и точка входа (`app.R`).
   - `man/` — автогенерированные документационные страницы для функций (есть описания `RCA`, `segments`, `correctReadCounts`, `exploreIntrogressions` и т.д.).
   - `vignettes/Overview.Rmd` — подробный пошаговый пример использования, содержит демонстрацию полного рабочего цикла на упакованном примере `triticum`.
   - `inst/` — вспомогательные ресурсы: JS/CSS для визуализации (`inst/mamamia/mamamia-circos.*`), бенчмарки (`inst/benchmarks/benchmark-pipeline.R`).

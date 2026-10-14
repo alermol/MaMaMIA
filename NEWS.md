@@ -6,7 +6,7 @@
 
 * The BioCircos-based circos view is temporarily disabled and the BioCircos
   dependency removed: the dashboard shows the segment table with filtering and
-  the BEDPE export. The circos code (in `R/dashboard.R`, its test, and the
+  the BEDPE export. The circos code (in `R/circos.R`, its test, and the
   `inst/mamamia/` assets) is commented out and can be reinstated together with
   the `BioCircos` entry in `Suggests`.
 * `runMaMaMIA()` is the new main entry point: a locally running Shiny app that
