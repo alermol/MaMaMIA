@@ -33,7 +33,8 @@ The workflow has five main steps:
 3.  Correct coverage for GC-content bias.
 4.  Segment pairwise donor-recipient coverage differences with circular
     binary segmentation (CBS).
-5.  Inspect putative introgressions and optionally export them as BEDPE.
+5.  Inspect putative introgressions in the interactive dashboard and
+    optionally export them as BEDPE.
 
 This vignette walks through that pipeline using the packaged `triticum`
 example dataset (*Triticum timopheevii* donor versus *Triticum aestivum*
@@ -479,6 +480,53 @@ read.table(bedpe_file, header = TRUE, sep = "\t")
 
 If no putative introgressions remain after filtering, a header-only file
 is written and a warning is issued.
+
+# Interactive dashboard
+
+`MaMaMIA` ships with a locally running Shiny dashboard. Its main entry point,
+`runMaMaMIA()`, reads windowed tables from disk, runs the whole pipeline with
+the sample and parameters chosen in the app, and then opens the explorer:
+
+```{r run-ma-ma-mia, eval = FALSE}
+runMaMaMIA(
+  analysis_dir = "mamamia_analysis",
+  assemblies_dir = "assemblies"
+)
+```
+
+The app expects an analysis directory with one subdirectory per sample and an
+assemblies directory with one subdirectory per donor reference:
+
+```
+analysis_dir/<sample>/<reference>.w<N>.dcov.bed   # donor coverage windows
+analysis_dir/<sample>/<reference>.w<N>.rcov.bed   # recipient coverage windows
+assemblies_dir/<reference>/donor.w<N>.gc.bed      # donor GC content
+assemblies_dir/<reference>/recipient.w<N>.gc.bed  # recipient GC content
+assemblies_dir/<reference>/chromosomes.tsv        # chr_id, chr_name, subgenome
+```
+
+All measurement tables have four columns (chromosome ID, start, end, value)
+and may carry the `bedtools nuc` header, which starts with `#`. See
+`?readMaMaMIAInput` for the details. Called without arguments, the app starts
+on the packaged `triticum` example.
+
+Donor and recipient chromosomes are paired by chromosome number within the
+selected subgenomes with `defaultTargetPairs()`; the analysis runs RCA
+construction, GC-bias correction and segmentation in the app.
+
+If the pipeline has already been run, `exploreIntrogressions()` opens the same
+explorer for an existing `ISA` object:
+
+```{r explore-isa, eval = FALSE}
+exploreIntrogressions(aat_segments)
+```
+
+The explorer draws a searchable segment table and exports the selected table
+rows as BEDPE. The call threshold (the `threshold_type` metric and its minimum
+value) and the minimum segment width re-flag the segments through
+`subset.ISA()` without re-running segmentation, and the chromosome and
+chromosome-pair pickers restrict the view. The BioCircos circos plot is
+temporarily unavailable while the BioCircos dependency is removed.
 
 # Session info
 

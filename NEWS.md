@@ -2,6 +2,26 @@
 
 * Initial submission.
 
+## Dashboard
+
+* The BioCircos-based circos view is temporarily disabled and the BioCircos
+  dependency removed: the dashboard shows the segment table with filtering and
+  the BEDPE export. The circos code (in `R/dashboard.R`, its test, and the
+  `inst/mamamia/` assets) is commented out and can be reinstated together with
+  the `BioCircos` entry in `Suggests`.
+* `runMaMaMIA()` is the new main entry point: a locally running Shiny app that
+  reads the windowed input layout, runs RCA construction, GC-bias correction
+  and segmentation, and hands the result to the interactive explorer. The
+  explorer part can still be launched on its own with
+  `exploreIntrogressions()`.
+* `readMaMaMIAInput()`, `listMaMaMIASamples()` and `listMaMaMIAReferences()`
+  read the on-disk layout (per-sample coverage tables, per-reference GC-content
+  tables and chromosome metadata), and `defaultTargetPairs()` pairs donor and
+  recipient chromosomes by chromosome number within selected subgenomes.
+* The explorer gained call threshold and minimum segment width controls that
+  re-flag the segments through `subset.ISA()` without re-running CBS, plus
+  select-all and clear buttons for the BEDPE export.
+
 ## Performance
 
 * `correctReadCounts()` no longer calls `glmmTMB::predict()` twice on the full

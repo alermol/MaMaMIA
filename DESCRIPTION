@@ -23,7 +23,6 @@ Imports:
 Depends: 
     R (>= 4.6.0)
 Suggests: 
-    BioCircos,
     bslib,
     DT,
     htmltools,

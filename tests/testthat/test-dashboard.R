@@ -85,51 +85,54 @@ test_that("selection toggles from the table and from a band click", {
     expect_equal(isa_dashboard_toggle_selection(integer(), integer()), integer())
 })
 
-test_that("the circos stacks difference, spans and size-classed links", {
-    testthat::skip_if_not_installed("BioCircos")
-
-    isa <- seg_step()
-    segments <- isa_dashboard_segments(isa)
-    genome <- isa_dashboard_genome(isa)
-    circos <- isa_dashboard_circos(isa, segments, genome)
-
-    expect_s3_class(circos, "htmlwidget")
-    track_names <- vapply(circos$x$tracklist, function(track) track[[1]], character(1))
-    expect_true(any(grepl("CNV_diff_positive", track_names)))
-    expect_true(any(grepl("CNV_diff_negative", track_names)))
-    expect_true(any(grepl("CNV_introgression_spans", track_names)))
-    expect_true(any(grepl("introgression_hit_area", track_names)))
-    expect_true(all(grepl("LINK_", track_names[grepl("LINK_", track_names)])))
-    link_tracks <- track_names[grepl("LINK_", track_names)]
-    expect_true(length(link_tracks) > 0L)
-    widths <- vapply(
-        circos$x$tracklist[grepl("LINK_", track_names)],
-        function(track) as.numeric(sub("px$", "", track[[2]]$LinkWidth)),
-        numeric(1)
-    )
-    expect_true(all(diff(widths) >= 0))
-
-    fill <- circos$x$genomeFillColor
-    expect_equal(length(fill), length(genome))
-    expect_setequal(unique(fill), c(dashboard_palette[["donor"]], dashboard_palette[["recipient"]]))
-    expect_equal(fill[names(genome) %in% isa$meta$don_chr_ids], dashboard_palette[["donor"]])
-    expect_equal(circos$x$genomeLabelTextColor, "#2f3437")
-    ## The stylesheet and the enhancement script must ride on the widget as a
-    ## dependency: prependContent() is ignored in a Shiny render, which is how the
-    ## widget once ended up unreadable, selectable, and swallowing table clicks.
-    deps <- Filter(function(d) inherits(d, "html_dependency"), circos$dependencies)
-    dep_names <- vapply(deps, function(d) d$name, character(1))
-    expect_true("mamamia-circos" %in% dep_names)
-    dep <- deps[[match("mamamia-circos", dep_names)]]
-    expect_equal(dep$script, "mamamia-circos.js")
-    expect_equal(dep$stylesheet, "mamamia-circos.css")
-
-    summary <- circos$x$chromosome_summary
-    expect_setequal(names(summary), names(genome))
-    expect_true(all(nzchar(unlist(summary))))
-    expect_setequal(circos$x$donor_chr_ids, isa$meta$don_chr_ids)
-    expect_setequal(circos$x$chromosome_ids, names(genome))
-    expect_equal(circos$x$hit_area_rows, as.integer(segments$.row_id))
-    expect_equal(length(circos$x$ribbon_rows), nrow(segments))
-    expect_equal(length(circos$x$span_rows), 2L * nrow(segments))
-})
+## The circos widget test is commented out together with the BioCircos
+## dependency and the corresponding code in R/dashboard.R. Reinstate both
+## together.
+# test_that("the circos stacks difference, spans and size-classed links", {
+#     testthat::skip_if_not_installed("BioCircos")
+#
+#     isa <- seg_step()
+#     segments <- isa_dashboard_segments(isa)
+#     genome <- isa_dashboard_genome(isa)
+#     circos <- isa_dashboard_circos(isa, segments, genome)
+#
+#     expect_s3_class(circos, "htmlwidget")
+#     track_names <- vapply(circos$x$tracklist, function(track) track[[1]], character(1))
+#     expect_true(any(grepl("CNV_diff_positive", track_names)))
+#     expect_true(any(grepl("CNV_diff_negative", track_names)))
+#     expect_true(any(grepl("CNV_introgression_spans", track_names)))
+#     expect_true(any(grepl("introgression_hit_area", track_names)))
+#     expect_true(all(grepl("LINK_", track_names[grepl("LINK_", track_names)])))
+#     link_tracks <- track_names[grepl("LINK_", track_names)]
+#     expect_true(length(link_tracks) > 0L)
+#     widths <- vapply(
+#         circos$x$tracklist[grepl("LINK_", track_names)],
+#         function(track) as.numeric(sub("px$", "", track[[2]]$LinkWidth)),
+#         numeric(1)
+#     )
+#     expect_true(all(diff(widths) >= 0))
+#
+#     fill <- circos$x$genomeFillColor
+#     expect_equal(length(fill), length(genome))
+#     expect_setequal(unique(fill), c(dashboard_palette[["donor"]], dashboard_palette[["recipient"]]))
+#     expect_equal(fill[names(genome) %in% isa$meta$don_chr_ids], dashboard_palette[["donor"]])
+#     expect_equal(circos$x$genomeLabelTextColor, "#2f3437")
+#     ## The stylesheet and the enhancement script must ride on the widget as a
+#     ## dependency: prependContent() is ignored in a Shiny render, which is how the
+#     ## widget once ended up unreadable, selectable, and swallowing table clicks.
+#     deps <- Filter(function(d) inherits(d, "html_dependency"), circos$dependencies)
+#     dep_names <- vapply(deps, function(d) d$name, character(1))
+#     expect_true("mamamia-circos" %in% dep_names)
+#     dep <- deps[[match("mamamia-circos", dep_names)]]
+#     expect_equal(dep$script, "mamamia-circos.js")
+#     expect_equal(dep$stylesheet, "mamamia-circos.css")
+#
+#     summary <- circos$x$chromosome_summary
+#     expect_setequal(names(summary), names(genome))
+#     expect_true(all(nzchar(unlist(summary))))
+#     expect_setequal(circos$x$donor_chr_ids, isa$meta$don_chr_ids)
+#     expect_setequal(circos$x$chromosome_ids, names(genome))
+#     expect_equal(circos$x$hit_area_rows, as.integer(segments$.row_id))
+#     expect_equal(length(circos$x$ribbon_rows), nrow(segments))
+#     expect_equal(length(circos$x$span_rows), 2L * nrow(segments))
+# })

@@ -1,4 +1,8 @@
-dashboard_packages <- c("BioCircos", "bslib", "DT", "htmltools", "htmlwidgets", "shiny", "shinyWidgets")
+dashboard_packages <- c(
+    ## "BioCircos" is temporarily removed together with the circos view; add it
+    ## back here and in DESCRIPTION when the circos code is reinstated.
+    "bslib", "DT", "shiny", "shinyWidgets"
+)
 
 require_dashboard_packages <- function() {
     missing <- dashboard_packages[!vapply(dashboard_packages, requireNamespace, logical(1), quietly = TRUE)]
@@ -35,26 +39,29 @@ isa_dashboard_genome <- function(ISA, chr_ids = NULL) {
     as.list(lengths[c(names(lengths)[!is_donor], rev(names(lengths)[is_donor]))])
 }
 
-## For the mirrored donor half a coordinate c becomes length - c, so a feature
-## keeps its distance from the shared 12 o'clock edge. Chromosomes absent from
-## `don_len` are left alone, which is how the recipient side stays untouched.
-isa_dashboard_mirror <- function(chr, start, stop, don_len) {
-    len <- unname(don_len[chr])
-    list(
-        start = ifelse(is.na(len), start, len - stop),
-        stop = ifelse(is.na(len), stop, len - start)
-    )
-}
-
-isa_dashboard_mirror_donor <- function(data, don_len) {
-    if (nrow(data) == 0L) {
-        return(data)
-    }
-    mirrored <- isa_dashboard_mirror(data$chr, data$start, data$stop, don_len)
-    data$start <- mirrored$start
-    data$stop <- mirrored$stop
-    data
-}
+## The mirroring helpers below belong to the BioCircos circos view and are
+## commented out together with the rest of that feature (see the note further
+## down, before the circos constants).
+# For the mirrored donor half a coordinate c becomes length - c, so a feature
+# keeps its distance from the shared 12 o'clock edge. Chromosomes absent from
+# `don_len` are left alone, which is how the recipient side stays untouched.
+# isa_dashboard_mirror <- function(chr, start, stop, don_len) {
+#     len <- unname(don_len[chr])
+#     list(
+#         start = ifelse(is.na(len), start, len - stop),
+#         stop = ifelse(is.na(len), stop, len - start)
+#     )
+# }
+#
+# isa_dashboard_mirror_donor <- function(data, don_len) {
+#     if (nrow(data) == 0L) {
+#         return(data)
+#     }
+#     mirrored <- isa_dashboard_mirror(data$chr, data$start, data$stop, don_len)
+#     data$start <- mirrored$start
+#     data$stop <- mirrored$stop
+#     data
+# }
 
 isa_dashboard_pair_labels <- function(segments) {
     if (nrow(segments) == 0L) {
@@ -104,36 +111,44 @@ isa_dashboard_table <- function(segments) {
     out
 }
 
-## The circos mirrors tools/illustrations/render-illustrations.R::fig_circos(),
-## which stacks three concentric layers: the chromosome ideogram, the per-window
-## donor - recipient coverage difference, then the ribbons for the calls.
+## --- The BioCircos circos view is temporarily disabled ----------------------
+## Everything below that builds or renders the circos widget is commented out
+## while the BioCircos dependency is removed: the palette and track constants,
+## the mirroring helpers above, the track builders, the widget itself, and the
+## htmltools/htmlwidgets assets. The BioCircos-free helpers (segment
+## annotation, genome layout, filtering, window thinning, size classes) stay
+## active, and the dashboard shows the segment table with BEDPE export.
 ##
-## BioCircos radial units: every track radius is scaled by 0.7 * maxRadius and
-## the built-in ideogram band spans 0.70-0.80 of maxRadius, that is 1.000-1.143
-## in track units, so every layer added here must stay below 1.0. CNV arcs place
-## a constant-thickness mark at minRadius + (value - range[1]) / (range[0] -
-## range[1]) * (maxRadius - minRadius), while CNV `width` is in pixels.
-## Links are single quadratic curves and gene1Starts/gene1Ends only supply the
-## midpoint, so segment size is shown by splitting calls into size classes.
-dashboard_palette <- c(
-    donor = "#737373",
-    recipient = "#c9c9c9",
-    diff_high = "#b2182b",
-    diff_low = "#2166ac",
-    ribbon = "#cb181d"
-)
-ribbon_selected_color <- "#D95F02"
-label_on_donor <- "#ffffff"
-label_on_recipient <- "#2f3437"
-diff_zero_radius <- 0.82
-diff_half_range <- 0.11
-diff_mark_width_px <- 4
-## The ribbons start at the difference ring, not out at the ideogram, so the
-## chunk marks sit at the same radius as the link radius and read as their roots.
-span_mark_radius <- 0.70
-span_mark_width_px <- 8
-link_size_widths <- c(1.5, 3, 5, 7.5)
-link_max_radius <- 0.70
+# The circos mirrors tools/illustrations/render-illustrations.R::fig_circos(),
+# which stacks three concentric layers: the chromosome ideogram, the per-window
+# donor - recipient coverage difference, then the ribbons for the calls.
+#
+# BioCircos radial units: every track radius is scaled by 0.7 * maxRadius and
+# the built-in ideogram band spans 0.70-0.80 of maxRadius, that is 1.000-1.143
+# in track units, so every layer added here must stay below 1.0. CNV arcs place
+# a constant-thickness mark at minRadius + (value - range[1]) / (range[0] -
+# range[1]) * (maxRadius - minRadius), while CNV `width` is in pixels.
+# Links are single quadratic curves and gene1Starts/gene1Ends only supply the
+# midpoint, so segment size is shown by splitting calls into size classes.
+# dashboard_palette <- c(
+#     donor = "#737373",
+#     recipient = "#c9c9c9",
+#     diff_high = "#b2182b",
+#     diff_low = "#2166ac",
+#     ribbon = "#cb181d"
+# )
+# ribbon_selected_color <- "#D95F02"
+# label_on_donor <- "#ffffff"
+# label_on_recipient <- "#2f3437"
+# diff_zero_radius <- 0.82
+# diff_half_range <- 0.11
+# diff_mark_width_px <- 4
+# The ribbons start at the difference ring, not out at the ideogram, so the
+# chunk marks sit at the same radius as the link radius and read as their roots.
+# span_mark_radius <- 0.70
+# span_mark_width_px <- 8
+# link_size_widths <- c(1.5, 3, 5, 7.5)
+# link_max_radius <- 0.70
 diff_max_windows_per_chr <- 400L
 
 isa_dashboard_size_class <- function(size, n_class) {
@@ -187,271 +202,530 @@ isa_dashboard_diff_limit <- function(windows) {
     if (!is.finite(lim) || lim <= 0) 1 else lim
 }
 
-isa_dashboard_diff_track <- function(name, rows, sign, lim, color) {
-    if (sign > 0) {
-        min_radius <- diff_zero_radius
-        max_radius <- diff_zero_radius + diff_half_range
-        range <- c(lim, 0)
-    } else {
-        min_radius <- diff_zero_radius - diff_half_range
-        max_radius <- diff_zero_radius
-        range <- c(0, lim)
-    }
-    BioCircos::BioCircosCNVTrack(
-        name,
-        rows$chr, rows$start, rows$stop,
-        values = abs(rows$diff),
-        minRadius = min_radius,
-        maxRadius = max_radius,
-        width = diff_mark_width_px,
-        color = color,
-        range = range
-    )
-}
+# isa_dashboard_diff_track <- function(name, rows, sign, lim, color) {
+#     if (sign > 0) {
+#         min_radius <- diff_zero_radius
+#         max_radius <- diff_zero_radius + diff_half_range
+#         range <- c(lim, 0)
+#     } else {
+#         min_radius <- diff_zero_radius - diff_half_range
+#         max_radius <- diff_zero_radius
+#         range <- c(0, lim)
+#     }
+#     BioCircos::BioCircosCNVTrack(
+#         name,
+#         rows$chr, rows$start, rows$stop,
+#         values = abs(rows$diff),
+#         minRadius = min_radius,
+#         maxRadius = max_radius,
+#         width = diff_mark_width_px,
+#         color = color,
+#         range = range
+#     )
+# }
+#
+# isa_dashboard_diff_tracks <- function(windows, lim) {
+#     tracks <- BioCircos::BioCircosTracklist()
+#     if (nrow(windows) == 0L) {
+#         return(tracks)
+#     }
+#     diff <- windows$diff
+#     diff[!is.finite(diff)] <- 0
+#     windows$diff <- pmax(pmin(diff, lim), -lim)
+#     sides <- list(
+#         list(name = "diff_positive", sign = 1, keep = windows$diff > 0, color = dashboard_palette[["diff_high"]]),
+#         list(name = "diff_negative", sign = -1, keep = windows$diff < 0, color = dashboard_palette[["diff_low"]])
+#     )
+#     for (side in sides) {
+#         rows <- windows[side$keep, , drop = FALSE]
+#         if (nrow(rows) == 0L) {
+#             next
+#         }
+#         tracks <- tracks + isa_dashboard_diff_track(side$name, rows, side$sign, lim, side$color)
+#     }
+#     tracks
+# }
 
-isa_dashboard_diff_tracks <- function(windows, lim) {
-    tracks <- BioCircos::BioCircosTracklist()
-    if (nrow(windows) == 0L) {
-        return(tracks)
-    }
-    diff <- windows$diff
-    diff[!is.finite(diff)] <- 0
-    windows$diff <- pmax(pmin(diff, lim), -lim)
-    sides <- list(
-        list(name = "diff_positive", sign = 1, keep = windows$diff > 0, color = dashboard_palette[["diff_high"]]),
-        list(name = "diff_negative", sign = -1, keep = windows$diff < 0, color = dashboard_palette[["diff_low"]])
-    )
-    for (side in sides) {
-        rows <- windows[side$keep, , drop = FALSE]
-        if (nrow(rows) == 0L) {
-            next
-        }
-        tracks <- tracks + isa_dashboard_diff_track(side$name, rows, side$sign, lim, side$color)
-    }
-    tracks
-}
+# Constant-thickness marks spanning each called segment on both chromosomes, so
+# the chunk extent is visible even though a BioCircos link collapses to a curve.
+# isa_dashboard_span_track <- function(segments) {
+#     if (nrow(segments) == 0L) {
+#         return(BioCircos::BioCircosTracklist())
+#     }
+#     spans <- rbind(
+#         data.frame(chr = segments$chr_id.don, start = segments$start.don, stop = segments$stop.don),
+#         data.frame(chr = segments$chr_id.rec, start = segments$start.rec, stop = segments$stop.rec)
+#     )
+#     BioCircos::BioCircosCNVTrack(
+#         "introgression_spans",
+#         spans$chr, spans$start, spans$stop,
+#         values = rep(1, nrow(spans)),
+#         minRadius = span_mark_radius,
+#         maxRadius = span_mark_radius,
+#         width = span_mark_width_px,
+#         color = dashboard_palette[["ribbon"]],
+#         range = c(0, 1)
+#     )
+# }
+#
+# Band hover text comes from the link `labels`; the hit area is a separate
+# near-transparent wide track so a band is easy to point at and click.
+# link_hit_width_px <- 22
+# link_hit_color <- "rgba(255,255,255,0.01)"
 
-## Constant-thickness marks spanning each called segment on both chromosomes, so
-## the chunk extent is visible even though a BioCircos link collapses to a curve.
-isa_dashboard_span_track <- function(segments) {
-    if (nrow(segments) == 0L) {
-        return(BioCircos::BioCircosTracklist())
-    }
-    spans <- rbind(
-        data.frame(chr = segments$chr_id.don, start = segments$start.don, stop = segments$stop.don),
-        data.frame(chr = segments$chr_id.rec, start = segments$start.rec, stop = segments$stop.rec)
-    )
-    BioCircos::BioCircosCNVTrack(
-        "introgression_spans",
-        spans$chr, spans$start, spans$stop,
-        values = rep(1, nrow(spans)),
-        minRadius = span_mark_radius,
-        maxRadius = span_mark_radius,
-        width = span_mark_width_px,
-        color = dashboard_palette[["ribbon"]],
-        range = c(0, 1)
-    )
-}
+# isa_dashboard_mb <- function(bp) {
+#     mb <- bp / 1e6
+#     ifelse(abs(mb) < 10, formatC(mb, format = "f", digits = 2), formatC(mb, format = "f", digits = 1))
+# }
+#
+# isa_dashboard_band_label <- function(segments) {
+#     paste0(
+#         isa_dashboard_mb(segments$size), " Mb",
+#         " | donor ", segments$chr_id.don,
+#         " -> recipient ", segments$chr_id.rec,
+#         " | segment ", segments$.row_id
+#     )
+# }
+#
+# One hover string per chromosome, listing the calls that touch it.
+# isa_dashboard_chromosome_summary <- function(segments, chr_ids) {
+#     summary <- stats::setNames(vector("list", length(chr_ids)), chr_ids)
+#     for (chr in chr_ids) {
+#         rows <- segments[segments$chr_id.don == chr | segments$chr_id.rec == chr, , drop = FALSE]
+#         if (nrow(rows) == 0L) {
+#             summary[[chr]] <- paste0(chr, ": no introgressions")
+#             next
+#         }
+#         entries <- vapply(seq_len(nrow(rows)), function(i) {
+#             row <- rows[i, ]
+#             as_donor <- row$chr_id.don == chr
+#             from <- if (as_donor) row$start.don else row$start.rec
+#             to <- if (as_donor) row$stop.don else row$stop.rec
+#             sprintf(
+#                 "#%d %s %s-%s Mb (%s Mb)",
+#                 row$.row_id,
+#                 if (as_donor) "donated to" else "received from",
+#                 isa_dashboard_mb(from), isa_dashboard_mb(to), isa_dashboard_mb(to - from)
+#             )
+#         }, character(1))
+#         summary[[chr]] <- paste0(
+#             chr, ": ", nrow(rows), " introgression(s)",
+#             "<br>", paste(entries, collapse = "<br>")
+#         )
+#     }
+#     summary
+# }
 
-## Band hover text comes from the link `labels`; the hit area is a separate
-## near-transparent wide track so a band is easy to point at and click.
-link_hit_width_px <- 22
-link_hit_color <- "rgba(255,255,255,0.01)"
+# The interactive layer lives in inst/mamamia/ and ships as a widget dependency,
+# which is the only channel honoured by a Shiny render call: prependContent()
+# warns "Ignoring prepended content" there, and a bare htmlDependency() passed
+# to it is dropped even in a static render. The stylesheet matters on its own,
+# since it is what keeps the plot from swallowing clicks meant for the table.
+# isa_dashboard_circos_assets <- function() {
+#     htmltools::htmlDependency(
+#         "mamamia-circos",
+#         "0.1.0",
+#         src = "mamamia",
+#         script = "mamamia-circos.js",
+#         stylesheet = "mamamia-circos.css",
+#         package = "MaMaMIA"
+#     )
+# }
+#
+# isa_dashboard_circos_hook <- function() {
+#     "function(el, x) { window.mamamiaCircosEnhance(el, x); }"
+# }
+#
+# isa_dashboard_link_track <- function(name, rows, width, color) {
+#     BioCircos::BioCircosLinkTrack(
+#         name,
+#         rows$chr_id.don, rows$start.don, rows$stop.don,
+#         rows$chr_id.rec, rows$start.rec, rows$stop.rec,
+#         labels = rows$.label,
+#         color = color,
+#         maxRadius = link_max_radius,
+#         width = paste0(width, "px"),
+#         displayAxis = FALSE,
+#         displayLabel = FALSE
+#     )
+# }
 
-isa_dashboard_mb <- function(bp) {
-    mb <- bp / 1e6
-    ifelse(abs(mb) < 10, formatC(mb, format = "f", digits = 2), formatC(mb, format = "f", digits = 1))
-}
+# Selection is deliberately not part of the widget: a rebuild costs thousands of
+# arcs, so the plot is drawn once and the picked bands are restyled in place.
+# isa_dashboard_circos <- function(ISA, segments, genome) {
+#     chr_ids <- names(genome)
+#     lengths <- unlist(genome)
+#     ## The donor half mirrors the recipient one, so its features are handed over
+#     ## as length - coordinate and its sectors run in reverse order.
+#     don_len <- lengths[names(lengths) %in% ISA$meta$don_chr_ids]
+#     tracks <- BioCircos::BioCircosTracklist()
+#
+#     windows <- isa_dashboard_mirror_donor(isa_dashboard_diff_windows(ISA, chr_ids), don_len)
+#     tracks <- tracks + isa_dashboard_diff_tracks(windows, isa_dashboard_diff_limit(windows))
+#
+#     ribbon_rows <- integer()
+#     span_rows <- integer()
+#     segments <- segments[
+#         segments$chr_id.don %in% chr_ids & segments$chr_id.rec %in% chr_ids,
+#         ,
+#         drop = FALSE
+#     ]
+#     if (nrow(segments) > 0L) {
+#         segments$size <- segments$stop.don - segments$start.don
+#         segments$.label <- isa_dashboard_band_label(segments)
+#         size_class <- isa_dashboard_size_class(segments$size, length(link_size_widths))
+#
+#         mirrored <- isa_dashboard_mirror(segments$chr_id.don, segments$start.don, segments$stop.don, don_len)
+#         segments$start.don <- mirrored$start
+#         segments$stop.don <- mirrored$stop
+#
+#         tracks <- tracks + isa_dashboard_span_track(segments)
+#
+#         ## Row ids in the order the drawn elements appear, so the client can map a
+#         ## clicked or selected row onto its ribbon and its two chromosome marks.
+#         ribbon_rows <- unlist(lapply(seq_along(link_size_widths), function(k) {
+#             segments$.row_id[size_class == k]
+#         }), use.names = FALSE)
+#         span_rows <- c(segments$.row_id, segments$.row_id)
+#
+#         for (k in seq_along(link_size_widths)) {
+#             rows <- segments[size_class == k, , drop = FALSE]
+#             if (nrow(rows) == 0L) {
+#                 next
+#             }
+#             tracks <- tracks + isa_dashboard_link_track(
+#                 paste0("introgression_size", k),
+#                 rows,
+#                 link_size_widths[k],
+#                 paste0(dashboard_palette[["ribbon"]], "55")
+#             )
+#         }
+#
+#         ## Wide, near-transparent copy of every band, on top, so the whole ribbon
+#         ## responds to hover and click instead of just the drawn stroke.
+#         tracks <- tracks + isa_dashboard_link_track(
+#             "introgression_hit_area",
+#             segments,
+#             link_hit_width_px,
+#             link_hit_color
+#         )
+#     }
+#
+#     widget <- BioCircos::BioCircos(
+#         tracks,
+#         genome = genome,
+#         genomeFillColor = ifelse(
+#             chr_ids %in% ISA$meta$don_chr_ids,
+#             dashboard_palette[["donor"]],
+#             dashboard_palette[["recipient"]]
+#         ),
+#         chrPad = 0.03,
+#         displayGenomeBorder = TRUE,
+#         genomeBorderColor = "#58636F",
+#         genomeBorderSize = 0.4,
+#         genomeTicksDisplay = FALSE,
+#         genomeLabelTextSize = "5pt",
+#         ## Dark ink by default, so the names stay readable on the light band even
+#         ## if the enhancement script never runs; that script whitens the donor
+#         ## labels and pulls every name onto its own segment.
+#         genomeLabelTextColor = "#2f3437",
+#         genomeLabelDy = 0,
+#         genomeLabelOrientation = 0,
+#         LINKMouseOverStrokeColor = ribbon_selected_color,
+#         LINKMouseOverStrokeWidth = 5,
+#         LINKMouseOverOpacity = 0.95,
+#         LINKMouseOverTooltipsHtml01 = "",
+#         LINKMouseOverTooltipsHtml02 = ""
+#     )
+#     widget$x$chromosome_summary <- isa_dashboard_chromosome_summary(segments, chr_ids)
+#     widget$x$chromosome_ids <- chr_ids
+#     widget$x$donor_chr_ids <- ISA$meta$don_chr_ids
+#     widget$x$hit_area_rows <- if (nrow(segments) > 0L) as.integer(segments$.row_id) else integer()
+#     widget$x$ribbon_rows <- as.integer(ribbon_rows)
+#     widget$x$span_rows <- as.integer(span_rows)
+#     widget$dependencies <- c(widget$dependencies, list(isa_dashboard_circos_assets()))
+#     htmlwidgets::onRender(widget, isa_dashboard_circos_hook())
+# }
 
-isa_dashboard_band_label <- function(segments) {
-    paste0(
-        isa_dashboard_mb(segments$size), " Mb",
-        " | donor ", segments$chr_id.don,
-        " -> recipient ", segments$chr_id.rec,
-        " | segment ", segments$.row_id
-    )
-}
-
-## One hover string per chromosome, listing the calls that touch it.
-isa_dashboard_chromosome_summary <- function(segments, chr_ids) {
-    summary <- stats::setNames(vector("list", length(chr_ids)), chr_ids)
-    for (chr in chr_ids) {
-        rows <- segments[segments$chr_id.don == chr | segments$chr_id.rec == chr, , drop = FALSE]
-        if (nrow(rows) == 0L) {
-            summary[[chr]] <- paste0(chr, ": no introgressions")
-            next
-        }
-        entries <- vapply(seq_len(nrow(rows)), function(i) {
-            row <- rows[i, ]
-            as_donor <- row$chr_id.don == chr
-            from <- if (as_donor) row$start.don else row$start.rec
-            to <- if (as_donor) row$stop.don else row$stop.rec
-            sprintf(
-                "#%d %s %s-%s Mb (%s Mb)",
-                row$.row_id,
-                if (as_donor) "donated to" else "received from",
-                isa_dashboard_mb(from), isa_dashboard_mb(to), isa_dashboard_mb(to - from)
-            )
-        }, character(1))
-        summary[[chr]] <- paste0(
-            chr, ": ", nrow(rows), " introgression(s)",
-            "<br>", paste(entries, collapse = "<br>")
-        )
-    }
-    summary
-}
-
-## The interactive layer lives in inst/mamamia/ and ships as a widget dependency,
-## which is the only channel honoured by a Shiny render call: prependContent()
-## warns "Ignoring prepended content" there, and a bare htmlDependency() passed
-## to it is dropped even in a static render. The stylesheet matters on its own,
-## since it is what keeps the plot from swallowing clicks meant for the table.
-isa_dashboard_circos_assets <- function() {
-    htmltools::htmlDependency(
-        "mamamia-circos",
-        "0.1.0",
-        src = "mamamia",
-        script = "mamamia-circos.js",
-        stylesheet = "mamamia-circos.css",
-        package = "MaMaMIA"
-    )
-}
-
-isa_dashboard_circos_hook <- function() {
-    "function(el, x) { window.mamamiaCircosEnhance(el, x); }"
-}
-
-isa_dashboard_link_track <- function(name, rows, width, color) {
-    BioCircos::BioCircosLinkTrack(
-        name,
-        rows$chr_id.don, rows$start.don, rows$stop.don,
-        rows$chr_id.rec, rows$start.rec, rows$stop.rec,
-        labels = rows$.label,
-        color = color,
-        maxRadius = link_max_radius,
-        width = paste0(width, "px"),
-        displayAxis = FALSE,
-        displayLabel = FALSE
-    )
-}
-
-## Selection is deliberately not part of the widget: a rebuild costs thousands of
-## arcs, so the plot is drawn once and the picked bands are restyled in place.
-isa_dashboard_circos <- function(ISA, segments, genome) {
-    chr_ids <- names(genome)
-    lengths <- unlist(genome)
-    ## The donor half mirrors the recipient one, so its features are handed over
-    ## as length - coordinate and its sectors run in reverse order.
-    don_len <- lengths[names(lengths) %in% ISA$meta$don_chr_ids]
-    tracks <- BioCircos::BioCircosTracklist()
-
-    windows <- isa_dashboard_mirror_donor(isa_dashboard_diff_windows(ISA, chr_ids), don_len)
-    tracks <- tracks + isa_dashboard_diff_tracks(windows, isa_dashboard_diff_limit(windows))
-
-    ribbon_rows <- integer()
-    span_rows <- integer()
-    segments <- segments[
-        segments$chr_id.don %in% chr_ids & segments$chr_id.rec %in% chr_ids,
-        ,
-        drop = FALSE
-    ]
-    if (nrow(segments) > 0L) {
-        segments$size <- segments$stop.don - segments$start.don
-        segments$.label <- isa_dashboard_band_label(segments)
-        size_class <- isa_dashboard_size_class(segments$size, length(link_size_widths))
-
-        mirrored <- isa_dashboard_mirror(segments$chr_id.don, segments$start.don, segments$stop.don, don_len)
-        segments$start.don <- mirrored$start
-        segments$stop.don <- mirrored$stop
-
-        tracks <- tracks + isa_dashboard_span_track(segments)
-
-        ## Row ids in the order the drawn elements appear, so the client can map a
-        ## clicked or selected row onto its ribbon and its two chromosome marks.
-        ribbon_rows <- unlist(lapply(seq_along(link_size_widths), function(k) {
-            segments$.row_id[size_class == k]
-        }), use.names = FALSE)
-        span_rows <- c(segments$.row_id, segments$.row_id)
-
-        for (k in seq_along(link_size_widths)) {
-            rows <- segments[size_class == k, , drop = FALSE]
-            if (nrow(rows) == 0L) {
-                next
-            }
-            tracks <- tracks + isa_dashboard_link_track(
-                paste0("introgression_size", k),
-                rows,
-                link_size_widths[k],
-                paste0(dashboard_palette[["ribbon"]], "55")
-            )
-        }
-
-        ## Wide, near-transparent copy of every band, on top, so the whole ribbon
-        ## responds to hover and click instead of just the drawn stroke.
-        tracks <- tracks + isa_dashboard_link_track(
-            "introgression_hit_area",
-            segments,
-            link_hit_width_px,
-            link_hit_color
-        )
-    }
-
-    widget <- BioCircos::BioCircos(
-        tracks,
-        genome = genome,
-        genomeFillColor = ifelse(
-            chr_ids %in% ISA$meta$don_chr_ids,
-            dashboard_palette[["donor"]],
-            dashboard_palette[["recipient"]]
+## Reusable explorer UI: the filter controls can live in a page sidebar
+## (`exploreIntrogressions()`) or in a card (`runMaMaMIA()`).
+explorer_controls_ui <- function(id) {
+    ns <- shiny::NS(id)
+    shiny::tagList(
+        shinyWidgets::pickerInput(
+            ns("chr_ids"), "Chromosomes",
+            choices = NULL, selected = NULL,
+            multiple = TRUE,
+            options = list(`actions-box` = TRUE, `live-search` = TRUE)
         ),
-        chrPad = 0.03,
-        displayGenomeBorder = TRUE,
-        genomeBorderColor = "#58636F",
-        genomeBorderSize = 0.4,
-        genomeTicksDisplay = FALSE,
-        genomeLabelTextSize = "5pt",
-        ## Dark ink by default, so the names stay readable on the light band even
-        ## if the enhancement script never runs; that script whitens the donor
-        ## labels and pulls every name onto its own segment.
-        genomeLabelTextColor = "#2f3437",
-        genomeLabelDy = 0,
-        genomeLabelOrientation = 0,
-        LINKMouseOverStrokeColor = ribbon_selected_color,
-        LINKMouseOverStrokeWidth = 5,
-        LINKMouseOverOpacity = 0.95,
-        LINKMouseOverTooltipsHtml01 = "",
-        LINKMouseOverTooltipsHtml02 = ""
+        shinyWidgets::pickerInput(
+            ns("pair_ids"), "Chromosome pairs",
+            choices = NULL, selected = NULL,
+            multiple = TRUE,
+            options = list(`actions-box` = TRUE, `live-search` = TRUE)
+        ),
+        shiny::checkboxInput(ns("putative_only"), "Show putative introgressions only", TRUE),
+        shiny::radioButtons(
+            ns("threshold_type"), "Call threshold metric",
+            choices = c("Median" = "median", "Mean" = "mean"),
+            inline = TRUE
+        ),
+        shiny::numericInput(ns("threshold_value"), "Minimum segment metric", value = 0),
+        shiny::numericInput(ns("min_width"), "Minimum segment width (windows)", value = 2, min = 2, step = 1),
+        shiny::div(
+            class = "d-flex gap-2",
+            shiny::actionButton(ns("select_all"), "Select visible", class = "btn-sm flex-fill"),
+            shiny::actionButton(ns("clear_selection"), "Clear", class = "btn-sm flex-fill")
+        ),
+        shiny::textOutput(ns("selection_status")),
+        shiny::downloadButton(ns("download_bedpe"), "Download selected BEDPE")
     )
-    widget$x$chromosome_summary <- isa_dashboard_chromosome_summary(segments, chr_ids)
-    widget$x$chromosome_ids <- chr_ids
-    widget$x$donor_chr_ids <- ISA$meta$don_chr_ids
-    widget$x$hit_area_rows <- if (nrow(segments) > 0L) as.integer(segments$.row_id) else integer()
-    widget$x$ribbon_rows <- as.integer(ribbon_rows)
-    widget$x$span_rows <- as.integer(span_rows)
-    widget$dependencies <- c(widget$dependencies, list(isa_dashboard_circos_assets()))
-    htmlwidgets::onRender(widget, isa_dashboard_circos_hook())
+}
+
+explorer_results_ui <- function(id) {
+    ns <- shiny::NS(id)
+    shiny::tagList(
+        ## The circos card is temporarily disabled with the BioCircos dependency:
+        # bslib::card(
+        #     bslib::card_header("Introgression circos"),
+        #     BioCircos::BioCircosOutput(ns("circos"), height = "650px")
+        # ),
+        bslib::card(
+            bslib::card_header("Segments"),
+            shiny::p(
+                class = "text-muted",
+                "The circos view is temporarily unavailable while the BioCircos",
+                "dependency is removed. Use the table below to filter calls and",
+                "export the selected rows as BEDPE."
+            ),
+            DT::DTOutput(ns("segments"))
+        )
+    )
+}
+
+## Server for the explorer. `ISA` is a reactive returning an `ISA` object, or
+## `NULL` while no analysis has run yet; the explorer stays idle in that case.
+## `chr_ids` optionally limits the chromosomes selected on arrival.
+explorer_server <- function(id, ISA, chr_ids = NULL) {
+    shiny::moduleServer(id, function(input, output, session) {
+        ## Changing the threshold re-flags the segments without re-running CBS
+        ## (see `subset.ISA`); the segment rows are kept in their original order,
+        ## so `.row_id` remains the stable key for the table and the export.
+        isa_thresholded <- shiny::reactive({
+            isa <- ISA()
+            if (is.null(isa)) {
+                return(NULL)
+            }
+            threshold_type <- input$threshold_type
+            if (!identical(threshold_type, "mean") && !identical(threshold_type, "median")) {
+                threshold_type <- if (identical(isa$meta$metrics, "seg.mean")) "mean" else "median"
+            }
+            threshold_value <- input$threshold_value
+            if (!is.numeric(threshold_value) || length(threshold_value) != 1L || is.na(threshold_value)) {
+                threshold_value <- isa$meta$metrics_threshold
+            }
+            tryCatch(
+                if (identical(threshold_type, "mean")) {
+                    subset(isa, threshold_type = "mean", min_segment_mean = threshold_value)
+                } else {
+                    subset(isa, threshold_type = "median", min_segment_median = threshold_value)
+                },
+                error = function(e) {
+                    shiny::showNotification(
+                        paste("Could not apply the call threshold:", conditionMessage(e)),
+                        type = "warning", duration = 8
+                    )
+                    isa
+                }
+            )
+        })
+
+        current_segments <- shiny::reactive({
+            isa <- isa_thresholded()
+            if (is.null(isa)) {
+                return(NULL)
+            }
+            isa_dashboard_segments(isa)
+        })
+
+        min_width <- shiny::reactive({
+            value <- input$min_width
+            if (!is.numeric(value) || length(value) != 1L || is.na(value)) {
+                return(2L)
+            }
+            max(2L, as.integer(value))
+        })
+
+        visible_segments <- shiny::reactive({
+            segments <- current_segments()
+            if (is.null(segments)) {
+                return(NULL)
+            }
+            ## Same width criterion as `subset.ISA(min_width = )`, applied to the
+            ## annotated rows so that `.row_id` stays stable for the export.
+            segments <- segments[(segments$loc.end - segments$loc.start + 1L) >= min_width(), , drop = FALSE]
+            filter_dashboard_segments(
+                segments,
+                chr_ids = input$chr_ids,
+                pair_ids = input$pair_ids,
+                putative_only = input$putative_only
+            )
+        })
+
+        ## A new ISA object resets the pickers to the full set and syncs the
+        ## threshold controls with the metrics the object was segmented with.
+        shiny::observeEvent(ISA(), {
+            isa <- ISA()
+            if (is.null(isa)) {
+                return()
+            }
+            segments <- isa_dashboard_segments(isa)
+            chr_ids_all <- names(isa_dashboard_genome(isa))
+            initial_chr_ids <- if (is.null(chr_ids)) chr_ids_all else intersect(chr_ids, chr_ids_all)
+            pairs <- sort(unique(isa_dashboard_pair_labels(segments)))
+            shinyWidgets::updatePickerInput(session, "chr_ids", choices = chr_ids_all, selected = initial_chr_ids)
+            shinyWidgets::updatePickerInput(session, "pair_ids", choices = pairs, selected = pairs)
+            shiny::updateRadioButtons(
+                session, "threshold_type",
+                selected = if (identical(isa$meta$metrics, "seg.mean")) "mean" else "median"
+            )
+            shiny::updateNumericInput(session, "threshold_value", value = isa$meta$metrics_threshold)
+            shiny::updateNumericInput(session, "min_width", value = 2L)
+        })
+
+        selected_rows <- shiny::reactive({
+            visible <- visible_segments()
+            selected <- input$segments_rows_selected
+            if (is.null(visible) || length(selected) == 0L || nrow(visible) == 0L) {
+                return(integer())
+            }
+            visible$.row_id[selected]
+        })
+
+        output$selection_status <- shiny::renderText({
+            if (is.null(ISA())) {
+                return("No analysis loaded yet")
+            }
+            paste(length(selected_rows()), "segment(s) selected for BEDPE export")
+        })
+
+        segments_proxy <- DT::dataTableProxy("segments", session = session)
+
+        ## Clicking a circos band toggles the same selection the table drives,
+        ## so the plot and the export agree on what is selected. Temporarily
+        ## disabled with the BioCircos dependency:
+        # shiny::observeEvent(input$circos_clicked_row, {
+        #     visible <- visible_segments()
+        #     target <- input$circos_clicked_row
+        #     if (is.null(visible) || is.null(target) || nrow(visible) == 0L) {
+        #         return()
+        #     }
+        #     picked <- visible$.row_id[input$segments_rows_selected]
+        #     keep <- isa_dashboard_toggle_selection(picked, target)
+        #     rows <- which(visible$.row_id %in% keep)
+        #     DT::selectRows(segments_proxy, if (length(rows) > 0L) rows else NULL)
+        # }, ignoreNULL = TRUE)
+
+        shiny::observeEvent(input$select_all, {
+            visible <- visible_segments()
+            if (is.null(visible) || nrow(visible) == 0L) {
+                return()
+            }
+            DT::selectRows(segments_proxy, seq_len(nrow(visible)))
+        })
+
+        shiny::observeEvent(input$clear_selection, {
+            DT::selectRows(segments_proxy, NULL)
+        })
+
+        ## Highlight changes were pushed to the circos widget instead of
+        ## re-rendering it, because a rebuild costs thousands of arcs. Disabled
+        ## with the BioCircos dependency:
+        # shiny::observeEvent(selected_rows(), {
+        #     session$sendCustomMessage("mamamia-selection", as.list(selected_rows()))
+        # }, ignoreNULL = FALSE)
+
+        ## Rendered with BioCircos::renderBioCircos() once the circos view is
+        ## reinstated; temporarily disabled with the BioCircos dependency:
+        # output$circos <- BioCircos::renderBioCircos({
+        #     isa <- isa_thresholded()
+        #     shiny::validate(
+        #         shiny::need(!is.null(isa), "Run the analysis to draw the circos")
+        #     )
+        #     genome <- isa_dashboard_genome(isa, input$chr_ids)
+        #     shiny::validate(
+        #         shiny::need(length(genome) > 0L, "Select at least one chromosome")
+        #     )
+        #     isa_dashboard_circos(isa, visible_segments(), genome)
+        # })
+
+        output$segments <- DT::renderDT({
+            shiny::validate(
+                shiny::need(!is.null(ISA()), "Run the analysis to list segments")
+            )
+            DT::datatable(
+                isa_dashboard_table(visible_segments()),
+                rownames = FALSE,
+                selection = "multiple",
+                filter = "top",
+                options = list(pageLength = 10, scrollX = TRUE)
+            )
+        })
+
+        output$download_bedpe <- shiny::downloadHandler(
+            filename = function() "mamamia-selected-introgressions.bedpe",
+            content = function(file) {
+                isa <- ISA()
+                rows <- selected_rows()
+                if (is.null(isa) || length(rows) == 0L) {
+                    stop("Select at least one segment before downloading", call. = FALSE)
+                }
+                writeToBedpe(selected_isa_for_bedpe(isa, rows), file)
+            }
+        )
+    })
 }
 
 #' Explore introgression calls in an interactive dashboard
 #'
 #' Opens a small Shiny application for interactively inspecting an `ISA` object
-#' returned by [segments()]. The app uses a BioCircos genomic circos plot,
-#' searchable chromosome and chromosome-pair filters, a sortable `DT` segment
-#' table, and exports the currently selected table rows with [writeToBedpe()].
+#' returned by [segments()]. The app offers searchable chromosome and
+#' chromosome-pair filters, a sortable `DT` segment table, and exports the
+#' currently selected table rows with [writeToBedpe()].
+#'
+#' The BioCircos genomic circos plot is temporarily unavailable: the BioCircos
+#' dependency has been removed and the circos code is commented out. The
+#' explorer shows the segment table and the BEDPE export only.
+#'
+#' Call and threshold filters re-flag the segments on the fly through
+#' [subset.ISA], so the call threshold and the minimum segment width can be
+#' revisited without re-running segmentation.
+#'
+#' To run the whole pipeline (input files to dashboard) instead, use
+#' [runMaMaMIA()].
 #'
 #' Dashboard packages are optional MaMaMIA dependencies. Install them with
-#' `install.packages(c("shiny", "bslib", "shinyWidgets", "DT", "BioCircos"))`
+#' `install.packages(c("shiny", "bslib", "shinyWidgets", "DT"))`
 #' before calling this function.
 #'
 #' @param ISA An object of class `ISA`, as returned by [segments()].
-#' @param chr_ids Optional chromosome IDs to show initially. Defaults to all
-#'   chromosomes present in `ISA`.
+#' @param chr_ids Optional chromosome IDs to select initially. Defaults to
+#'   all chromosomes present in `ISA`.
 #' @param host Host passed to [shiny::runApp()].
 #' @param port Port passed to [shiny::runApp()]. Use `NULL` to let Shiny choose.
 #' @param launch.browser Logical passed to [shiny::runApp()].
 #'
 #' @return The return value of [shiny::runApp()]. Called for its side effect of
 #'   launching the dashboard.
+#' @seealso [runMaMaMIA()]
+#' @examples
+#' \dontrun{
+#' data(triticum)
+#' rca <- RCA(don_cov, don_gc, rec_cov, rec_gc, meta)
+#' rca <- correctReadCounts(rca, cores = 4L, verbose = FALSE)
+#' isa <- segments(rca, target_pairs = c("OY997261.1" = "CP155614.1"), verbose = FALSE)
+#' exploreIntrogressions(isa)
+#' }
 #' @export
 exploreIntrogressions <- function(ISA,
                                   chr_ids = NULL,
@@ -470,106 +744,14 @@ exploreIntrogressions <- function(ISA,
         stop("Unknown chromosome IDs: ", paste(unknown, collapse = ", "), call. = FALSE)
     }
 
-    all_segments <- isa_dashboard_segments(ISA)
-    pair_choices <- sort(unique(isa_dashboard_pair_labels(all_segments)))
-
     ui <- bslib::page_sidebar(
         title = "MaMaMIA introgression explorer",
-        sidebar = bslib::sidebar(
-            shinyWidgets::pickerInput(
-                "chr_ids", "Chromosomes",
-                choices = all_chr_ids, selected = chr_ids,
-                multiple = TRUE,
-                options = list(`actions-box` = TRUE, `live-search` = TRUE)
-            ),
-            shinyWidgets::pickerInput(
-                "pair_ids", "Chromosome pairs",
-                choices = pair_choices, selected = pair_choices,
-                multiple = TRUE,
-                options = list(`actions-box` = TRUE, `live-search` = TRUE)
-            ),
-            shiny::checkboxInput("putative_only", "Show putative introgressions only", TRUE),
-            shiny::textOutput("selection_status"),
-            shiny::downloadButton("download_bedpe", "Download selected BEDPE")
-        ),
-        bslib::card(
-            bslib::card_header("Introgression circos"),
-            BioCircos::BioCircosOutput("circos", height = "650px")
-        ),
-        bslib::card(
-            bslib::card_header("Segments"),
-            DT::DTOutput("segments")
-        )
+        sidebar = bslib::sidebar(explorer_controls_ui("explorer")),
+        explorer_results_ui("explorer")
     )
 
     server <- function(input, output, session) {
-        visible_segments <- shiny::reactive({
-            filter_dashboard_segments(
-                all_segments,
-                chr_ids = input$chr_ids,
-                pair_ids = input$pair_ids,
-                putative_only = input$putative_only
-            )
-        })
-
-        selected_rows <- shiny::reactive({
-            visible <- visible_segments()
-            selected <- input$segments_rows_selected
-            if (length(selected) == 0L || nrow(visible) == 0L) {
-                return(integer())
-            }
-            visible$.row_id[selected]
-        })
-
-        output$selection_status <- shiny::renderText({
-            paste(length(selected_rows()), "segment(s) selected for BEDPE export")
-        })
-
-        ## Clicking a band toggles the same selection the table drives, so the
-        ## plot and the export agree on what is selected.
-        segments_proxy <- DT::dataTableProxy("segments")
-        shiny::observeEvent(input$circos_clicked_row, {
-            visible <- visible_segments()
-            target <- input$circos_clicked_row
-            if (is.null(target) || nrow(visible) == 0L) {
-                return()
-            }
-            picked <- visible$.row_id[input$segments_rows_selected]
-            keep <- isa_dashboard_toggle_selection(picked, target)
-            rows <- which(visible$.row_id %in% keep)
-            DT::selectRows(segments_proxy, if (length(rows) > 0L) rows else NULL)
-        }, ignoreNULL = TRUE)
-
-        ## Highlight changes are pushed to the plot instead of re-rendering it:
-        ## rebuilding the widget costs thousands of arcs on every click.
-        shiny::observeEvent(selected_rows(), {
-            session$sendCustomMessage("mamamia-selection", as.list(selected_rows()))
-        }, ignoreNULL = FALSE)
-
-        output$circos <- BioCircos::renderBioCircos({
-            genome <- isa_dashboard_genome(ISA, input$chr_ids)
-            shiny::validate(
-                shiny::need(length(genome) > 0L, "Select at least one chromosome")
-            )
-            isa_dashboard_circos(ISA, visible_segments(), genome)
-        })
-
-        output$segments <- DT::renderDT({
-            DT::datatable(
-                isa_dashboard_table(visible_segments()),
-                rownames = FALSE,
-                selection = "multiple",
-                filter = "top",
-                options = list(pageLength = 10, scrollX = TRUE)
-            )
-        })
-
-        output$download_bedpe <- shiny::downloadHandler(
-            filename = function() "mamamia-selected-introgressions.bedpe",
-            content = function(file) {
-                writeToBedpe(selected_isa_for_bedpe(ISA, selected_rows()), file)
-            }
-        )
+        explorer_server("explorer", shiny::reactive(ISA), chr_ids = chr_ids)
     }
 
     app <- shiny::shinyApp(ui, server)

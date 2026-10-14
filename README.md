@@ -15,6 +15,60 @@ You can install `MaMaMIA` from [GitHub](https://github.com/alermol/mamamia) with
 devtools::install_github("alermol/mamamia")
 ```
 
+## Quick start
+
+`runMaMaMIA()` is the main entry point: it opens a locally running Shiny
+dashboard that reads the input tables, runs the whole MaMaMIA pipeline (RCA,
+GC-bias correction, segmentation), and then hands over to the interactive
+explorer for filtering and BEDPE export. The dashboard packages are optional
+dependencies:
+
+```r
+install.packages(c("shiny", "bslib", "shinyWidgets", "DT"))
+
+library(MaMaMIA)
+runMaMaMIA(
+  analysis_dir = "mamamia_analysis",
+  assemblies_dir = "assemblies"
+)
+```
+
+The app expects an analysis directory with one subdirectory per sample and an
+assemblies directory with one subdirectory per donor reference:
+
+```
+analysis_dir/<sample>/<reference>.w<N>.dcov.bed   # donor coverage windows
+analysis_dir/<sample>/<reference>.w<N>.rcov.bed   # recipient coverage windows
+assemblies_dir/<reference>/donor.w<N>.gc.bed      # donor GC content
+assemblies_dir/<reference>/recipient.w<N>.gc.bed  # recipient GC content
+assemblies_dir/<reference>/chromosomes.tsv        # chr_id, chr_name, subgenome
+```
+
+See `?readMaMaMIAInput` for the table format and
+`?defaultTargetPairs` for how donor and recipient chromosomes are paired.
+Called without arguments, the app starts on the packaged `triticum` example
+and the directories can be entered in the sidebar.
+
+The BioCircos-based circos view is temporarily disabled while the BioCircos
+dependency is removed: the app shows the segment table with the BEDPE export.
+
+## Scripted workflow
+
+The same pipeline can be driven from a script; `exploreIntrogressions()` opens
+the explorer for an existing result:
+
+```r
+data(triticum)
+rca <- RCA(don_cov, don_gc, rec_cov, rec_gc, meta)
+rca <- correctReadCounts(rca, cores = 4L, verbose = FALSE)
+isa <- segments(rca,
+  target_pairs = c("OY997261.1" = "CP155614.1"),
+  verbose = FALSE
+)
+exploreIntrogressions(isa)
+writeToBedpe(isa, "introgressions.bedpe")
+```
+
 ## Resource use
 
 The GC-bias fit differentiates the likelihood window by window, so **peak memory
