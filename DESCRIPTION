@@ -5,24 +5,37 @@ Authors@R: c(
     person("Aleksey", "Ermolaev", email = "alerm@al-erm.ru", role = c("aut", "cre"), comment = c(ORCID = "0000-0001-9789-8694")),
     person("Daniil", "Ulyanov", email = "uldas1508@gmail.com", role = "aut")
     )
-Description: The MaMaMIA provides a workflow for rough and rapid interspecific introgression detection in Genotyping-by-Sequencing (GBS) mapping data. It integrates GC-bias correction, pairwise chromosome comparison, and coverage depth profile segmentation to identify introgressed segments.
+Description: The MaMaMIA provides a workflow for rough and rapid interspecific introgression detection in Genotyping-by-Sequencing (GBS) mapping data. It integrates BAM ingestion, GC-bias correction, pairwise chromosome comparison, and coverage depth profile segmentation to identify introgressed segments.
 License: GPL (>= 3)
 URL: https://github.com/alermol/MaMaMIA
 BugReports: https://github.com/alermol/MaMaMIA/issues
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
-Imports: 
+Imports:
+    bamsignals (>= 1.44.0),
     DNAcopy (>= 1.86.0),
     dplyr (>= 1.2.1),
+    GenomicRanges (>= 1.64.0),
     ggnewscale (>= 0.5.2),
     ggplot2 (>= 4.0.3),
     glmmTMB (>= 1.1.14),
+    IRanges (>= 2.46.0),
+    jsonlite (>= 2.0.0),
     mgcv,
     purrr (>= 1.2.2),
-    rlang (>= 1.3.0)
-Depends: 
+    Rcpp (>= 1.1.2),
+    Rhtslib (>= 3.8.0),
+    rlang (>= 1.3.0),
+    stats,
+    tools,
+    utils,
+    yaml (>= 2.3.12)
+Depends:
     R (>= 4.6.0)
-Suggests: 
+LinkingTo:
+    Rcpp,
+    Rhtslib
+Suggests:
     bslib,
     DT,
     htmltools,
@@ -32,6 +45,7 @@ Suggests:
     shiny,
     shinyWidgets,
     testthat (>= 3.0.0)
+SystemRequirements: C++23
 biocViews:
     StructuralVariation,
     Coverage,
@@ -40,4 +54,4 @@ biocViews:
     Sequencing
 VignetteBuilder: knitr
 Config/testthat/edition: 3
-Config/roxygen2/version: 8.1.0
+Config/roxygen2/version: 8.1.1

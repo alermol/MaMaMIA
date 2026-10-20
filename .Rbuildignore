@@ -7,3 +7,6 @@
 ^\.Rproj\.user$
 ^\.posit/assistant$
 ^test_data$
+^uvr\.toml$
+^uvr\.lock$
+^\.uvr$

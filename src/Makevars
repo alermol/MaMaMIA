@@ -1,0 +1,27 @@
+CXX_STD = CXX23
+
+PKG_CPPFLAGS = -D_FILE_OFFSET_BITS=64 -I../src/gcrank/include
+
+## Rhtslib ships a static libhts.a; ask Rhtslib for its own flags so the
+## package keeps working when the library layout changes. R_PROFILE_USER is
+## cleared because this project's .Rprofile activates renv and would print
+## messages into the compiler flags.
+RHTLIBS = $(shell R_PROFILE_USER=/dev/null "$(R_HOME)/bin/Rscript" -e "cat(Rhtslib::pkgconfig('PKG_LIBS'))")
+
+PKG_LIBS = $(RHTLIBS) -pthread
+
+## gcrank is vendored under src/gcrank (see tools/vendor-gcrank.R). Its
+## sources are not picked up automatically because they live in a
+## subdirectory, so list the objects explicitly.
+GCRANK_OBJECTS = \
+	gcrank/src/bitvector.o \
+	gcrank/src/crc32.o \
+	gcrank/src/fasta_reader.o \
+	gcrank/src/gc_rank.o \
+	gcrank/src/input_stream.o \
+	gcrank/src/line_reader.o \
+	gcrank/src/manifest.o \
+	gcrank/src/sha256.o \
+	gcrank/src/thread_pool.o
+
+OBJECTS = RcppExports.o htslib-utils.o gcrank-wrapper.o $(GCRANK_OBJECTS)

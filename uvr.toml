@@ -1,0 +1,35 @@
+[project]
+name = "MaMaMIA"
+r_version = ">=4.6.0"
+description = "Max Mapping for Meticulous Introgression Analysis"
+
+[dependencies]
+DNAcopy = { bioc = true }
+GenomicRanges = ">=1.64.0"
+IRanges = ">=2.46.0"
+Rcpp = ">=1.1.2"
+Rhtslib = ">=3.8.0"
+bamsignals = ">=1.44.0"
+dplyr = ">=1.2.1"
+ggnewscale = ">=0.5.2"
+ggplot2 = ">=4.0.3"
+glmmTMB = ">=1.1.14"
+jsonlite = ">=2.0.0"
+mgcv = "*"
+purrr = ">=1.2.2"
+rlang = ">=1.3.0"
+stats = "*"
+tools = "*"
+utils = "*"
+yaml = ">=2.3.12"
+
+[dev-dependencies]
+DT = "*"
+bslib = "*"
+htmltools = "*"
+htmlwidgets = "*"
+knitr = ">=1.51"
+rmarkdown = ">=2.31"
+shiny = "*"
+shinyWidgets = "*"
+testthat = ">=3.0.0"
