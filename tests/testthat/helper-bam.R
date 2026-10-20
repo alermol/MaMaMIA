@@ -39,6 +39,10 @@ tiny_gcrank_index <- function() {
     tiny_fixture("tiny.gcrank")
 }
 
+tiny_contigs <- function() {
+    readContigsTsv(file.path(tiny_gcrank_index(), "contigs.tsv"))
+}
+
 have_samtools <- function() {
     nzchar(Sys.which("samtools"))
 }

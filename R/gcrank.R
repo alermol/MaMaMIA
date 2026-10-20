@@ -195,6 +195,166 @@ gcrankGc <- function(index_dir, contig, start, end,
     )
 }
 
+#' Extract GC content for analysis windows
+#'
+#' Routes every target contig to the gcrank index configured for it, calls
+#' [gcrankGc()] once per index with all of that index's windows, and assembles
+#' the result in the same order as the input window table. Windows are 0-based
+#' half-open, contig-relative intervals.
+#'
+#' @param windows An `AnalysisWindows` list with a `table` element, or a data
+#'   frame with `chr_id`, `start` and `stop`.
+#' @param assembly An `AssemblyConfig` list whose contigs carry `index_path`.
+#' @param mmap,validate_crc Passed to [gcrankGc()].
+#'
+#' @return A data frame with `chr_id`, `start`, `stop` and `gc`, one row per
+#'   input window in input order. GC values are validated to be non-missing and
+#'   inside `[0, 1]`.
+#' @noRd
+extractWindowGc <- function(windows, assembly, mmap = TRUE,
+                            validate_crc = FALSE) {
+    if (is.list(windows) && !is.data.frame(windows) &&
+        is.data.frame(windows$table)) {
+        table <- windows$table
+    } else if (is.data.frame(windows)) {
+        table <- windows
+    } else {
+        .window_error(
+            "`windows` must be an AnalysisWindows list or a data frame with chr_id, start and stop"
+        )
+    }
+    required <- c("chr_id", "start", "stop")
+    missing <- setdiff(required, names(table))
+    if (length(missing) > 0L) {
+        .window_error(
+            "The window table must have columns: %s",
+            paste(required, collapse = ", ")
+        )
+    }
+    if (nrow(table) == 0L) {
+        return(data.frame(
+            chr_id = character(0),
+            start = integer(0),
+            stop = integer(0),
+            gc = numeric(0),
+            stringsAsFactors = FALSE
+        ))
+    }
+
+    targets <- .assembly_target_contigs(assembly)
+    key <- if (is.null(assembly$key)) "<unknown>" else assembly$key
+    position <- match(as.character(table$chr_id), targets$chr_id)
+    if (anyNA(position)) {
+        unknown <- unique(as.character(table$chr_id)[is.na(position)])[[1L]]
+        .window_error(
+            "Assembly '%s' has no target contig '%s' for the supplied windows",
+            key, unknown
+        )
+    }
+
+    start <- suppressWarnings(as.numeric(table$start))
+    stop <- suppressWarnings(as.numeric(table$stop))
+    if (anyNA(start) || anyNA(stop) || any(!is.finite(start)) ||
+        any(!is.finite(stop))) {
+        .window_error("Window coordinates must be finite numbers")
+    }
+    if (any(start != floor(start)) || any(stop != floor(stop))) {
+        .window_error("Window coordinates must be whole numbers")
+    }
+    if (any(start < 0) || any(stop <= start)) {
+        bad <- which(start < 0 | stop <= start)[[1L]]
+        .window_error(
+            "Invalid window %s:%s-%s: start must be non-negative and smaller than stop",
+            table$chr_id[[bad]],
+            format(start[[bad]], scientific = FALSE),
+            format(stop[[bad]], scientific = FALSE)
+        )
+    }
+    contig_length <- targets$length[position]
+    if (any(stop > contig_length)) {
+        bad <- which(stop > contig_length)[[1L]]
+        .window_error(
+            "Window %s:%s-%s exceeds the contig length (%s bp)",
+            table$chr_id[[bad]],
+            format(start[[bad]], scientific = FALSE),
+            format(stop[[bad]], scientific = FALSE),
+            format(contig_length[[bad]], scientific = FALSE)
+        )
+    }
+
+    index_path <- targets$index_path[position]
+    if (anyNA(index_path) || any(!nzchar(index_path))) {
+        bad <- which(is.na(index_path) | !nzchar(index_path))[[1L]]
+        .gcrank_error(
+            "Assembly '%s' has no gc_index for contig '%s'",
+            key, table$chr_id[[bad]]
+        )
+    }
+
+    gc <- rep(NA_real_, nrow(table))
+    groups <- split(seq_len(nrow(table)), index_path)
+    for (index_dir in names(groups)) {
+        idx <- groups[[index_dir]]
+        values <- tryCatch(
+            gcrankGc(
+                index_dir,
+                as.character(table$chr_id[idx]),
+                start[idx],
+                stop[idx],
+                remove_ambiguous = FALSE,
+                mmap = mmap,
+                validate_crc = validate_crc
+            ),
+            error = function(e) {
+                .gcrank_error(
+                    "GC extraction failed for index '%s': %s",
+                    index_dir, conditionMessage(e)
+                )
+            }
+        )
+        if (!is.numeric(values) || length(values) != length(idx)) {
+            .gcrank_error(
+                "GC extraction for index '%s' returned %d values for %d windows",
+                index_dir, length(values), length(idx)
+            )
+        }
+        if (anyNA(values) || any(!is.finite(values))) {
+            bad <- which(is.na(values) | !is.finite(values))[[1L]]
+            .gcrank_error(
+                "GC content is missing for %s:%s-%s in index '%s'",
+                table$chr_id[idx[[bad]]],
+                format(start[idx[[bad]]], scientific = FALSE),
+                format(stop[idx[[bad]]], scientific = FALSE),
+                index_dir
+            )
+        }
+        if (any(values < 0 | values > 1)) {
+            bad <- which(values < 0 | values > 1)[[1L]]
+            .gcrank_error(
+                "GC content %.6f is outside [0, 1] for %s:%s-%s in index '%s'",
+                values[[bad]],
+                table$chr_id[idx[[bad]]],
+                format(start[idx[[bad]]], scientific = FALSE),
+                format(stop[idx[[bad]]], scientific = FALSE),
+                index_dir
+            )
+        }
+        gc[idx] <- values
+    }
+
+    if (anyNA(gc)) {
+        .gcrank_error("GC content is missing for %d window(s)", sum(is.na(gc)))
+    }
+
+    data.frame(
+        chr_id = as.character(table$chr_id),
+        start = as.integer(start),
+        stop = as.integer(stop),
+        gc = gc,
+        stringsAsFactors = FALSE
+    )
+}
+
 #' Clear the gcrank index cache
 #'
 #' Closes every cached index handle. Useful in tests and before handing a

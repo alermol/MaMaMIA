@@ -278,6 +278,8 @@ assembly, contig, file). Functions must stop before expensive work starts.
 | `MaMaMIAPathError` | preflight | `BAM path '<path>' is outside server.bam_root '<root>'` |
 | `MaMaMIALimitError` | preflight | `Too many BAM files: <n> (limit <max_bams>)` or `Total BAM size <bytes> exceeds <max_total_bytes> bytes` |
 | `MaMaMIAAssemblyMatchError` | preflight | `BAM '<path>' covers only one side of assembly '<key>'` |
+| `MaMaMIAPreflightError` | preflight | malformed `paths` argument |
+| `MaMaMIACountError` | `countReads()` | `Could not count reads in BAM '<path>': <reason>` |
 
 Config validation messages implemented in Wave 0 include, among others:
 
@@ -450,3 +452,93 @@ and `validate_crc = FALSE`; resident memory grows as mapped pages are touched.
 
 New error subclasses introduced in wave 1: `MaMaMIAWindowError` and
 `MaMaMIAGcrankError` (both inherit `MaMaMIAError`).
+
+---
+
+## 9. Wave 2 implementation notes
+
+### 9.1 Preflight
+
+`preflightBams(paths, config, assembly = NULL)` reads file metadata and BAM
+headers only; it never builds an index or reads alignments. It returns one row
+per BAM with:
+
+```text
+path, file_size, sample, sample_source, assembly, n_targets,
+n_assembly_targets, index_path, index_status, index_action, warnings, valid
+```
+
+`index_status` is one of `valid`, `missing`, `stale` or `corrupt`.
+`index_action` says what the pipeline will do: `reuse`, `create`, `rebuild`, or
+`stage` when the BAM directory is not writable. A read-only BAM with no valid
+CSI is therefore not an error at preflight; it is planned for staging.
+
+Limits come from `config$server` (`max_bams`, `max_total_bytes`). Samples follow
+D2 and duplicate resolved names stop preflight. `matchAssemblyCohort()` enforces
+one assembly across all inputs; extra header targets are allowed and reported
+as a warning.
+
+Path containment is enforced when `server.bam_root` is set: paths are resolved
+with `normalizePath()` (so `..` and symlinks cannot escape), and a path is
+accepted only under the root or under the session temporary directory. The
+upload directory is `getOption("MaMaMIA.session_dir", tempdir())`; the app can
+set this option per session. A symlink in session temp that resolves outside
+both locations is rejected.
+
+`.list_bam_files(root, max_depth, max_files)` (internal) is the bounded listing
+for the server-side picker. It returns regular `.bam` files only, drops
+symlinks that resolve outside `root`, and records `attr(x, "truncated")` when
+`max_files` is reached.
+
+New error subclasses in this wave: `MaMaMIAPreflightError`,
+`MaMaMIAPathError`, `MaMaMIALimitError` and `MaMaMIACountError` (all inherit
+`MaMaMIAError`).
+
+### 9.2 GC extraction for all windows
+
+`extractWindowGc(windows, assembly, mmap = TRUE, validate_crc = FALSE)` is
+internal (`@noRd`). It accepts an `AnalysisWindows` list or a table with
+`chr_id`, `start` and `stop`; builds the contig-to-index map from
+`assembly$contigs$index_path`; calls `gcrankGc()` once per index; and returns
+`data.frame(chr_id, start, stop, gc)` in input order. Coordinates are validated
+against the assembly lengths, and GC values must be non-missing and in `[0, 1]`.
+
+Wave 1's tiling finding still applies: `makeAnalysisWindows()` follows the
+T2.2 distributed-remainder formula, while the legacy `*.w1000.*.bed` files use
+a fixed width with a stretched last window. The gated real-data GC test
+therefore compares `extractWindowGc()` with the legacy BED at the legacy
+intervals (all 28,000 rows, six decimals). New windows are covered by the tiny
+fixture and by the ordering/validation tests. This avoids changing the plan's
+window definition without an explicit decision.
+
+### 9.3 Read counting
+
+`countReads(bam_path, gr, mapq = 20L, exclude_flags = 2308L, verbose = FALSE)`
+returns an integer vector aligned to `gr`. It validates the GRanges, its
+seqlengths and bounds, and ensures a CSI index with `ensureBamIndex()` before
+counting.
+
+`exclude_flags` keeps `samtools view -F` semantics: a read is excluded when
+**any** mask bit is set. Because bamsignals excludes only when **all** bits are
+set, the mask is decomposed with inclusion-exclusion over its set bits:
+
+```text
+pass = sum over non-empty subsets S of (-1)^(|S| + 1) * C(mask(S))
+```
+
+For the default `2308 = 4 + 256 + 2048` this is seven bamsignals passes. The
+implementation supports at most six bits (63 passes) and raises
+`MaMaMIACountError` for larger masks instead of silently distorting counts. The
+Sq54 tiny fixture locks the difference down: a direct `filteredFlag = 2308`
+call returns `c(5, 8)` in window order, while the correct count is `c(5, 6)`.
+
+Counting is start-based: a read belongs to the window containing its alignment
+start, not to every window it overlaps. The gated Sq54 regression counts the
+legacy BED intervals and matches the legacy tables up to boundary-crossing
+reads: 229/28,000 windows differ (0.82%; recipient 1.09%, donor 0%), maximum
+delta 14, total absolute delta 708/3,535,298 (0.02%), and all deltas are
+non-positive as expected from the overlap-versus-start difference.
+
+Set `options(MaMaMIA.count_chunk_size = n)` to split very large window sets into
+chunks. The default `0` disables chunking because every chunk repeats the
+bamsignals passes.
