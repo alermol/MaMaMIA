@@ -1,0 +1,11 @@
+MaMaMIA is distributed under the GNU General Public License, version 3 or
+later (see LICENSE.md).
+
+This package includes a vendored copy of the gcrank library under
+src/gcrank/, pinned to upstream commit
+8fdbc32557973c7737496959ecb91acd9bed3ee5.
+
+gcrank is Copyright (c) 2026 The gcrank Authors and is released under the MIT
+license. A copy of the license is provided in src/gcrank/LICENSE, and the
+upstream changelog is provided in src/gcrank/CHANGELOG.md. The MIT license is
+compatible with the GPL (>= 3) used by this package.

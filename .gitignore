@@ -49,10 +49,13 @@ po/*~
 # RStudio Connect folder
 rsconnect/
 
-# Renv files
-renv.lock
+# Local R startup file (managed by uvr)
 .Rprofile
-renv/
+
+# Compiled objects (vendored gcrank included)
+src/*.o
+src/*.so
+src/gcrank/src/*.o
 
 .Rbuildignore
 .ipynb_checkpoints

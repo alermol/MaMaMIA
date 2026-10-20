@@ -1,0 +1,33 @@
+version: 1
+defaults:
+  windows_per_chromosome: 100
+  allowed_windows:
+  - 100
+  - 1000
+  - 10000
+  mapq: 20
+  exclude_flags: 2308
+  max_fit_windows: 1000
+  gc_mmap: true
+  gc_validate_crc: false
+  normalization_by_side: true
+server:
+  max_bams: 4
+  max_total_bytes: 1048576.0
+assemblies:
+  tiny:
+    label: Tiny synthetic assembly
+    description: Two 20 kb contigs with 40% and 60% GC
+    gc_indexes:
+    - tiny.gcrank
+    contigs:
+      recipient:
+      - id: r1
+        name: 1R
+        subgenome: R
+      donor:
+      - id: d1
+        name: 1D
+        subgenome: D
+    pairs:
+      d1: r1

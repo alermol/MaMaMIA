@@ -1,15 +1,15 @@
 [project]
 name = "MaMaMIA"
-r_version = ">=4.6.0"
+r_version = "4.6.1"
 description = "Max Mapping for Meticulous Introgression Analysis"
 
 [dependencies]
 DNAcopy = { bioc = true }
-GenomicRanges = ">=1.64.0"
-IRanges = ">=2.46.0"
+GenomicRanges = { bioc = true, version = ">=1.64.0" }
+IRanges = { bioc = true, version = ">=2.46.0" }
 Rcpp = ">=1.1.2"
-Rhtslib = ">=3.8.0"
-bamsignals = ">=1.44.0"
+Rhtslib = { bioc = true, version = ">=3.8.0" }
+bamsignals = { bioc = true, version = ">=1.44.0" }
 dplyr = ">=1.2.1"
 ggnewscale = ">=0.5.2"
 ggplot2 = ">=4.0.3"
@@ -30,6 +30,7 @@ htmltools = "*"
 htmlwidgets = "*"
 knitr = ">=1.51"
 rmarkdown = ">=2.31"
+roxygen2 = "*"
 shiny = "*"
 shinyWidgets = "*"
 testthat = ">=3.0.0"

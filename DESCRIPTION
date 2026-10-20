@@ -42,6 +42,7 @@ Suggests:
     htmlwidgets,
     knitr (>= 1.51),
     rmarkdown (>= 2.31),
+    roxygen2,
     shiny,
     shinyWidgets,
     testthat (>= 3.0.0)

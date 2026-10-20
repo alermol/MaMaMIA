@@ -1,4 +1,4 @@
-manifest_fingerprint = "sha256:b6d256ad6dd5ecf2bb5fba593701dff096ca7526b5c3fe98719770e384328fd5"
+manifest_fingerprint = "sha256:cd79396a9393d3159b4cc4647f6b629b2abad0d71ceb575b298d818ccbd7a4a2"
 
 [r]
 version = "4.6.1"
@@ -260,6 +260,15 @@ source = "cran"
 raw_version = "1.3-32"
 url = "https://cran.r-project.org/src/contrib/boot_1.3-32.tar.gz"
 checksum = "md5:c883de096f9a6b3afbf461337092a1f3"
+
+[[package]]
+name = "brew"
+version = "1.0.10"
+source = "cran"
+raw_version = "1.0-10"
+url = "https://cran.r-project.org/src/contrib/brew_1.0-10.tar.gz"
+checksum = "md5:c1ebbea7284161a8884ffe9ae5ca451f"
+dev = true
 
 [[package]]
 name = "brio"
@@ -1109,6 +1118,15 @@ url = "https://cran.r-project.org/src/contrib/rbibutils_2.4.1.tar.gz"
 checksum = "md5:dad8207e52a80a5a4a11b22339aae112"
 
 [[package]]
+name = "rdtools"
+version = "0.1.0"
+source = "cran"
+raw_version = "0.1.0"
+url = "https://cran.r-project.org/src/contrib/rdtools_0.1.0.tar.gz"
+checksum = "md5:15243eafd24d97371d15f573530d9a12"
+dev = true
+
+[[package]]
 name = "reformulas"
 version = "0.4.4"
 source = "cran"
@@ -1146,6 +1164,30 @@ requires = [
     "tinytex",
     "xfun",
     "yaml",
+]
+dev = true
+
+[[package]]
+name = "roxygen2"
+version = "8.1.1"
+source = "cran"
+raw_version = "8.1.1"
+url = "https://cran.r-project.org/src/contrib/roxygen2_8.1.1.tar.gz"
+checksum = "md5:9c8666c36cdff91561fa7176dae67c98"
+requires = [
+    "brew",
+    "cli",
+    "commonmark",
+    "desc",
+    "knitr",
+    "lifecycle",
+    "pkgload",
+    "R6",
+    "rdtools",
+    "rlang",
+    "withr",
+    "xml2",
+    "cpp11",
 ]
 dev = true
 
@@ -1453,6 +1495,19 @@ source = "cran"
 raw_version = "0.62"
 url = "https://cran.r-project.org/src/contrib/xfun_0.62.tar.gz"
 checksum = "md5:93bc01d797fcdf1e4014998e4c248bd7"
+dev = true
+
+[[package]]
+name = "xml2"
+version = "1.6.0"
+source = "cran"
+raw_version = "1.6.0"
+url = "https://cran.r-project.org/src/contrib/xml2_1.6.0.tar.gz"
+checksum = "md5:4e005569a935f91400a06533cad641e8"
+requires = [
+    "cli",
+    "rlang",
+]
 dev = true
 
 [[package]]

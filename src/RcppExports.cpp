@@ -69,6 +69,16 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// build_stub_cpp
+int build_stub_cpp();
+RcppExport SEXP _MaMaMIA_build_stub_cpp() {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    rcpp_result_gen = Rcpp::wrap(build_stub_cpp());
+    return rcpp_result_gen;
+END_RCPP
+}
 // bam_header_info_cpp
 Rcpp::List bam_header_info_cpp(const std::string& path);
 RcppExport SEXP _MaMaMIA_bam_header_info_cpp(SEXP pathSEXP) {
@@ -101,6 +111,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_MaMaMIA_gcrank_contigs_cpp", (DL_FUNC) &_MaMaMIA_gcrank_contigs_cpp, 1},
     {"_MaMaMIA_gcrank_gc_cpp", (DL_FUNC) &_MaMaMIA_gcrank_gc_cpp, 5},
     {"_MaMaMIA_htslib_version_cpp", (DL_FUNC) &_MaMaMIA_htslib_version_cpp, 0},
+    {"_MaMaMIA_build_stub_cpp", (DL_FUNC) &_MaMaMIA_build_stub_cpp, 0},
     {"_MaMaMIA_bam_header_info_cpp", (DL_FUNC) &_MaMaMIA_bam_header_info_cpp, 1},
     {"_MaMaMIA_bam_index_build_cpp", (DL_FUNC) &_MaMaMIA_bam_index_build_cpp, 4},
     {NULL, NULL, 0}

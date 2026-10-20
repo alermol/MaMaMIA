@@ -2,30 +2,34 @@
 # Generator token: 10BE3573-1514-4C36-9D1C-5A225CD40393
 
 gcrank_open_cpp <- function(index_dir, mmap, validate_crc) {
-    .Call('_MaMaMIA_gcrank_open_cpp', PACKAGE = 'MaMaMIA', index_dir, mmap, validate_crc)
+    .Call(`_MaMaMIA_gcrank_open_cpp`, index_dir, mmap, validate_crc)
 }
 
 gcrank_close_cpp <- function(xptr) {
-    invisible(.Call('_MaMaMIA_gcrank_close_cpp', PACKAGE = 'MaMaMIA', xptr))
+    invisible(.Call(`_MaMaMIA_gcrank_close_cpp`, xptr))
 }
 
 gcrank_contigs_cpp <- function(xptr) {
-    .Call('_MaMaMIA_gcrank_contigs_cpp', PACKAGE = 'MaMaMIA', xptr)
+    .Call(`_MaMaMIA_gcrank_contigs_cpp`, xptr)
 }
 
 gcrank_gc_cpp <- function(xptr, contig, start, end, remove_ambiguous = FALSE) {
-    .Call('_MaMaMIA_gcrank_gc_cpp', PACKAGE = 'MaMaMIA', xptr, contig, start, end, remove_ambiguous)
+    .Call(`_MaMaMIA_gcrank_gc_cpp`, xptr, contig, start, end, remove_ambiguous)
 }
 
 htslib_version_cpp <- function() {
-    .Call('_MaMaMIA_htslib_version_cpp', PACKAGE = 'MaMaMIA')
+    .Call(`_MaMaMIA_htslib_version_cpp`)
+}
+
+build_stub_cpp <- function() {
+    .Call(`_MaMaMIA_build_stub_cpp`)
 }
 
 bam_header_info_cpp <- function(path) {
-    .Call('_MaMaMIA_bam_header_info_cpp', PACKAGE = 'MaMaMIA', path)
+    .Call(`_MaMaMIA_bam_header_info_cpp`, path)
 }
 
 bam_index_build_cpp <- function(path, index_path, min_shift = 14L, threads = 1L) {
-    .Call('_MaMaMIA_bam_index_build_cpp', PACKAGE = 'MaMaMIA', path, index_path, min_shift, threads)
+    .Call(`_MaMaMIA_bam_index_build_cpp`, path, index_path, min_shift, threads)
 }
 

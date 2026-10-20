@@ -1,3 +1,0 @@
-[submodule "src/gcrank"]
-	path = src/gcrank
-	url = https://github.com/alermol/gcrank.git

@@ -60,6 +60,13 @@ std::string htslib_version_cpp() {
   return std::string(hts_version());
 }
 
+// Minimal compile/load spike kept from T0.2. It proves that Rcpp, Rhtslib and
+// the C++23 build flags produce a loadable shared library.
+// [[Rcpp::export]]
+int build_stub_cpp() {
+  return 1;
+}
+
 // [[Rcpp::export]]
 Rcpp::List bam_header_info_cpp(const std::string& path) {
   HtsFilePtr fp(hts_open(path.c_str(), "r"));

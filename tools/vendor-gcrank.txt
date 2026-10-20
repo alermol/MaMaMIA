@@ -1,0 +1,7 @@
+upstream = https://github.com/alermol/gcrank.git
+commit = 8fdbc32557973c7737496959ecb91acd9bed3ee5
+vendored_at = 2026-10-20T14:32:28Z
+vendored_paths = include/, src/, LICENSE, CHANGELOG.md
+excluded_paths = cli/, tests/, examples/, cmake/, data-raw/, CMakeLists.txt
+headers = 12
+sources = 9

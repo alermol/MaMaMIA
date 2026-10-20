@@ -1,0 +1,72 @@
+# MaMaMIA assembly registry (example)
+#
+# The production file is mounted read-only by ShinyProxy, for example at
+# /srv/mamamia/config/assemblies.yml. Relative paths are resolved against the
+# directory that contains this file. Every gc_indexes entry must be a gcrank
+# index directory containing contigs.tsv and manifest.json.
+#
+# Contig lengths are read from the gcrank index, not from this file.
+
+version: 1
+
+defaults:
+  windows_per_chromosome: 1000
+  allowed_windows: [100, 1000, 10000]
+  mapq: 20
+  exclude_flags: 2308      # unmapped + secondary + supplementary
+  max_fit_windows: 50000
+  gc_mmap: true
+  gc_validate_crc: false
+  normalization_by_side: true
+
+server:
+  bam_root: /srv/mamamia/bams   # optional; enables server-side file picking
+  max_bams: 20
+  max_total_bytes: 5368709120   # 5 GiB
+
+assemblies:
+  cs_t2t_se_cereale:
+    label: "Triticum aestivum CS T2T + Secale cereale"
+    description: "Competitive mapping to wheat CS T2T plus rye"
+    gc_indexes:
+      - /srv/mamamia/gcidx/triticum-aestivum/index.gcrank
+      - /srv/mamamia/gcidx/secale-cereale/index.gcrank
+    contigs:
+      recipient:
+        - {id: CP155614.1, name: 1A, subgenome: A}
+        - {id: CP155613.1, name: 1B, subgenome: B}
+        - {id: CP155612.1, name: 1D, subgenome: D}
+        - {id: CP155611.1, name: 2A, subgenome: A}
+        - {id: CP155610.1, name: 2B, subgenome: B}
+        - {id: CP155609.1, name: 2D, subgenome: D}
+        - {id: CP155608.1, name: 3A, subgenome: A}
+        - {id: CP155607.1, name: 3B, subgenome: B}
+        - {id: CP155606.1, name: 3D, subgenome: D}
+        - {id: CP155605.1, name: 4A, subgenome: A}
+        - {id: CP155604.1, name: 4B, subgenome: B}
+        - {id: CP155603.1, name: 4D, subgenome: D}
+        - {id: CP155602.1, name: 5A, subgenome: A}
+        - {id: CP155601.1, name: 5B, subgenome: B}
+        - {id: CP155600.1, name: 5D, subgenome: D}
+        - {id: CP155599.1, name: 6A, subgenome: A}
+        - {id: CP155594.1, name: 6B, subgenome: B}
+        - {id: CP155598.1, name: 6D, subgenome: D}
+        - {id: CP155597.1, name: 7A, subgenome: A}
+        - {id: CP155596.1, name: 7B, subgenome: B}
+        - {id: CP155595.1, name: 7D, subgenome: D}
+      donor:
+        - {id: OZ284382.1, name: 1R, subgenome: R}
+        - {id: OZ284383.1, name: 2R, subgenome: R}
+        - {id: OZ284384.1, name: 3R, subgenome: R}
+        - {id: OZ284385.1, name: 4R, subgenome: R}
+        - {id: OZ284386.1, name: 5R, subgenome: R}
+        - {id: OZ284387.1, name: 6R, subgenome: R}
+        - {id: OZ284388.1, name: 7R, subgenome: R}
+    pairs:
+      OZ284382.1: CP155614.1
+      OZ284383.1: CP155611.1
+      OZ284384.1: CP155608.1
+      OZ284385.1: CP155605.1
+      OZ284386.1: CP155602.1
+      OZ284387.1: CP155599.1
+      OZ284388.1: CP155597.1
