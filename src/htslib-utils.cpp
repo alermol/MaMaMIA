@@ -79,6 +79,13 @@ Rcpp::List bam_header_info_cpp(const std::string& path) {
   if (format == nullptr) {
     Rcpp::stop("Could not determine the format of '%s'", path);
   }
+  if (format->format == unknown_format || format->format == binary_format ||
+      format->format == text_format || format->format == empty_format) {
+    Rcpp::stop(
+        "Could not determine the format of '%s'; the file may be truncated, "
+        "corrupt, or not a BAM file",
+        path);
+  }
   if (format->format != bam) {
     Rcpp::stop(
         "Unsupported input format '%s' for '%s'; only coordinate-sorted BAM "
@@ -128,24 +135,33 @@ bool bam_index_build_cpp(const std::string& path,
                          const std::string& index_path,
                          int min_shift = 14,
                          int threads = 1) {
-  if (min_shift < 0) {
-    Rcpp::stop("min_shift must be non-negative");
+  if (min_shift < 1) {
+    Rcpp::stop(
+        "min_shift must be at least 1; BAI indexes (min_shift = 0) are not "
+        "supported, use the default CSI min_shift = 14");
   }
   if (threads < 1) {
     Rcpp::stop("threads must be at least 1");
+  }
+  if (path.empty()) {
+    Rcpp::stop("A BAM path is required");
   }
   if (index_path.empty()) {
     Rcpp::stop("An explicit CSI index path is required");
   }
 
+  errno = 0;
   const int ret = sam_index_build3(path.c_str(), index_path.c_str(), min_shift,
                                    threads);
+  const int saved_errno = errno;
   if (ret != 0) {
     Rcpp::stop(
-        "Could not build a CSI index for '%s' (htslib error code %d); the BAM "
-        "must be coordinate-sorted and readable, and the output directory "
-        "must be writable",
-        path, ret);
+        "Could not build a CSI index for '%s' (htslib error code %d): %s",
+        path, ret,
+        saved_errno != 0
+            ? std::strerror(saved_errno)
+            : "the BAM must be coordinate-sorted and readable, and the "
+              "output directory must be writable");
   }
   return true;
 }

@@ -39,6 +39,42 @@ tiny_gcrank_index <- function() {
     tiny_fixture("tiny.gcrank")
 }
 
+have_samtools <- function() {
+    nzchar(Sys.which("samtools"))
+}
+
+skip_if_no_samtools <- function() {
+    if (!have_samtools()) {
+        testthat::skip("samtools is not available")
+    }
+}
+
+## Build a BAM from SAM text for header-error tests. Indexing is optional
+## because bamHeaderInfo() never needs an index.
+write_test_bam <- function(lines, path, index = FALSE) {
+    sam <- tempfile(fileext = ".sam")
+    on.exit(unlink(sam), add = TRUE)
+    writeLines(lines, sam)
+    status <- system2(
+        "samtools",
+        c("view", "--no-PG", "-b", "-o", path, sam),
+        stdout = FALSE, stderr = FALSE
+    )
+    if (!identical(status, 0L)) {
+        testthat::skip("samtools could not create the test BAM")
+    }
+    if (index) {
+        status <- system2(
+            "samtools", c("index", "-c", path),
+            stdout = FALSE, stderr = FALSE
+        )
+        if (!identical(status, 0L)) {
+            testthat::skip("samtools could not index the test BAM")
+        }
+    }
+    path
+}
+
 mamamia_test_data_dir <- function() {
     configured <- Sys.getenv("MAMAMIA_TEST_DATA_DIR", unset = "")
     if (nzchar(configured)) {

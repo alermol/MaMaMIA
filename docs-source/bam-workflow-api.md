@@ -360,3 +360,93 @@ wrapper can be tested at single-read resolution.
   `tools/make-test-fixtures.R`. They contain two 20 kb contigs (`d1` at 40% GC,
   `r1` at 60% GC), a tiny gcrank index, a coordinate-sorted CSI-indexed BAM,
   and an `assemblies.yml` that loads without external tools.
+
+---
+
+## 8. Wave 1 implementation notes
+
+### 8.1 BAM headers
+
+`bamHeaderInfo(path)` returns the `BamHeaderInfo` contract plus `sample`,
+`sample_source` (`"rg"` or `"basename"`), `sort_order` and `n_targets`.
+`@RG SM` values are trimmed; missing `SM` values are `NA_character_` in
+`read_groups$sample` and are excluded from `samples`. A header with multiple
+distinct `SM` values raises `MaMaMIASampleError`.
+
+A truncated or non-BAM file whose format cannot be determined raises
+`MaMaMIABamHeaderError`. A readable SAM/CRAM raises
+`MaMaMIAUnsupportedFormatError`.
+
+### 8.2 CSI indexes
+
+`ensureBamIndex(path, min_shift = 14L, threads = 1L)` returns the `.csi` path.
+The CSI is BGZF-compressed, so validity is checked by decompressing the first
+four bytes and comparing them with `CSI\1`. A current valid index is reused;
+a stale, empty or corrupt index is rebuilt when the BAM directory is writable.
+Permission bits, not root's ability to write, decide writability.
+
+`stageBam(path, session_dir = tempdir())` is internal (`@noRd`). It creates a
+private subdirectory per BAM, symlinks the BAM when possible and copies it
+otherwise, and returns the staged path **without** `normalizePath()`. Callers
+pass that path to `ensureBamIndex()`; the CSI then lands next to the symlink in
+session temp. No `.bai` is ever created or consulted.
+
+### 8.3 Assembly matching
+
+`matchAssembly()` returns:
+
+```r
+list(
+  assembly = "tiny",                  # selected key
+  assembly_config = AssemblyConfig,
+  header_path = "/abs/sample.bam",
+  candidates = data.frame(key, label, n_targets, n_matched, n_missing,
+                          n_length_mismatches, score, exact),
+  matched = TRUE, exact = TRUE,
+  missing = character(0),
+  length_mismatches = data.frame(chr_id, role, observed, expected),
+  score = 1,
+  summary = "BAM '...' matches assembly 'tiny' exactly (2/2 targets)"
+)
+```
+
+An explicit `assembly` key is validated; a length mismatch raises
+`MaMaMIAHeaderMismatchError`, a missing target raises
+`MaMaMIAAssemblyMatchError` (with `covers only one side` when exactly one role
+is complete). Auto-selection errors carry the candidate table in
+`condition$data$candidates`. `matchAssemblyCohort()` is internal and enforces
+one assembly key across several headers.
+
+### 8.4 Windows
+
+`readContigsTsv()` enforces exactly three tab-separated columns, unique names,
+positive integer lengths, non-negative integer offsets and offsets equal to
+the cumulative lengths of preceding contigs.
+
+`.assembly_target_contigs()` (internal) flattens recipient contigs first and
+then donor contigs, preserving assembly order, and validates a supplied
+contigs table (a path or a data frame with `name`/`length` or `id`/`length`).
+`makeAnalysisWindows()` uses `start_i = floor((i - 1) * L / n)` and
+`stop_i = floor(i * L / n)`; the GRanges and the 0-based table therefore
+describe the same windows. `n_per_chromosome` is recorded in the result.
+
+**Known plan inconsistency (wave 1 finding).** The legacy
+`*.w1000.*.bed` tables appear to use a fixed window width of `floor(L / n)`
+with the last window stretched to `L`, whereas T2.2 specifies the distributed
+remainder formula above. The two tilings differ after the first window (for
+`L = 603818960` and `n = 1000`: legacy stops are `603818, 1207636, ...`, the
+T2.2 stops are `603818, 1207637, ...`). Wave 1 implements the T2.2 formula.
+T2.4/T3.4 must either compare GC/counts at common intervals rather than by row,
+or the plan must be amended to legacy tiling before those tasks run.
+
+### 8.5 gcrank
+
+`gcrankContigs()`, `gcrankGc()` and `gcrankClearCache()` are exported and use
+an internal LRU cache of at most two open `XPtr<gcrank::GcRank>` handles keyed
+by normalized index directory. Queries are vectorized over `contig`, `start`
+and `end` (each length 1 or the common length) and raise
+`MaMaMIAGcrankError` with contig/interval context. Defaults are `mmap = TRUE`
+and `validate_crc = FALSE`; resident memory grows as mapped pages are touched.
+
+New error subclasses introduced in wave 1: `MaMaMIAWindowError` and
+`MaMaMIAGcrankError` (both inherit `MaMaMIAError`).
