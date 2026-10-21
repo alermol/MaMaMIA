@@ -27,6 +27,41 @@ run_pipeline <- function(fixture, bams = fixture$bam_path,
     list(result = result, stages = stages)
 }
 
+test_that("a species-derived assembly runs in either donor/recipient direction", {
+    fixture <- variable_gc_fixture(species = TRUE)
+    on.exit(unlink(fixture$directory, recursive = TRUE), add = TRUE)
+    config <- readMaMaMIAConfig(fixture$config_path)
+
+    forward <- resolveSpeciesAssembly(config, donor = "donor", recipient = "recipient")
+    expect_identical(forward$assembly$pairs, c(d1 = "r1"))
+    result <- suppressWarnings(analyzeBamInput(
+        fixture$bam_path,
+        forward$config,
+        assembly = forward$key,
+        windows_per_chromosome = 100L,
+        cores = 1L,
+        max_fit_windows = Inf
+    ))
+    expect_s3_class(result, "BamAnalysisResult")
+    expect_identical(result$assembly$key, "recipient__R__donor__D")
+    expect_identical(result$assembly$pairs, c(d1 = "r1"))
+    expect_identical(result$bams$sample, "synthetic")
+
+    reversed <- resolveSpeciesAssembly(config, donor = "recipient", recipient = "donor")
+    expect_identical(reversed$assembly$pairs, c(r1 = "d1"))
+    expect_identical(reversed$assembly$key, "donor__D__recipient__R")
+    reversed_result <- suppressWarnings(analyzeBamInput(
+        fixture$bam_path,
+        reversed$config,
+        assembly = reversed$key,
+        windows_per_chromosome = 100L,
+        cores = 1L,
+        max_fit_windows = Inf
+    ))
+    expect_s3_class(reversed_result, "BamAnalysisResult")
+    expect_identical(reversed_result$assembly$pairs, c(r1 = "d1"))
+})
+
 test_that("analyzeBamInput() returns a valid BamAnalysisResult", {
     fixture <- pipeline_fixture()
     run <- run_pipeline(fixture)

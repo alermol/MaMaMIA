@@ -15,7 +15,6 @@ app_state <- function(fixture) {
 app_inputs <- function(...) {
     defaults <- list(
         resolution = "100",
-        assembly = "",
         reference_sample = "",
         mapq = 20,
         exclude_flags = 2308,
@@ -596,6 +595,151 @@ test_that("the app shows preflight, assembly and a disabled run button", {
     })
 })
 
+test_that("the swap button exchanges donor and recipient species", {
+    skip_if_no_dashboard()
+    skip_if_no_samtools()
+    fixture <- variable_gc_fixture(species = TRUE)
+    on.exit(unlink(fixture$directory, recursive = TRUE), add = TRUE)
+    state <- app_state(fixture)
+
+    html <- paste(as.character(bam_launcher_ui(state)), collapse = "")
+    expect_match(html, "Swap donor and recipient")
+    expect_false(grepl("Detect the assembly from the BAM header", html))
+
+    shiny::testServer(bam_launcher_server(state, cache = FALSE), {
+        session$setInputs(
+            recipient_species = "recipient", donor_species = "donor"
+        )
+        expect_identical(
+            assembly_selection()$assembly$pairs, c(d1 = "r1")
+        )
+
+        session$setInputs(swap_species = 1L)
+        expect_identical(recipient_species(), "donor")
+        expect_identical(donor_species(), "recipient")
+        expect_identical(
+            assembly_selection()$key, "donor__D__recipient__R"
+        )
+        expect_identical(
+            assembly_selection()$assembly$pairs, c(r1 = "d1")
+        )
+
+        session$setInputs(swap_species = 2L)
+        expect_identical(recipient_species(), "recipient")
+        expect_identical(donor_species(), "donor")
+        expect_identical(
+            assembly_selection()$assembly$pairs, c(d1 = "r1")
+        )
+    })
+})
+
+test_that("auto-detection is an option but not an assembly selector", {
+    skip_if_no_dashboard()
+    skip_if_no_samtools()
+    fixture <- variable_gc_fixture(species = TRUE)
+    on.exit(unlink(fixture$directory, recursive = TRUE), add = TRUE)
+    state <- app_state(fixture)
+    resolved <- resolveSpeciesAssembly(
+        state$config,
+        donor = "donor", recipient = "recipient",
+        key = "preset_pair"
+    )
+    state$config <- resolved$config
+
+    html <- paste(as.character(bam_launcher_ui(state)), collapse = "")
+    expect_match(html, "Detect the assembly from the BAM header")
+    expect_false(grepl("Predefined assembly", html, fixed = TRUE))
+
+    shiny::testServer(bam_launcher_server(state, cache = FALSE), {
+        session$setInputs(
+            auto_detect = TRUE,
+            server_bams = fixture$bam_path,
+            resolution = "100"
+        )
+        pf <- preflight_state()
+        expect_true(pf$ok)
+        expect_identical(pf$assembly, "preset_pair")
+        expect_match(output_html(output$assembly_summary), "Variable-GC")
+
+        session$setInputs(auto_detect = FALSE)
+        pf <- preflight_state()
+        expect_true(pf$ok)
+        expect_identical(pf$assembly, "recipient__R__donor__D")
+    })
+})
+
+test_that("a species-only registry exposes species selectors and runs", {
+    skip_if_no_dashboard()
+    skip_if_no_samtools()
+    fixture <- variable_gc_fixture(species = TRUE)
+    on.exit(unlink(fixture$directory, recursive = TRUE), add = TRUE)
+    state <- app_state(fixture)
+
+    html <- paste(as.character(bam_launcher_ui(state)), collapse = "")
+    expect_match(html, "Recipient species")
+    expect_match(html, "Donor species")
+    expect_false(grepl("Auto-detect", html, fixed = TRUE))
+    expect_false(grepl("Predefined assembly", html, fixed = TRUE))
+
+    ## Even when the registry also declares a preset, the UI offers no
+    ## predefined-assembly selector.
+    resolved <- resolveSpeciesAssembly(
+        state$config, donor = "donor", recipient = "recipient"
+    )
+    with_preset <- state
+    with_preset$config <- resolved$config
+    preset_html <- paste(as.character(bam_launcher_ui(with_preset)), collapse = "")
+    expect_false(grepl("Predefined assembly", preset_html, fixed = TRUE))
+    expect_false(grepl("Auto-detect", preset_html, fixed = TRUE))
+
+    shiny::testServer(bam_launcher_server(state, cache = FALSE), {
+        session$setInputs(
+            recipient_species = "recipient",
+            donor_species = "donor",
+            server_bams = fixture$bam_path,
+            resolution = "100",
+            mapq = 20,
+            exclude_flags = 2308,
+            cores = 1,
+            max_fit_windows = 1000,
+            reference_sample = ""
+        )
+        pf <- preflight_state()
+        expect_true(pf$ok)
+        expect_identical(pf$assembly, "recipient__R__donor__D")
+        expect_identical(pf$assembly_config$pairs, c(d1 = "r1"))
+        expect_match(output_html(output$assembly_summary), "Variable-GC recipient")
+        expect_match(output_html(output$assembly_summary), "d1 \\(1D\\)")
+        expect_false(grepl("disabled", output_html(output$run_ui)))
+
+        suppressWarnings(session$setInputs(run = 1L))
+        result <- result()
+        expect_s3_class(result, "BamAnalysisResult")
+        expect_identical(result$assembly$key, "recipient__R__donor__D")
+        expect_identical(result$bams$sample, "synthetic")
+        expect_match(output$cohort_table, "synthetic")
+    })
+})
+
+test_that("an invalid species pair is shown before any BAM is read", {
+    skip_if_no_dashboard()
+    fixture <- variable_gc_fixture(species = TRUE)
+    on.exit(unlink(fixture$directory, recursive = TRUE), add = TRUE)
+    state <- app_state(fixture)
+
+    shiny::testServer(bam_launcher_server(state, cache = FALSE), {
+        session$setInputs(
+            recipient_species = "recipient",
+            donor_species = "recipient"
+        )
+        pf <- preflight_state()
+        expect_false(pf$ok)
+        expect_match(pf$error$message, "two different species")
+        expect_match(output_html(output$preflight_error), "two different species")
+        expect_match(output_html(output$run_ui), "disabled")
+    })
+})
+
 test_that("uploaded BAMs are staged before preflight", {
     skip_if_no_dashboard()
     skip_if_no_samtools()
@@ -960,8 +1104,7 @@ test_that("a failing run reports the stage and keeps the session alive", {
             exclude_flags = 2308,
             cores = 1,
             max_fit_windows = 1000,
-            reference_sample = "",
-            assembly = ""
+            reference_sample = ""
         )
         expect_true(preflight_state()$ok)
         expect_null(result())

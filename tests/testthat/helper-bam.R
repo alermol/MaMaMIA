@@ -150,7 +150,8 @@ add_variable_gc_bam <- function(fixture, sample, filename = NULL, step = 4L) {
 
 variable_gc_fixture <- function(sample = "synthetic", windows = 100L,
                                 contig_length = 20000L,
-                                allowed_windows = c(100L, 1000L, 10000L)) {
+                                allowed_windows = c(100L, 1000L, 10000L),
+                                species = FALSE) {
     skip_if_no_samtools()
     builder <- gcrank_build_binary()
     if (!nzchar(builder)) {
@@ -192,12 +193,34 @@ variable_gc_fixture <- function(sample = "synthetic", windows = 100L,
             gc_validate_crc = FALSE,
             normalization_by_side = TRUE
         ),
-        server = list(max_bams = 4L, max_total_bytes = 20 * 1024^2),
-        assemblies = list(
+        server = list(max_bams = 4L, max_total_bytes = 20 * 1024^2)
+    )
+    index <- file.path(directory, "variable.gcrank")
+    if (species) {
+        config$species <- list(
+            recipient = list(
+                label = "Variable-GC recipient",
+                default_subgenome = "R",
+                gc_indexes = list(index),
+                contigs = list(list(
+                    id = "r1", name = "1R", subgenome = "R"
+                ))
+            ),
+            donor = list(
+                label = "Variable-GC donor",
+                default_subgenome = "D",
+                gc_indexes = list(index),
+                contigs = list(list(
+                    id = "d1", name = "1D", subgenome = "D"
+                ))
+            )
+        )
+    } else {
+        config$assemblies <- list(
             variable = list(
                 label = "Variable-GC synthetic assembly",
                 description = "Two 20 kb contigs with variable GC",
-                gc_indexes = list(file.path(directory, "variable.gcrank")),
+                gc_indexes = list(index),
                 contigs = list(
                     recipient = list(list(
                         id = "r1", name = "1R", subgenome = "R"
@@ -209,7 +232,7 @@ variable_gc_fixture <- function(sample = "synthetic", windows = 100L,
                 pairs = list(d1 = "r1")
             )
         )
-    )
+    }
     config_path <- file.path(directory, "assemblies.yml")
     writeLines(yaml::as.yaml(config), config_path)
 

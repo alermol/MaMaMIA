@@ -1,8 +1,9 @@
 # MaMaMIA BAM-first API contract
 
-**Status:** frozen for implementation
+**Status:** frozen for implementation; amended 2026-10-21 for the species registry
 **Frozen on:** 2026-10-20
-**Source of truth:** `AGENTIC_PLAN.md` sections 3.3-4
+**Amended:** 2026-10-21 (section 16)
+**Source of truth:** `AGENTIC_PLAN.md` sections 3.3-4 and 14
 **Applies from:** Wave 0 onward
 
 This note is the contract between the BAM-first implementation tasks. When a
@@ -34,10 +35,23 @@ MaMaMIAConfig <- list(
     normalization_by_side = TRUE
   ),
   assemblies = named list of AssemblyConfig,
+  species = named list of SpeciesConfig,
   server = list(bam_root = NULL, max_bams = 20L, max_total_bytes = 5 * 1024^3)
 )
 
-# AssemblyConfig; contig lengths come from the gcrank index, not from YAML
+# SpeciesConfig; role-free. The user assigns donor/recipient at run time.
+SpeciesConfig <- list(
+  key = "secale_cereale",
+  label = "Secale cereale (rye)",
+  description = "Rye reference (R subgenome)",
+  default_subgenome = "R",          # optional; used for polyploids
+  gc_indexes = c("/srv/.../rye/index.gcrank"),
+  contigs = data.frame(id, name, subgenome, group, length, index_path)
+)
+
+# AssemblyConfig; contig lengths come from the gcrank index, not from YAML.
+# An assembly is either declared inline or derived from two species by
+# resolveSpeciesAssembly(). The derived assembly keeps only the paired contigs.
 AssemblyConfig <- list(
   key = "cs_t2t_se_cereale",
   label = "Triticum aestivum CS T2T + Secale cereale",
@@ -197,6 +211,11 @@ BamAnalysisResult <- list(
 readMaMaMIAConfig(path)
 validateMaMaMIAConfig(config)
 listMaMaMIAAssemblies(config)
+listMaMaMIASpecies(config)
+resolveSpeciesAssembly(config, donor, recipient,
+                       donor_subgenome = NULL, recipient_subgenome = NULL,
+                       pairs = NULL, key = NULL, label = NULL,
+                       description = NULL)
 
 # BAM preflight
 bamHeaderInfo(path)
@@ -241,7 +260,12 @@ runMaMaMIA(analysis_dir = NULL, assemblies_dir = NULL, cache = NULL,
 `readMaMaMIAConfig()` and `validateMaMaMIAConfig()` return the normalized
 configuration invisibly; `listMaMaMIAAssemblies()` returns one row per assembly
 with `key`, `label`, `description`, `n_donor`, `n_recipient`, `n_pairs` and
-`n_gc_indexes`.
+`n_gc_indexes`. `listMaMaMIASpecies()` returns one row per role-free species
+with `key`, `label`, `description`, `subgenomes`, `default_subgenome`,
+`n_contigs` and `n_gc_indexes`. `resolveSpeciesAssembly()` returns the derived
+`assembly`, the same `config` with that assembly registered, `unpaired` contigs
+and the selected subgenomes; pass `resolved$config` and `resolved$key` to
+`preflightBams()` and `analyzeBamInput()`.
 
 `runMaMaMIA()` is the only application entrypoint. The legacy directory app is
 still reachable through `input = "files"`/`"example"` until T7.5, but the BAM
@@ -1073,7 +1097,9 @@ built with `--build-arg BIOC_MIRROR=https://bioconductor.statistik.tu-dortmund.d
 (checksums still came from `uvr.lock`) and `--network=host`; the default build
 path is unchanged. The final image reports R 4.6.1, serves the configuration
 card with HTTP 200, and the bundled smoke script ran `Sq54` at resolution 1000
-(28,000 windows, 38 segments, 1 putative call) inside the container.
+inside the container. With the wave-8 inline assembly that run covered 28,000
+windows (38 segments, 1 putative call); the species-based example registry
+analyses the seven paired wheat A and rye contigs, 14,000 windows.
 
 ### 15.4 Registry growth and container lifetime
 
@@ -1087,7 +1113,81 @@ configuration. The deployment runbook therefore documents close/reopen after a
 registry change and recommends a directory mount for the config so atomic
 replacement is visible.
 
-The UI remains assembly-centric: one `selectInput("assembly")` over predefined
-donor/recipient assemblies, plus auto-detection from the BAM header. A true
-two-species selector needs a species/pair registry and a pairing rule, which is
-a plan amendment rather than a deployment change (T1.3/T6.1/D4).
+The UI is species-only: the registry lists role-free species, and the user
+chooses a recipient species and a donor species. The same species can fill
+either role. Contigs are paired by chromosome group within one subgenome per
+side; a species can declare `default_subgenome`, and the user can override it
+when a species has several subgenomes. Predefined `assemblies` remain available
+to the scripted API and for legacy registries; the app exposes no
+predefined-assembly selector. A registry with no species falls back to
+BAM-header auto-detection and shows a note instead of a selector.
+
+Registry growth still follows the process lifetime: a new species or index in
+the YAML is picked up by a new container, not by a container that is already
+serving sessions. The deployment runbook documents close/reopen after a
+registry change.
+
+---
+
+## 16. Species registry and pairing (plan amendment 2026-10-21)
+
+Species are role-free. `species:` declares a label, one or more gcrank
+indexes and its contigs; it does not declare a donor or a recipient. The
+application assigns the roles when the user picks a recipient species and a
+donor species, and `resolveSpeciesAssembly()` performs the same assignment for
+scripted runs.
+
+```yaml
+species:
+  triticum_aestivum_cs_t2t:
+    label: "Triticum aestivum CS T2T"
+    default_subgenome: A
+    gc_indexes:
+      - /srv/mamamia/gcidx/triticum-aestivum/index.gcrank
+    contigs:
+      - {id: CP155614.1, name: 1A, subgenome: A}
+      - {id: CP155613.1, name: 1B, subgenome: B}
+      # ...
+  secale_cereale:
+    label: "Secale cereale (rye)"
+    default_subgenome: R
+    gc_indexes:
+      - /srv/mamamia/gcidx/secale-cereale/index.gcrank
+    contigs:
+      - {id: OZ284382.1, name: 1R, subgenome: R}
+      # ...
+```
+
+Pairing rule:
+
+1. One subgenome is selected per side. The explicit `donor_subgenome` /
+   `recipient_subgenome` argument wins, then the species
+   `default_subgenome`, then the only subgenome; otherwise resolution fails
+   and asks for a choice.
+2. Within the selected subgenome, contigs are grouped by the optional `group`
+   field, or by the first number in `name` when `group` is absent. Group
+   values must be unique per subgenome.
+3. Each donor group is paired with the recipient contig in the same group.
+   Contigs without a group or without a counterpart are excluded and returned
+   in `unpaired`; at least one pair is required.
+4. Only the paired contigs enter the derived assembly. `gc_indexes` is the
+   union of the two species indexes, and the donor and recipient subgenome
+   label sets must be disjoint (the `RCA()` invariant).
+5. `pairs` may be supplied explicitly to override the rule; only the listed
+   contigs are then included.
+
+The derived assembly key includes both species and both subgenomes, for
+example `triticum_aestivum__A__secale_cereale__R`. `resolveSpeciesAssembly()`
+adds it to a copy of the configuration and returns `key`, `assembly`, `config`
+and `unpaired`. A species-only config is valid: `assemblies` may be omitted
+entirely, but there must be at least two species. Named assemblies that
+reference species (`recipient: wheat`, `donor: rye`) are optional presets and
+resolve through the same builder.
+
+The Shiny sidebar mirrors this: recipient/donor species selectors and
+subgenome selectors only where a species has more than one subgenome. A
+"Swap donor and recipient" button exchanges the two selections and keeps each
+species' subgenome choice. The predefined-assembly selector has been removed;
+when the registry also declares named assemblies, a checkbox enables
+BAM-header auto-detection instead. The selected pair invalidates any previous
+result, exactly like a change of BAM or resolution.

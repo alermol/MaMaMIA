@@ -41,7 +41,7 @@
     if (!is.list(config) || is.null(config$assemblies) ||
         length(config$assemblies) == 0L) {
         .analysis_error(
-            "`config` must be a validated MaMaMIA configuration or a YAML path"
+            "`config` must be a validated MaMaMIA configuration with at least one assembly; resolve a species pair first with resolveSpeciesAssembly()"
         )
     }
     if (is.null(config$defaults) || is.null(config$server)) {

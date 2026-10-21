@@ -11,7 +11,7 @@
 
 .bam_error_suggestions <- c(
     config = paste(
-        "Check MAMAMIA_CONFIG and the YAML assembly registry;",
+        "Check MAMAMIA_CONFIG and the YAML species/assembly registry;",
         "validate it with readMaMaMIAConfig()."
     ),
     BAM = paste(
@@ -19,8 +19,8 @@
         "re-upload it or pick another file."
     ),
     assembly = paste(
-        "Pick an assembly override that matches the BAM header, or use a BAM",
-        "that contains every configured target."
+        "Choose a species pair or assembly override that matches the BAM header,",
+        "or use a BAM that contains every configured target."
     ),
     index = paste(
         "The BAM directory may be read-only: upload the file instead,",
@@ -251,7 +251,8 @@ bam_launcher_state <- function(config = NULL) {
         if (is.character(config)) {
             readMaMaMIAConfig(config)
         } else if (is.list(config) && !is.null(config$defaults) &&
-            !is.null(config$server) && !is.null(config$assemblies)) {
+            !is.null(config$server) && !is.null(config$assemblies) &&
+            !is.null(config$species)) {
             config
         } else {
             validateMaMaMIAConfig(config)
@@ -280,22 +281,78 @@ bam_launcher_state <- function(config = NULL) {
 }
 
 #' @noRd
-bam_config_summary <- function(config) {
-    assemblies <- listMaMaMIAAssemblies(config)
-    labels <- if (nrow(assemblies) == 0L) {
-        "none"
-    } else {
-        paste(
-            sprintf("%s (%s)", assemblies$label, assemblies$key),
-            collapse = "; "
-        )
+bam_config_labels <- function(labels, max_items = 4L) {
+    if (length(labels) <= max_items) {
+        return(paste(labels, collapse = "; "))
     }
-    sprintf(
-        "%d assembl%s: %s",
-        nrow(assemblies),
-        if (nrow(assemblies) == 1L) "y" else "ies",
-        labels
+    paste(
+        c(
+            utils::head(labels, max_items),
+            sprintf("+%d more", length(labels) - max_items)
+        ),
+        collapse = "; "
     )
+}
+
+#' @noRd
+bam_config_summary <- function(config) {
+    species <- listMaMaMIASpecies(config)
+    if (nrow(species) > 0L) {
+        labels <- bam_config_labels(
+            sprintf("%s (%s)", species$label, species$key)
+        )
+        return(sprintf("%d species: %s", nrow(species), labels))
+    }
+
+    assemblies <- listMaMaMIAAssemblies(config)
+    if (nrow(assemblies) > 0L) {
+        labels <- bam_config_labels(
+            sprintf("%s (%s)", assemblies$label, assemblies$key)
+        )
+        return(sprintf(
+            "%d assembl%s, detected from the BAM header: %s",
+            nrow(assemblies),
+            if (nrow(assemblies) == 1L) "y" else "ies",
+            labels
+        ))
+    }
+    "No species or assemblies configured"
+}
+
+#' @noRd
+bam_species_choices <- function(config) {
+    species <- config$species
+    if (is.null(species) || length(species) == 0L) {
+        return(NULL)
+    }
+    keys <- names(species)
+    stats::setNames(
+        keys,
+        vapply(keys, function(key) {
+            sprintf("%s (%s)", species[[key]]$label, key)
+        }, character(1))
+    )
+}
+
+#' Resolve the subgenome used for a species selector
+#'
+#' Falls back to the species default (or its first subgenome) when the current
+#' input is missing or belongs to a previously selected species.
+#' @noRd
+bam_effective_subgenome <- function(species, requested) {
+    available <- unique(as.character(species$contigs$subgenome))
+    if (length(available) == 0L) {
+        return(NULL)
+    }
+    if (!is.null(requested) && length(requested) == 1L &&
+        !is.na(requested) && requested %in% available) {
+        return(as.character(requested))
+    }
+    if (!is.null(species$default_subgenome) &&
+        species$default_subgenome %in% available) {
+        return(species$default_subgenome)
+    }
+    available[[1L]]
 }
 
 ## Sidebar choices -----------------------------------------------------------
@@ -676,6 +733,10 @@ bam_preflight_failure <- function(e, paths, config, files = NULL) {
         table = NULL,
         staged = NULL,
         assembly = NULL,
+        assembly_config = NULL,
+        config = config,
+        key = NULL,
+        unpaired = NULL,
         error = bam_error_info(
             e,
             files = if (is.null(files)) paths else files
@@ -1296,17 +1357,9 @@ bam_launcher_ui <- function(state, bam_paths = NULL) {
     defaults <- config$defaults
     show_picker <- !is.null(config$server$bam_root) ||
         length(bam_paths) > 0L
-    assembly_keys <- names(config$assemblies)
-    assembly_labels <- vapply(
-        config$assemblies, function(x) as.character(x$label), character(1)
-    )
-    assembly_choices <- c(
-        "Auto-detect" = "",
-        stats::setNames(
-            assembly_keys,
-            sprintf("%s (%s)", assembly_labels, assembly_keys)
-        )
-    )
+    species_choices <- bam_species_choices(config)
+    species_keys <- names(config$species)
+    use_species <- length(species_keys) >= 2L
 
     bslib::page_sidebar(
         title = "MaMaMIA",
@@ -1338,10 +1391,56 @@ bam_launcher_ui <- function(state, bam_paths = NULL) {
                 selected = bam_default_resolution(defaults)
             ),
             shiny::uiOutput("reference_ui"),
-            shiny::selectInput(
-                "assembly", "Assembly",
-                choices = assembly_choices, selected = ""
-            ),
+            if (use_species) {
+                species_controls <- shiny::tagList(
+                    shiny::selectInput(
+                        "recipient_species", "Recipient species",
+                        choices = species_choices,
+                        selected = species_keys[[1L]]
+                    ),
+                    shiny::uiOutput("recipient_subgenome_ui"),
+                    shiny::selectInput(
+                        "donor_species", "Donor species",
+                        choices = species_choices,
+                        selected = species_keys[[2L]]
+                    ),
+                    shiny::uiOutput("donor_subgenome_ui"),
+                    shiny::actionButton(
+                        "swap_species", "Swap donor and recipient"
+                    ),
+                    shiny::p(
+                        class = "text-muted",
+                        paste(
+                            "Contigs are paired by chromosome group",
+                            "within the selected subgenomes; only paired",
+                            "contigs enter the analysis."
+                        )
+                    )
+                )
+                if (length(config$assemblies) > 0L) {
+                    shiny::tagList(
+                        shiny::checkboxInput(
+                            "auto_detect",
+                            "Detect the assembly from the BAM header",
+                            value = FALSE
+                        ),
+                        shiny::conditionalPanel(
+                            "!input.auto_detect", species_controls
+                        )
+                    )
+                } else {
+                    species_controls
+                }
+            } else {
+                shiny::p(
+                    class = "text-muted",
+                    paste(
+                        "This registry has no species section, so the",
+                        "assembly is detected from the BAM header. Add at",
+                        "least two species to choose a recipient and a donor."
+                    )
+                )
+            },
             shiny::tags$details(
                 shiny::tags$summary("Advanced"),
                 shiny::numericInput(
@@ -1468,46 +1567,283 @@ bam_launcher_server <- function(state, bam_paths = NULL, cache = NULL) {
             staging(paths)
         })
 
-        assembly_override <- shiny::reactive({
-            value <- input$assembly
-            if (is.null(value) || length(value) != 1L || is.na(value) ||
-                !nzchar(value)) {
-                NULL
-            } else {
-                as.character(value)
+        species_keys <- names(config$species)
+        species_available <- length(species_keys) >= 2L
+        default_recipient <- if (length(species_keys) > 0L) {
+            species_keys[[1L]]
+        } else {
+            NULL
+        }
+        default_donor <- if (length(species_keys) > 1L) {
+            species_keys[[2L]]
+        } else {
+            default_recipient
+        }
+
+        recipient_species <- shiny::reactive({
+            swapped <- pending_subgenomes()
+            if (!is.null(swapped)) {
+                return(swapped$recipient_species)
             }
+            value <- input$recipient_species
+            if (is.null(value) || length(value) != 1L || is.na(value) ||
+                !value %in% species_keys) {
+                return(default_recipient)
+            }
+            as.character(value)
+        })
+        donor_species <- shiny::reactive({
+            swapped <- pending_subgenomes()
+            if (!is.null(swapped)) {
+                return(swapped$donor_species)
+            }
+            value <- input$donor_species
+            if (is.null(value) || length(value) != 1L || is.na(value) ||
+                !value %in% species_keys) {
+                return(default_donor)
+            }
+            as.character(value)
+        })
+
+        auto_detect <- shiny::reactive({
+            if (!species_available) {
+                return(TRUE)
+            }
+            isTRUE(input$auto_detect)
+        })
+
+        ## Subgenome choices to apply after swapping the two species. They are
+        ## keyed by species so they never leak into an unrelated selection.
+        pending_subgenomes <- shiny::reactiveVal(NULL)
+        shiny::observeEvent(input$swap_species, {
+            if (!species_available) {
+                return()
+            }
+            recipient_key <- recipient_species()
+            donor_key <- donor_species()
+            recipient <- config$species[[recipient_key]]
+            donor <- config$species[[donor_key]]
+            if (is.null(recipient) || is.null(donor)) {
+                return()
+            }
+            pending_subgenomes(list(
+                recipient_species = donor_key,
+                recipient_subgenome = bam_effective_subgenome(
+                    donor, input$donor_subgenome
+                ),
+                donor_species = recipient_key,
+                donor_subgenome = bam_effective_subgenome(
+                    recipient, input$recipient_subgenome
+                )
+            ))
+            shiny::updateSelectInput(
+                session, "recipient_species", selected = donor_key
+            )
+            shiny::updateSelectInput(
+                session, "donor_species", selected = recipient_key
+            )
+        })
+
+        ## A manual species change ends the swapped state; the selects updated
+        ## by the swap itself match the pending values and keep it.
+        shiny::observeEvent(
+            list(input$recipient_species, input$donor_species),
+            {
+                swapped <- pending_subgenomes()
+                if (is.null(swapped)) {
+                    return()
+                }
+                if (!identical(input$recipient_species, swapped$recipient_species) ||
+                    !identical(input$donor_species, swapped$donor_species)) {
+                    pending_subgenomes(NULL)
+                }
+            },
+            ignoreInit = TRUE
+        )
+        shiny::observeEvent(input$recipient_subgenome, {
+            swapped <- pending_subgenomes()
+            if (!is.null(swapped) &&
+                identical(recipient_species(), swapped$recipient_species) &&
+                !identical(input$recipient_subgenome,
+                    swapped$recipient_subgenome)) {
+                pending_subgenomes(NULL)
+            }
+        }, ignoreInit = TRUE)
+        shiny::observeEvent(input$donor_subgenome, {
+            swapped <- pending_subgenomes()
+            if (!is.null(swapped) &&
+                identical(donor_species(), swapped$donor_species) &&
+                !identical(input$donor_subgenome, swapped$donor_subgenome)) {
+                pending_subgenomes(NULL)
+            }
+        }, ignoreInit = TRUE)
+
+        effective_subgenome <- function(role) {
+            swapped <- pending_subgenomes()
+            if (!is.null(swapped) &&
+                identical(
+                    swapped[[paste0(role, "_species")]],
+                    if (identical(role, "recipient")) {
+                        recipient_species()
+                    } else {
+                        donor_species()
+                    }
+                )) {
+                return(swapped[[paste0(role, "_subgenome")]])
+            }
+            input[[paste0(role, "_subgenome")]]
+        }
+
+        species_subgenome_ui <- function(species_key, input_id, label, role) {
+            species <- config$species[[species_key]]
+            if (is.null(species)) {
+                return(NULL)
+            }
+            available <- unique(as.character(species$contigs$subgenome))
+            if (length(available) <= 1L) {
+                return(NULL)
+            }
+            pending <- pending_subgenomes()
+            current <- NULL
+            if (!is.null(pending) &&
+                identical(pending[[paste0(role, "_species")]], species_key)) {
+                current <- pending[[paste0(role, "_subgenome")]]
+            }
+            if (is.null(current) || length(current) != 1L || is.na(current) ||
+                !current %in% available) {
+                current <- shiny::isolate(input[[input_id]])
+            }
+            if (is.null(current) || length(current) != 1L || is.na(current) ||
+                !current %in% available) {
+                current <- bam_effective_subgenome(species, NULL)
+            }
+            shiny::selectInput(
+                input_id, label, choices = available, selected = current
+            )
+        }
+        output$recipient_subgenome_ui <- shiny::renderUI({
+            species_subgenome_ui(
+                recipient_species(), "recipient_subgenome",
+                "Recipient subgenome", "recipient"
+            )
+        })
+        output$donor_subgenome_ui <- shiny::renderUI({
+            species_subgenome_ui(
+                donor_species(), "donor_subgenome", "Donor subgenome", "donor"
+            )
+        })
+
+        assembly_selection <- shiny::reactive({
+            if (auto_detect()) {
+                ## Header-based auto-detection. It is the only mode for a legacy
+                ## registry without species, and an explicit option when the
+                ## registry also declares predefined assemblies.
+                return(list(
+                    ok = TRUE, error = NULL, config = config, key = NULL,
+                    assembly = NULL, unpaired = NULL
+                ))
+            }
+
+            empty <- list(
+                ok = FALSE, error = NULL, config = config,
+                key = NULL, assembly = NULL, unpaired = NULL
+            )
+            recipient_key <- recipient_species()
+            donor_key <- donor_species()
+            if (is.null(recipient_key) || is.null(donor_key)) {
+                empty$error <- tryCatch(
+                    .config_error(
+                        "Choose a recipient species and a donor species"
+                    ),
+                    error = function(e) e
+                )
+                return(empty)
+            }
+            recipient <- config$species[[recipient_key]]
+            donor <- config$species[[donor_key]]
+            if (is.null(recipient) || is.null(donor)) {
+                empty$error <- tryCatch(
+                    .config_error(
+                        "Unknown species selection ('%s' recipient, '%s' donor)",
+                        recipient_key, donor_key
+                    ),
+                    error = function(e) e
+                )
+                return(empty)
+            }
+            resolved <- tryCatch(
+                resolveSpeciesAssembly(
+                    config,
+                    donor = donor_key,
+                    recipient = recipient_key,
+                    donor_subgenome = bam_effective_subgenome(
+                        donor, effective_subgenome("donor")
+                    ),
+                    recipient_subgenome = bam_effective_subgenome(
+                        recipient, effective_subgenome("recipient")
+                    )
+                ),
+                error = function(e) e
+            )
+            if (inherits(resolved, "condition")) {
+                empty$error <- resolved
+                return(empty)
+            }
+            list(
+                ok = TRUE, error = NULL, config = resolved$config,
+                key = resolved$key, assembly = resolved$assembly,
+                unpaired = resolved$unpaired
+            )
         })
 
         preflight_state <- shiny::reactive({
+            selection <- assembly_selection()
+            if (!isTRUE(selection$ok)) {
+                failure <- bam_preflight_failure(
+                    selection$error, character(), selection$config
+                )
+                failure$config <- selection$config
+                failure$key <- selection$key
+                failure$unpaired <- selection$unpaired
+                return(failure)
+            }
             paths <- selected_paths()
             if (length(paths) == 0L) {
                 return(list(
                     ok = FALSE, empty = TRUE, table = NULL, staged = NULL,
-                    assembly = NULL, error = NULL, candidates = NULL
+                    assembly = NULL, assembly_config = NULL,
+                    config = selection$config, key = selection$key,
+                    unpaired = selection$unpaired,
+                    error = NULL, candidates = NULL
                 ))
             }
             staged <- tryCatch(staged_bams(), error = function(e) e)
             if (inherits(staged, "condition")) {
                 return(bam_preflight_failure(
-                    staged, paths, config, files = paths
+                    staged, paths, selection$config, files = paths
                 ))
             }
             table <- tryCatch(
                 preflightBams(
-                    staged$path, config,
-                    assembly = assembly_override()
+                    staged$path, selection$config,
+                    assembly = selection$key
                 ),
                 error = function(e) e
             )
             if (inherits(table, "condition")) {
                 return(bam_preflight_failure(
-                    table, staged$path, config, files = staged$source
+                    table, staged$path, selection$config,
+                    files = staged$source
                 ))
             }
             table$source <- staged$source
+            key <- table$assembly[[1L]]
             list(
                 ok = TRUE, empty = FALSE, table = table,
-                staged = staged$path, assembly = table$assembly[[1L]],
+                staged = staged$path, assembly = key,
+                assembly_config = selection$config$assemblies[[key]],
+                config = selection$config, key = key,
+                unpaired = selection$unpaired,
                 error = NULL, candidates = NULL
             )
         })
@@ -1546,9 +1882,34 @@ bam_launcher_server <- function(state, bam_paths = NULL, cache = NULL) {
                     "No assembly was detected. See the problems card below."
                 ))
             }
-            assembly <- config$assemblies[[pf$assembly]]
-            bam_assembly_summary_ui(
-                assembly, config$defaults$allowed_windows
+            assembly <- pf$assembly_config
+            if (is.null(assembly)) {
+                return(shiny::p(
+                    class = "text-muted",
+                    "No assembly is available for the current selection."
+                ))
+            }
+            shiny::tagList(
+                bam_assembly_summary_ui(
+                    assembly, config$defaults$allowed_windows
+                ),
+                if (!is.null(pf$unpaired) && nrow(pf$unpaired) > 0L) {
+                    shiny::p(
+                        class = "text-muted",
+                        sprintf(
+                            "Not paired (%d): %s",
+                            nrow(pf$unpaired),
+                            paste(
+                                sprintf(
+                                    "%s %s (%s)",
+                                    pf$unpaired$role, pf$unpaired$contig,
+                                    pf$unpaired$reason
+                                ),
+                                collapse = "; "
+                            )
+                        )
+                    )
+                }
             )
         })
 
@@ -1642,7 +2003,7 @@ bam_launcher_server <- function(state, bam_paths = NULL, cache = NULL) {
             problem <- NULL
             if (ready) {
                 problem <- bam_resolution_problem(
-                    config$assemblies[[pf$assembly]],
+                    pf$assembly_config,
                     suppressWarnings(as.integer(input$resolution))
                 )
                 ready <- is.null(problem)
@@ -1669,7 +2030,11 @@ bam_launcher_server <- function(state, bam_paths = NULL, cache = NULL) {
             list(
                 paths = selected_paths(),
                 resolution = input$resolution,
-                assembly = input$assembly,
+                auto_detect = auto_detect(),
+                recipient_species = recipient_species(),
+                donor_species = donor_species(),
+                recipient_subgenome = effective_subgenome("recipient"),
+                donor_subgenome = effective_subgenome("donor"),
                 reference = input$reference_sample,
                 mapq = input$mapq,
                 exclude_flags = input$exclude_flags,
@@ -1725,7 +2090,7 @@ bam_launcher_server <- function(state, bam_paths = NULL, cache = NULL) {
             }
             samples <- unique(pf$table$sample)
             params <- tryCatch(
-                bam_run_parameters(input, config, samples),
+                bam_run_parameters(input, pf$config, samples),
                 error = function(e) e
             )
             if (inherits(params, "condition")) {
@@ -1741,7 +2106,7 @@ bam_launcher_server <- function(state, bam_paths = NULL, cache = NULL) {
             }
 
             resolution_problem <- bam_resolution_problem(
-                config$assemblies[[pf$assembly]], params$resolution
+                pf$assembly_config, params$resolution
             )
             if (!is.null(resolution_problem)) {
                 info <- bam_error_info(
@@ -1765,8 +2130,8 @@ bam_launcher_server <- function(state, bam_paths = NULL, cache = NULL) {
                     {
                         analyzeBamInput(
                             pf$staged,
-                            config,
-                            assembly = assembly_override(),
+                            pf$config,
+                            assembly = pf$assembly,
                             windows_per_chromosome = params$resolution,
                             reference_sample = params$reference_sample,
                             normalization = params$normalization,

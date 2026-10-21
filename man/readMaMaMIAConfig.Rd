@@ -11,10 +11,10 @@ readMaMaMIAConfig(path)
 }
 \value{
 A normalized \code{MaMaMIAConfig} list with \code{version}, \code{defaults},
-\code{assemblies} and \code{server} elements.
+\code{species}, \code{assemblies} and \code{server} elements.
 }
 \description{
 Reads the YAML configuration, resolves relative paths against the directory
-containing the YAML file, and validates every assembly, GC index, contig and
-pair before returning a normalized configuration list.
+containing the YAML file, and validates the species registry, assemblies, GC
+indexes, contigs and pairs before returning a normalized configuration list.
 }

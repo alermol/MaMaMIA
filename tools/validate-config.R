@@ -1,14 +1,15 @@
 #!/usr/bin/env Rscript
 
-## Validate a production MaMaMIA assembly registry before it is mounted into
-## the ShinyProxy container.
+## Validate a production MaMaMIA species/assembly registry before it is
+## mounted into the ShinyProxy container.
 ##
 ##   Rscript tools/validate-config.R /srv/mamamia/config/assemblies.yml
 ##
 ## This checks everything the application checks at startup (YAML shape,
-## gcrank format version and contig tables, target-contig coverage, pairs,
-## windows) and adds deployment checks: index payload files and the optional
-## server-side BAM root. Exit status 0 means the registry is usable.
+## species groups and defaults, gcrank format version and contig tables,
+## target-contig coverage, pairs, windows) and adds deployment checks: index
+## payload files and the optional server-side BAM root. Exit status 0 means the
+## registry is usable.
 
 usage <- "Usage: Rscript tools/validate-config.R <assemblies.yml>"
 
@@ -60,8 +61,58 @@ cat("Server limits: max_bams =", config$server$max_bams,
     "\n\n")
 
 summary_table <- MaMaMIA::listMaMaMIAAssemblies(config)
-print(summary_table, row.names = FALSE)
-cat("\n")
+if (nrow(summary_table) > 0L) {
+    print(summary_table, row.names = FALSE)
+    cat("\n")
+}
+
+species_table <- MaMaMIA::listMaMaMIASpecies(config)
+if (nrow(species_table) > 0L) {
+    cat("Species:\n")
+    print(species_table, row.names = FALSE)
+    cat("\n")
+}
+
+check_index <- function(index_path, context) {
+    required <- c(
+        "contigs.tsv", "manifest.json", "genome.bv", "genome.rb"
+    )
+    missing <- required[!file.exists(file.path(index_path, required))]
+    if (length(missing) > 0L) {
+        fail(
+            "%s: gc index %s is missing %s",
+            context, index_path, paste(missing, collapse = ", ")
+        )
+    }
+    size <- sum(file.info(file.path(index_path, required))$size)
+    cat(
+        "  gc index:", index_path,
+        sprintf("(%.1f MiB)", size / 1024^2), "\n"
+    )
+}
+
+for (key in names(config$species)) {
+    species <- config$species[[key]]
+    cat("Species:", key, "-", species$label, "\n")
+    cat(
+        "  contigs:", nrow(species$contigs),
+        "| subgenomes:",
+        paste(unique(species$contigs$subgenome), collapse = ", "),
+        "| default:",
+        if (is.null(species$default_subgenome)) {
+            "none"
+        } else {
+            species$default_subgenome
+        },
+        "\n"
+    )
+    for (index_path in species$gc_indexes) {
+        check_index(index_path, sprintf("species '%s'", key))
+    }
+    if (anyDuplicated(species$contigs$id) != 0L) {
+        fail("species '%s' configures a contig more than once", key)
+    }
+}
 
 for (key in names(config$assemblies)) {
     assembly <- config$assemblies[[key]]
@@ -79,21 +130,7 @@ for (key in names(config$assemblies)) {
     )
 
     for (index_path in assembly$gc_indexes) {
-        required <- c(
-            "contigs.tsv", "manifest.json", "genome.bv", "genome.rb"
-        )
-        missing <- required[!file.exists(file.path(index_path, required))]
-        if (length(missing) > 0L) {
-            fail(
-                "assembly '%s': gc index %s is missing %s",
-                key, index_path, paste(missing, collapse = ", ")
-            )
-        }
-        size <- sum(file.info(file.path(index_path, required))$size)
-        cat(
-            "  gc index:", index_path,
-            sprintf("(%.1f MiB)", size / 1024^2), "\n"
-        )
+        check_index(index_path, sprintf("assembly '%s'", key))
     }
 
     duplicate <- anyDuplicated(c(donor$id, recipient$id))

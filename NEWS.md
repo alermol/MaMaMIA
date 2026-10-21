@@ -2,6 +2,37 @@
 
 * Initial submission.
 
+## BAM-first workflow (species selection)
+
+* The registry now supports a role-free `species:` section. A species declares
+  only its label, gcrank indexes and contigs (with an optional `group` and
+  `default_subgenome`); it is not tied to the donor or recipient role. A
+  species-only config needs at least two species, and `assemblies` may be
+  omitted entirely.
+* Added `listMaMaMIASpecies()` and `resolveSpeciesAssembly()`. Resolution
+  selects one subgenome per side and pairs contigs by chromosome group (the
+  optional `group` field, otherwise the first number in `name`), includes only
+  the paired contigs, and returns the derived assembly with the configuration
+  that contains it. `unpaired` explains every excluded contig. An explicit
+  `pairs` argument remains available as an override.
+* Named assemblies may now reference species (`recipient: wheat`, `donor: rye`),
+  including optional `recipient_subgenome` / `donor_subgenome` and `pairs`.
+  Inline `contigs:` assemblies keep working in the scripted API; the app falls
+  back to BAM-header auto-detection when a registry has no species section.
+* The BAM-first sidebar is species-only: choose a recipient species and a
+  donor species (in either direction), with subgenome selectors only when a
+  species has several subgenomes. A "Swap donor and recipient" button exchanges
+  the two species and carries their subgenome choices with them. The resolved
+  pairs and any unpaired contigs are shown before Run; the previous result is
+  invalidated when the pair changes. The predefined-assembly selector has been
+  removed.
+* Auto-detection is available as a checkbox when the registry declares named
+  assemblies, without exposing an assembly list; a registry without species
+  falls back to BAM-header detection automatically.
+* `inst/config/assemblies.example.yml` now demonstrates the species registry,
+  `tools/validate-config.R` reports and checks species indexes, and the BAM API
+  note documents the pairing rule and the ShinyProxy registry-growth caveat.
+
 ## BAM-first workflow (wave 8)
 
 * The cohort card now offers a per-sample BEDPE export next to the combined

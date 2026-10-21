@@ -8,7 +8,8 @@ validateMaMaMIAConfig(config)
 }
 \arguments{
 \item{config}{A configuration list with \code{version}, optional \code{defaults},
-optional \code{server}, and \code{assemblies}.}
+optional \code{server}, optional \code{assemblies}, and optional \code{species}. At least
+one assembly or two species are required.}
 }
 \value{
 The validated, normalized configuration, invisibly.

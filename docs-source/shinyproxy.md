@@ -23,14 +23,23 @@ test. It is only needed for the final proxied deployment.
 
 The application reads a YAML registry (see
 `inst/config/assemblies.example.yml`) and never writes to it. For every
-assembly the registry must provide:
+species the registry must provide:
 
 - a `gcrank` index directory per genome with `contigs.tsv`, `manifest.json`,
   `genome.bv` and `genome.rb` (the `index.gcrank` directory produced by
   `tools/build-gcrank-index.sh`; the format version must be `0.1.0`);
-- donor and recipient contig ids that exist in those indexes;
-- pairs covering every donor contig that should be analysed;
-- a largest `allowed_windows` value no longer than the shortest target contig.
+- contig ids that exist in those indexes, with a `subgenome` and a chromosome
+  group (from `group` or the first number in `name`);
+- a `default_subgenome` for a polyploid species, so the application does not
+  have to ask which subgenome to use.
+
+A species has no donor/recipient role. The user chooses the recipient and the
+donor in the app. A registry may also declare named `assemblies:` presets;
+these may reference species (`recipient: wheat`, `donor: rye`) or use inline
+contigs. A species-only registry needs at least two species.
+
+- a largest `allowed_windows` value no longer than the shortest contig that
+  can enter an analysis;
 
 Validate the exact file that will be mounted:
 
@@ -55,7 +64,7 @@ The expected host layout is:
 
 ```
 /srv/mamamia/config/assemblies.yml
-/srv/mamamia/gcidx/<assembly>/index.gcrank/
+/srv/mamamia/gcidx/<species>/index.gcrank/
 /srv/mamamia/bams/<sample>/<name>.bam          # optional, read-only
 ```
 
@@ -92,28 +101,34 @@ Rscript tools/validate-config.R /srv/mamamia/config/assemblies.yml.new
 mv /srv/mamamia/config/assemblies.yml.new /srv/mamamia/config/assemblies.yml
 ```
 
-An assembly entry still describes one donor/recipient pair, including its
-contigs, subgenome labels, GC indexes and explicit contig pairs. Adding a
-species pair means adding an index (or two) and one `assemblies:` entry; the
-current UI selects the predefined assembly, not two independent species. See
-the next section for the reason and the options.
+An index added under `/srv/mamamia/gcidx` is visible immediately, but the
+`species:` entry that references it is part of the registry and therefore
+follows the process-lifetime rule above. Adding a species means adding an
+index (or reusing one already mounted) and one `species:` entry; no preset
+assembly and no contig pairs are required. After the restart, the new species
+appears in both the recipient and the donor selector.
 
-### 1.2 Species-pair selection and the current UI
+### 1.2 Species-pair selection
 
-The frozen plan models an analysis as an **assembly** (T1.3, T6.1, D4): a
-donor contig set, a recipient contig set, explicit donor-to-recipient pairs,
-and the GC indexes that contain those contigs. The app auto-detects the
-assembly from the BAM header and offers an override over the configured
-assemblies. It does not offer two independent "donor species" and "recipient
-species" selectors.
+The registry lists role-free species. The sidebar asks for a **recipient
+species** and a **donor species**; the same species can fill either role, so
+swapping the two selectors reverses the comparison. When a species has more
+than one subgenome, the sidebar also asks which subgenome to use (the registry
+`default_subgenome` is preselected).
 
-That is deliberate: pairing two arbitrary species needs a rule for which donor
-contig corresponds to which recipient contig, and which subgenome labels to
-use. In the wheat/rye case the seven rye chromosomes are paired explicitly with
-1A, 2A, ..., 7A. Automatically pairing by name or order would be a scientific
-decision, not a deployment detail. Adding a two-species selector therefore
-requires a plan amendment and a species/pair registry; it is not solved by
-mounting more indexes.
+Contigs are paired by chromosome group within the selected subgenomes. The
+group is the optional `group` field or the first number in `name`, so rye `1R`
+pairs with wheat `1A`, `2R` with `2A`, and so on. Only paired contigs enter the
+analysis; the card shows which contigs were excluded and why. An explicit
+`pairs:` mapping remains available in a named preset for cases where the group
+rule is not the intended comparison.
+
+The sidebar has no predefined-assembly selector. A "Swap donor and recipient"
+button reverses the comparison without reselecting the species, and keeps each
+species' subgenome choice. When the registry also declares named assemblies, a
+checkbox enables BAM-header auto-detection; a registry with no `species:`
+section falls back to auto-detection automatically. The resolution, upload
+limits, resource limits and registry-growth caveats are unchanged.
 
 ## 2. Build the image
 
@@ -164,12 +179,14 @@ docker run --rm -p 3838:3838 \
   mamamia:0.99.0
 ```
 
-Open `http://127.0.0.1:3838/`, confirm that the configuration summary shows the
-assembly, select a server-side BAM (for example
-`Sq54/cs_t2t_se_cereale.bam`), wait for preflight, choose resolution 1000 and
-run. A successful run shows the cohort summary and the explorer plot. Stop the
-container with Ctrl-C; the session directory and staged indexes are removed on
-session end.
+Open `http://127.0.0.1:3838/`, confirm that the configuration summary shows
+the two species, choose `Triticum aestivum CS T2T` as the recipient and
+`Secale cereale` as the donor (or the reverse), select a server-side BAM (for
+example `Sq54/cs_t2t_se_cereale.bam`), wait for preflight, choose resolution
+1000 and run. The detected pair lists seven wheat A contigs and seven rye
+contigs. A successful run shows the cohort summary and the explorer plot. Stop
+the container with Ctrl-C; the session directory and staged indexes are removed
+on session end.
 
 To check the same pipeline without the browser, run the bundled smoke script in
 a one-off container (it stages a symlink into `/tmp` exactly as the app does):
@@ -183,8 +200,11 @@ docker run --rm \
   mamamia:0.99.0 uvr run /app/deployment/smoke-test.R
 ```
 
-Expected output on `Sq54` at resolution 1000: 28,000 windows, a non-zero
-segment count, and `putative:` calls. The script prints every pipeline stage
+The script resolves the first two species in the registry. Override the pair
+with `MAMAMIA_SMOKE_RECIPIENT` and `MAMAMIA_SMOKE_DONOR` when the registry order
+is not the intended comparison. Expected output on `Sq54` at resolution 1000
+with the example pair: 14,000 windows (7 recipient + 7 donor contigs), a
+non-zero segment count, and `putative:` calls. The script prints every pipeline stage
 and fails if the result is not a `BamAnalysisResult` with at least one segment.
 
 Check the image without starting the app:

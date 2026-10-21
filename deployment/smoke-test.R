@@ -1,5 +1,24 @@
 config <- MaMaMIA::readMaMaMIAConfig(Sys.getenv("MAMAMIA_CONFIG"))
 
+## Species-first registries have no predefined assembly: resolve the first two
+## species, or the pair named by MAMAMIA_SMOKE_RECIPIENT/MAMAMIA_SMOKE_DONOR.
+analyze_config <- config
+assembly_key <- NULL
+if (length(config$species) >= 2L) {
+    recipient_key <- Sys.getenv(
+        "MAMAMIA_SMOKE_RECIPIENT", unset = names(config$species)[[1L]]
+    )
+    donor_key <- Sys.getenv(
+        "MAMAMIA_SMOKE_DONOR", unset = names(config$species)[[2L]]
+    )
+    resolved <- MaMaMIA::resolveSpeciesAssembly(
+        config, donor = donor_key, recipient = recipient_key
+    )
+    analyze_config <- resolved$config
+    assembly_key <- resolved$key
+    cat("species pair:", assembly_key, "\n")
+}
+
 # The production BAM root is read-only. Stage a symlink in session temp so
 # htslib can write the CSI index next to the link, exactly as the app does.
 source_bam <- Sys.getenv(
@@ -16,7 +35,8 @@ if (!file.symlink(source_bam, staged_bam)) {
 
 result <- MaMaMIA::analyzeBamInput(
     staged_bam,
-    config,
+    analyze_config,
+    assembly = assembly_key,
     windows_per_chromosome = 1000L,
     normalization = "none",
     max_fit_windows = 5000L,

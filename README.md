@@ -67,11 +67,17 @@ R CMD INSTALL .
 Rscript -e 'MaMaMIA::runMaMaMIA(config = "assemblies.yml", input = "bam")'
 ```
 
-`assemblies.yml` declares the GC indexes, donor/recipient contigs and pairs;
-see `inst/config/assemblies.example.yml`. The registry is validated before any
-BAM work starts (`?validateMaMaMIAConfig`). Uploaded BAMs are staged into a
-private session directory and removed on session end; server-side BAMs under
-`server.bam_root` are only read.
+`assemblies.yml` declares role-free species (GC indexes and contigs) and,
+optionally, named assemblies for scripted runs; see
+`inst/config/assemblies.example.yml`. In the app the user chooses a recipient
+species and a donor species, and contigs are paired by chromosome group. The
+same species can be used on either side; the app has no predefined-assembly
+selector. A "Swap donor and recipient" button exchanges the two roles, and
+auto-detection is available as a checkbox when named assemblies are configured.
+The registry is validated before any BAM work starts
+(`?validateMaMaMIAConfig`). Uploaded BAMs are staged into a private session
+directory and removed on session end; server-side BAMs under `server.bam_root`
+are only read.
 
 The app accepts one or more BAMs, shows a cohort summary, keeps table
 selections per sample, and exports a per-sample BEDPE or a combined BEDPE with
@@ -103,6 +109,20 @@ isa <- segments(rca,
 )
 exploreIntrogressions(isa)
 writeToBedpe(isa, "introgressions.bedpe")
+```
+
+For the BAM workflow, resolve the two species into an assembly first:
+
+```r
+config <- readMaMaMIAConfig("assemblies.yml")
+pair <- resolveSpeciesAssembly(
+  config, donor = "secale_cereale", recipient = "triticum_aestivum"
+)
+result <- analyzeBamInput(
+  c("sample1.bam", "sample2.bam"), pair$config,
+  assembly = pair$key, windows_per_chromosome = 1000L
+)
+writeCohortToBedpe(result, "cohort.bedpe")
 ```
 
 ## Resource use

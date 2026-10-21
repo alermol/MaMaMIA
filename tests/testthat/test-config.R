@@ -71,6 +71,7 @@ write_config_fixture <- function(dir,
                                  assemblies,
                                  defaults = list(),
                                  server = list(),
+                                 species = NULL,
                                  version = 1L) {
     dir.create(dir, recursive = TRUE, showWarnings = FALSE)
     config <- list()
@@ -83,7 +84,12 @@ write_config_fixture <- function(dir,
     if (length(server) > 0L) {
         config$server <- server
     }
-    config$assemblies <- assemblies
+    if (!is.null(species)) {
+        config$species <- species
+    }
+    if (!is.null(assemblies)) {
+        config$assemblies <- assemblies
+    }
     path <- file.path(dir, "assemblies.yml")
     yaml::write_yaml(config, path)
     path
@@ -103,6 +109,21 @@ tiny_assembly <- function(indexes = "idx",
     )
 }
 
+species_fixture <- function(gc_indexes, contigs, label = "Test species",
+                            description = "Synthetic species",
+                            default_subgenome = NULL) {
+    out <- list(
+        label = label,
+        description = description,
+        gc_indexes = as.list(gc_indexes),
+        contigs = contigs
+    )
+    if (!is.null(default_subgenome)) {
+        out$default_subgenome <- default_subgenome
+    }
+    out
+}
+
 test_that("readMaMaMIAConfig() normalizes a valid registry", {
     root <- tempfile("mamamia-config-valid-")
     write_index_fixture(file.path(root, "idx"), c("d1", "r1"), c(20000, 20000))
@@ -116,7 +137,9 @@ test_that("readMaMaMIAConfig() normalizes a valid registry", {
     config <- readMaMaMIAConfig(path)
 
     expect_type(config, "list")
-    expect_named(config, c("version", "defaults", "assemblies", "server"))
+    expect_named(config, c(
+        "version", "defaults", "species", "assemblies", "server"
+    ))
     expect_identical(config$version, 1L)
     expect_identical(config$defaults$windows_per_chromosome, 100L)
     expect_identical(config$defaults$allowed_windows, c(100L, 1000L, 10000L))
@@ -474,7 +497,7 @@ test_that("config version and top-level fields are required", {
             file.path(root, "no-assemblies"),
             assemblies = list()
         )),
-        "`assemblies` must contain at least one assembly"
+        "at least one `species` or one `assemblies`"
     )
 })
 
@@ -723,9 +746,353 @@ test_that("duplicate YAML keys fail during parsing", {
     expect_error(readMaMaMIAConfig(path), "Duplicate map key")
 })
 
+test_that("explicit chromosome groups override the name", {
+    root <- tempfile("mamamia-config-species-group-")
+    index <- file.path(root, "idx")
+    write_index_fixture(index, c("r1", "d1"), rep(20000, 2))
+    recipient <- species_fixture(
+        index,
+        list(list(id = "r1", name = "chrOne", subgenome = "A", group = "1")),
+        label = "Recipient"
+    )
+    donor <- species_fixture(
+        index,
+        list(list(id = "d1", name = "scaffoldA", subgenome = "R", group = "1")),
+        label = "Donor"
+    )
+    path <- write_config_fixture(
+        root,
+        assemblies = NULL,
+        species = list(recipient = recipient, donor = donor)
+    )
+    config <- readMaMaMIAConfig(path)
+    expect_identical(
+        config$species$donor$contigs$group, "1"
+    )
+    resolved <- resolveSpeciesAssembly(config, "donor", "recipient")
+    expect_identical(resolved$assembly$pairs, c(d1 = "r1"))
+})
+
 test_that("a missing config file fails clearly", {
     expect_error(
         readMaMaMIAConfig(file.path(tempfile(), "missing.yml")),
         "does not exist"
+    )
+})
+
+test_that("a species-only registry resolves a donor/recipient pair", {
+    root <- tempfile("mamamia-config-species-")
+    write_index_fixture(
+        file.path(root, "idx"),
+        c("w1", "w2", "b1", "r1", "r2"),
+        rep(20000, 5)
+    )
+    wheat <- species_fixture(
+        "idx",
+        list(
+            contig_entry("w1", "1A", "A"),
+            contig_entry("w2", "2A", "A"),
+            contig_entry("b1", "1B", "B")
+        ),
+        label = "Wheat",
+        default_subgenome = "A"
+    )
+    rye <- species_fixture(
+        "idx",
+        list(
+            contig_entry("r1", "1R", "R"),
+            contig_entry("r2", "2R", "R")
+        ),
+        label = "Rye",
+        default_subgenome = "R"
+    )
+    path <- write_config_fixture(
+        root, assemblies = NULL, species = list(wheat = wheat, rye = rye)
+    )
+
+    config <- readMaMaMIAConfig(path)
+    expect_identical(names(config$assemblies), character(0))
+    expect_named(
+        config$species$wheat,
+        c(
+            "key", "label", "description", "default_subgenome",
+            "gc_indexes", "contigs"
+        )
+    )
+    expect_named(
+        config$species$wheat$contigs,
+        c("id", "name", "subgenome", "group", "length", "index_path")
+    )
+    expect_identical(config$species$wheat$contigs$group, c("1", "2", "1"))
+
+    table <- listMaMaMIASpecies(config)
+    expect_named(table, c(
+        "key", "label", "description", "subgenomes",
+        "default_subgenome", "n_contigs", "n_gc_indexes"
+    ))
+    expect_identical(table$key, c("wheat", "rye"))
+    expect_identical(table$subgenomes, c("A, B", "R"))
+    expect_identical(table$default_subgenome, c("A", "R"))
+    expect_identical(table$n_contigs, c(3L, 2L))
+
+    resolved <- resolveSpeciesAssembly(config, "rye", "wheat")
+    expect_identical(resolved$key, "wheat__A__rye__R")
+    expect_identical(resolved$assembly$pairs, c(r1 = "w1", r2 = "w2"))
+    expect_identical(resolved$assembly$contigs$donor$id, c("r1", "r2"))
+    expect_identical(resolved$assembly$contigs$recipient$id, c("w1", "w2"))
+    expect_identical(nrow(resolved$unpaired), 0L)
+    expect_identical(
+        names(resolved$config$assemblies), "wheat__A__rye__R"
+    )
+})
+
+test_that("species assemblies can be presets or use explicit pairs", {
+    root <- tempfile("mamamia-config-species-assembly-")
+    write_index_fixture(
+        file.path(root, "idx"),
+        c("w1", "w2", "r1", "r2"),
+        rep(20000, 4)
+    )
+    wheat <- species_fixture(
+        "idx",
+        list(
+            contig_entry("w1", "1A", "A"),
+            contig_entry("w2", "2A", "A")
+        ),
+        label = "Wheat",
+        default_subgenome = "A"
+    )
+    rye <- species_fixture(
+        "idx",
+        list(
+            contig_entry("r1", "1R", "R"),
+            contig_entry("r2", "2R", "R")
+        ),
+        label = "Rye",
+        default_subgenome = "R"
+    )
+    path <- write_config_fixture(
+        root,
+        species = list(wheat = wheat, rye = rye),
+        assemblies = list(
+            derived = list(
+                label = "Derived wheat + rye",
+                recipient = "wheat",
+                donor = "rye"
+            ),
+            explicit = list(
+                label = "Explicit wheat + rye",
+                recipient = "wheat",
+                donor = "rye",
+                pairs = list(r1 = "w2")
+            )
+        )
+    )
+
+    config <- readMaMaMIAConfig(path)
+    expect_identical(
+        config$assemblies$derived$pairs, c(r1 = "w1", r2 = "w2")
+    )
+    expect_identical(
+        config$assemblies$explicit$pairs, c(r1 = "w2")
+    )
+    expect_identical(config$assemblies$explicit$contigs$donor$id, "r1")
+    expect_identical(
+        listMaMaMIAAssemblies(config)$n_pairs, c(2L, 1L)
+    )
+})
+
+test_that("polyploid species need a subgenome choice or a default", {
+    root <- tempfile("mamamia-config-species-subgenome-")
+    index <- file.path(root, "idx")
+    write_index_fixture(
+        index,
+        c("w1", "w2", "r1"),
+        rep(20000, 3)
+    )
+    wheat <- species_fixture(
+        index,
+        list(
+            contig_entry("w1", "1A", "A"),
+            contig_entry("w2", "1B", "B")
+        ),
+        label = "Wheat"
+    )
+    rye <- species_fixture(
+        index,
+        list(contig_entry("r1", "1R", "R")),
+        label = "Rye"
+    )
+    path <- write_config_fixture(
+        root, assemblies = NULL, species = list(wheat = wheat, rye = rye)
+    )
+    config <- readMaMaMIAConfig(path)
+
+    expect_error(
+        resolveSpeciesAssembly(config, "rye", "wheat"),
+        "several subgenomes"
+    )
+    a <- resolveSpeciesAssembly(
+        config, "rye", "wheat", recipient_subgenome = "A"
+    )
+    b <- resolveSpeciesAssembly(
+        config, "rye", "wheat", recipient_subgenome = "B"
+    )
+    expect_identical(a$assembly$pairs, c(r1 = "w1"))
+    expect_identical(b$assembly$pairs, c(r1 = "w2"))
+    expect_identical(
+        a$assembly$contigs$recipient$subgenome, "A"
+    )
+
+    wheat$default_subgenome <- "B"
+    path <- write_config_fixture(
+        file.path(root, "default"),
+        assemblies = NULL,
+        species = list(wheat = wheat, rye = rye)
+    )
+    config <- readMaMaMIAConfig(path)
+    expect_identical(
+        resolveSpeciesAssembly(config, "rye", "wheat")$assembly$contigs$recipient$id,
+        "w2"
+    )
+})
+
+test_that("unpaired species contigs are reported and never analysed", {
+    root <- tempfile("mamamia-config-species-unpaired-")
+    write_index_fixture(
+        file.path(root, "idx"),
+        c("w1", "r1", "r2", "r3"),
+        rep(20000, 4)
+    )
+    wheat <- species_fixture(
+        "idx", list(contig_entry("w1", "1A", "A")), label = "Wheat"
+    )
+    rye <- species_fixture(
+        "idx",
+        list(
+            contig_entry("r1", "1R", "R"),
+            contig_entry("r2", "2R", "R"),
+            contig_entry("r3", "unplaced", "R")
+        ),
+        label = "Rye"
+    )
+    path <- write_config_fixture(
+        root, assemblies = NULL, species = list(wheat = wheat, rye = rye)
+    )
+    resolved <- resolveSpeciesAssembly(readMaMaMIAConfig(path), "rye", "wheat")
+
+    expect_identical(resolved$assembly$pairs, c(r1 = "w1"))
+    expect_identical(resolved$assembly$contigs$donor$id, "r1")
+    expect_true(all(c("r2", "r3") %in% resolved$unpaired$contig))
+    expect_true(all(resolved$unpaired$role == "donor"))
+})
+
+test_that("incompatible species pairs fail with a clear message", {
+    root <- tempfile("mamamia-config-species-invalid-")
+    write_index_fixture(
+        file.path(root, "idx"),
+        c("w1", "d1"),
+        rep(20000, 2)
+    )
+    wheat <- species_fixture(
+        "idx", list(contig_entry("w1", "1A", "A")), label = "Wheat"
+    )
+    same_label <- species_fixture(
+        "idx", list(contig_entry("d1", "1A", "A")), label = "Other"
+    )
+    path <- write_config_fixture(
+        root,
+        assemblies = NULL,
+        species = list(wheat = wheat, other = same_label)
+    )
+    config <- readMaMaMIAConfig(path)
+    expect_error(
+        resolveSpeciesAssembly(config, "other", "wheat"),
+        "subgenome labels must be disjoint"
+    )
+    expect_error(
+        resolveSpeciesAssembly(config, "wheat", "wheat"),
+        "two different species"
+    )
+    expect_error(
+        resolveSpeciesAssembly(config, "missing", "wheat"),
+        "Unknown donor species"
+    )
+})
+
+test_that("species configs reject structural mistakes", {
+    root <- tempfile("mamamia-config-species-errors-")
+    index <- file.path(root, "idx")
+    write_index_fixture(
+        index,
+        c("w1", "r1"),
+        rep(20000, 2)
+    )
+    wheat <- species_fixture(
+        index, list(contig_entry("w1", "1A", "A")), label = "Wheat"
+    )
+
+    expect_error(
+        readMaMaMIAConfig(write_config_fixture(
+            file.path(root, "one-species"),
+            assemblies = NULL, species = list(wheat = wheat)
+        )),
+        "at least two"
+    )
+    expect_error(
+        readMaMaMIAConfig(write_config_fixture(
+            file.path(root, "unknown-reference"),
+            species = list(wheat = wheat),
+            assemblies = list(
+                broken = list(
+                    label = "Broken", recipient = "wheat", donor = "rye"
+                )
+            )
+        )),
+        "unknown donor species"
+    )
+    expect_error(
+        readMaMaMIAConfig(write_config_fixture(
+            file.path(root, "default"),
+            assemblies = NULL,
+            species = list(
+                wheat = species_fixture(
+                    index, list(contig_entry("w1", "1A", "A")),
+                    default_subgenome = "B"
+                ),
+                rye = wheat
+            )
+        )),
+        "default_subgenome"
+    )
+    expect_error(
+        readMaMaMIAConfig(write_config_fixture(
+            file.path(root, "duplicate-group"),
+            assemblies = NULL,
+            species = list(
+                wheat = species_fixture(
+                    index,
+                    list(
+                        contig_entry("w1", "1A", "A"),
+                        contig_entry("r1", "1A", "A")
+                    )
+                ),
+                rye = wheat
+            )
+        )),
+        "more than one contig with chromosome group"
+    )
+    expect_error(
+        readMaMaMIAConfig(write_config_fixture(
+            file.path(root, "missing-contig"),
+            assemblies = NULL,
+            species = list(
+                wheat = species_fixture(
+                    index, list(contig_entry("nope", "1A", "A"))
+                ),
+                rye = wheat
+            )
+        )),
+        "not found in any configured gc_index"
     )
 })
