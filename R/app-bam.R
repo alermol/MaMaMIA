@@ -1228,6 +1228,40 @@ bam_selection_update <- function(map, sample, rows) {
     map
 }
 
+## A per-sample export uses the rows selected for that sample. When nothing
+## is selected yet, `NULL` asks writeCohortToBedpe() for the sample's putative
+## calls, which is more useful than an empty header.
+#' @noRd
+bam_sample_selection <- function(map, sample) {
+    if (is.null(map) || !is.list(map) || is.null(sample) ||
+        length(sample) != 1L || is.na(sample)) {
+        return(NULL)
+    }
+    rows <- map[[as.character(sample)]]
+    rows <- rows[!is.na(rows)]
+    if (length(rows) == 0L) {
+        return(NULL)
+    }
+    stats::setNames(
+        list(sort(unique(as.integer(rows)))),
+        as.character(sample)
+    )
+}
+
+#' @noRd
+bam_bedpe_filename <- function(sample) {
+    if (is.null(sample) || length(sample) != 1L || is.na(sample) ||
+        !nzchar(sample)) {
+        return("mamamia-selected-introgressions.bedpe")
+    }
+    safe <- gsub("[^A-Za-z0-9._-]+", "-", sample)
+    safe <- gsub("^[.-]+|[.-]+$", "", safe)
+    if (!nzchar(safe)) {
+        safe <- "sample"
+    }
+    paste0("mamamia-", safe, "-selected-introgressions.bedpe")
+}
+
 ## UI ------------------------------------------------------------------------
 
 #' @noRd
@@ -1806,9 +1840,25 @@ bam_launcher_server <- function(state, bam_paths = NULL, cache = NULL) {
                         shiny::tags$ul(lapply(warnings, shiny::tags$li))
                     )
                 },
-                shiny::downloadButton(
-                    "download_cohort",
-                    "Download selected BEDPE (all samples)"
+                shiny::div(
+                    class = "d-flex flex-wrap gap-2",
+                    shiny::downloadButton(
+                        "download_sample",
+                        "Download BEDPE (current sample)"
+                    ),
+                    shiny::downloadButton(
+                        "download_cohort",
+                        "Download selected BEDPE (all samples)"
+                    )
+                ),
+                shiny::p(
+                    class = "text-muted small",
+                    paste(
+                        "The per-sample export uses the rows selected for the",
+                        "current sample, or all putative calls when none are",
+                        "selected. The cohort export includes only selected",
+                        "rows and adds a `sample` column."
+                    )
                 )
             )
         })
@@ -1825,6 +1875,27 @@ bam_launcher_server <- function(state, bam_paths = NULL, cache = NULL) {
         },
         striped = TRUE, bordered = TRUE, spacing = "xs",
         rownames = FALSE, digits = 0
+        )
+
+        output$download_sample <- shiny::downloadHandler(
+            filename = function() {
+                bam_bedpe_filename(result_sample())
+            },
+            content = function(file) {
+                res <- result()
+                sample <- result_sample()
+                if (is.null(res) || is.null(sample)) {
+                    stop(
+                        "Run the analysis before downloading",
+                        call. = FALSE
+                    )
+                }
+                writeCohortToBedpe(
+                    res, file,
+                    samples = sample,
+                    selected = bam_sample_selection(selection_map(), sample)
+                )
+            }
         )
 
         output$download_cohort <- shiny::downloadHandler(

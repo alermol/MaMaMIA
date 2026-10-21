@@ -1,0 +1,48 @@
+# gcrank indexes validated for the MaMaMIA deployment.
+#
+# Format version is 0.1.0 for every index. `source.sha256` in manifest.json is
+# the digest of the uncompressed FASTA stream read by gcrank-build; the `.sha256`
+# sidecar next to the source FASTA is the digest of the gzip file. The hashes
+# below are SHA-256 of the on-disk index files (what the application opens).
+#
+# These are the indexes under test_data/gcidx on the validation host. The
+# production registry mounts the same directories under /srv/mamamia/gcidx.
+
+## triticum-aestivum (GCA_040256815.2 ASM4025681v2, 21 contigs, 14,509,208,007 bp)
+## source gzip:        1e60462ebb8122bdb1c5931ad92ab8aefe4f40ab09c19516288c237ee7a7dc87
+## source uncompressed: 94fb521908f72c18de915c28cc2af59e7cd081932e92d53e9cb4795f929542e3
+## genome.bv 1813651456 bytes
+7011b5ec33b4d92cfc4df433383e26f56bdf4fbbdc795139abe39124ae48d1da  contigs.tsv
+f627dc939ce4be872d7802637c9a1836d346f9ef0f09d2ef5c47a55f8c61c545  contigs.tsv.crc32
+cbe5b1bdcd865f1f0d751f03494ca1d6f2c775fd72243aa7e96c880e567910b3  genome.bv
+3616295bfef761ab3ee31dd41f70b49490e314a43757e27bfca1d9ab86d28b0a  genome.bv.crc32
+## genome.rb 85014908 bytes
+cab71f6e1d911fb112a0009f103dcdf6195e7ba5cae5d2af043866421f300a79  genome.rb
+db349623e6f4e6930fb83b0b807033a6a28f1145d6a4261db09eed735ac87a78  genome.rb.crc32
+d50f10e1e7ac0337f8214997a1541993b819851d3f3e34e5518276f5b7fdfcd5  manifest.json
+
+## secale-cereale (GCA_965641915.1 Lo7, 242 contigs, 6,702,647,067 bp)
+## source gzip:        de8f987ef4e5fb11caac8a952df688086a7605729417e080fadadfb58df91e82
+## source uncompressed: 095fb763fcefbf4bb7eb9414c76d21b6145c8d0233b6030fe2622072258e3e87
+## genome.bv 837831168 bytes
+da4f78cc9bc382448dc9815d1c8a85743044805af164e4221cedd3ae5358715d  contigs.tsv
+8ac9f66a363102b652582877f0d599cc3b6cf8bf6640702cbf4c8e5e82d82235  contigs.tsv.crc32
+8560a8cd77c178d0182b1525cf95b5fd16f939bfee9e95605ae8fda980e741b8  genome.bv
+9bbf11d839e1625807d6f99121463a5e3ae0346c90bf452760ecf66da7ac64a6  genome.bv.crc32
+## genome.rb 39273338 bytes
+4a9e5fc71732994a8d59d2cfae40ba1ef74eb01a971b6b19efa0698855177cb2  genome.rb
+4a0f481bfae712e60264e9b31fe37e8f84e539e00aa21e26807fa7c6d3ebdbc0  genome.rb.crc32
+6f0d94b24c0dad07acf6df92482f83bc1fa446243a2ea470cb499026fd293e84  manifest.json
+
+## triticum-timopheevii (GCA_963921465.1 WRC, 1,672 contigs, 9,351,419,471 bp)
+## source gzip:        b7549e96d24b42f3e64aba3d7e8618eee7b6108318c3e75080e038c8b7c35c69
+## source uncompressed: 54faa0ab835518de8ee91b2e88f51cacb298a5789e7b10d6102dfe6b4bc5c6f4
+## genome.bv 1168927744 bytes
+cad1b77e6102160d75c2e1f15836f2d34029227f283ba51e2637d7d1613884dc  contigs.tsv
+769e51f5baa9f0d776e0483274981720f9ecbc663bfc34187b326d15e6ba27f0  contigs.tsv.crc32
+4c9c3bd2281af9ee5792d749a79bc408da3cd61a0b9abbcafe44e644b1da8d05  genome.bv
+b01058d34e27aa1f7d97f28c12ae25cc8422d30635792e1fadcdb47c53020438  genome.bv.crc32
+## genome.rb 54793490 bytes
+fa5e9e01218ce16fc597197af8c287b56352b90d47d5423fe5941d50d1b5e8ac  genome.rb
+9de7f6aa64b760e4a6dd4776ae84942163ad687ce46fb0c5fa8afe3f07a63f65  genome.rb.crc32
+0fc33e6598b694ed8d95a2d0ad2da4476ecf8823a32ef6179b66c1990f1b159f  manifest.json

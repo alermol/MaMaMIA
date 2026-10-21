@@ -13,6 +13,8 @@
 ^gcrank$
 ^bench-
 ^docs-source$
+^deployment$
+^\.dockerignore$
 ^tools$
 ^AGENTIC_PLAN\.md$
 ^набросок-плана\.md$

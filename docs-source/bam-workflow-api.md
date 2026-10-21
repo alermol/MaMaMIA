@@ -1010,3 +1010,84 @@ correction failure stage, and the existing end-to-end, cohort, limit and
 cleanup tests. `tests/testthat/test-normalization.R` covers all-zero median and
 reference windows; `tests/testthat/test-correction.R` covers the fit-window cap
 and its errors.
+
+---
+
+## 15. Wave 8 implementation notes
+
+### 15.1 Per-sample BEDPE export
+
+The cohort card now has two download buttons. `download_sample` exports the
+current `result_sample()` through
+`writeCohortToBedpe(result, file, samples = sample, selected = ...)` (or all of
+that sample's putative calls when no rows are selected). The file name is
+`mamamia-<sample>-selected-introgressions.bedpe`, sanitized with the same rule
+as the explorer export. `download_cohort` remains selected-only and combines
+every sample with selected rows.
+
+`bam_sample_selection()` is the single place that converts the selection map
+into the named list expected by `writeCohortToBedpe()`; it drops `NA`, sorts
+and de-duplicates rows, and returns `NULL` (all putative calls) for an empty
+selection. `bam_bedpe_filename()` sanitizes sample names for both handlers.
+The selection map itself is unchanged: switching samples keeps the rows chosen
+for every sample, and a new result resets the map.
+
+### 15.2 Deployment artifacts
+
+`deployment/` contains the production image and proxy configuration:
+
+| File | Notes |
+|---|---|
+| `Dockerfile` | Debian trixie, GCC 14, uvr 0.4.7 pinned by SHA-256, R 4.6.1 installed by uvr, `uvr sync --frozen --unattended`, non-root `mamamia` user, `OMP_NUM_THREADS=1` |
+| `start.R` | validates `MAMAMIA_CONFIG` and calls `runMaMaMIA(host = "0.0.0.0", port = 3838, config = ...)` with a 5 GiB request limit |
+| `shinyproxy.yml` | `container-cmd` via `uvr run`, read-only `container-volumes`, 16 GB / 4 CPU limits, one instance per user, two per host, upload and session timeouts |
+| `nginx.conf` | 6 GB bodies, streamed uploads, one-hour proxy timeouts, WebSocket upgrade |
+| `smoke-test.R` | stages a mounted BAM in `/tmp`, runs the full pipeline and checks the result |
+| `gcidx-checksums.txt` | validated gcrank format, sizes and SHA-256 (including source-FASTA digests) |
+
+`tools/validate-config.R` validates the production registry with the same
+`readMaMaMIAConfig()` path as startup, then checks index payload files and
+`server.bam_root`. `.dockerignore` keeps `test_data/`, tests and local tooling
+out of the build context and excludes compiled `*.o`/`*.so` files so the image
+compiles MaMaMIA from source.
+
+The ShinyProxy key for bind mounts is `container-volumes`; the plan's `volumes`
+snippet is shorthand. The app is synchronous, so the deployed heartbeat and
+session timeouts are longer than a high-resolution run.
+
+### 15.3 Validation
+
+`tests/testthat/test-dashboard-bam.R` adds unit coverage for
+`bam_sample_selection()` and `bam_bedpe_filename()`, a per-sample download in
+the two-sample cohort run, and a three-sample acceptance run that checks the
+cohort summary, the selector, selection persistence for every sample, each
+per-sample BEDPE and the combined file (three rows, `sample` last).
+
+Deployment validation is the image build followed by a local smoke test with
+the real gcrank indexes and a server-side BAM; `docs-source/shinyproxy.md`
+records the exact commands, the consistent upload limits and the troubleshooting
+matrix. ShinyProxy itself is not needed for the build or the smoke test.
+
+On the validation host, `bioconductor.org` was unreachable, so the image was
+built with `--build-arg BIOC_MIRROR=https://bioconductor.statistik.tu-dortmund.de/packages`
+(checksums still came from `uvr.lock`) and `--network=host`; the default build
+path is unchanged. The final image reports R 4.6.1, serves the configuration
+card with HTTP 200, and the bundled smoke script ran `Sq54` at resolution 1000
+(28,000 windows, 38 segments, 1 putative call) inside the container.
+
+### 15.4 Registry growth and container lifetime
+
+`deployment/shinyproxy.yml` mounts the whole `/srv/mamamia/gcidx` directory, so
+a new index placed under it is visible to running containers without an image
+rebuild or ShinyProxy restart. The registry is different: `bam_launcher_app()`
+calls `bam_launcher_state()` once when the app process is constructed, and the
+same static state feeds the UI and the server. A new ShinyProxy container picks
+up the new YAML; a running container (and any session it hosts) keeps the old
+configuration. The deployment runbook therefore documents close/reopen after a
+registry change and recommends a directory mount for the config so atomic
+replacement is visible.
+
+The UI remains assembly-centric: one `selectInput("assembly")` over predefined
+donor/recipient assemblies, plus auto-detection from the BAM header. A true
+two-species selector needs a species/pair registry and a pairing rule, which is
+a plan amendment rather than a deployment change (T1.3/T6.1/D4).

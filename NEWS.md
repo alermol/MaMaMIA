@@ -2,6 +2,24 @@
 
 * Initial submission.
 
+## BAM-first workflow (wave 8)
+
+* The cohort card now offers a per-sample BEDPE export next to the combined
+  selected export. It follows the sample selector: the rows selected for the
+  current sample, or all of that sample's putative calls when no rows are
+  selected. File names are sanitized per sample, and the cohort export keeps
+  the `sample` column last.
+* Added the production deployment artifacts: a Debian trixie image with a
+  pinned uvr release and R 4.6.1, `uvr sync --frozen` from `uvr.lock`, a
+  non-root runtime user and `OMP_NUM_THREADS=1`; a ShinyProxy spec with
+  read-only registry/index/BAM mounts and 16 GB / 4 CPU limits; a ShinyProxy
+  entrypoint that reads `MAMAMIA_CONFIG`; and an nginx example with large
+  uploads and long analysis timeouts.
+* Added `tools/validate-config.R` for production registries (config, gcrank
+  payloads and `server.bam_root`) and documented the data prerequisites, build,
+  local smoke test, upload limits, resource sizing and cleanup in
+  `docs-source/shinyproxy.md`.
+
 ## BAM-first workflow (wave 7)
 
 * The BAM-first progress bar now reports pipeline detail, not only the stage

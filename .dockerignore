@@ -1,0 +1,20 @@
+# Build context for deployment/Dockerfile. The image needs the package
+# sources and deployment/, not the test data or local tooling.
+.git
+.gitignore
+.RData
+.Rhistory
+.Rproj.user
+.Rproj.user/
+.uvr/
+*.tar.gz
+*.Rcheck
+**/*.o
+**/*.so
+test_data/
+tests/
+docs-source/
+vignettes/
+bench-*/
+AGENTIC_PLAN.md
+набросок-плана.md

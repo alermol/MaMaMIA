@@ -1,0 +1,88 @@
+# ShinyProxy configuration for MaMaMIA.
+#
+# Place this file at /opt/shinyproxy/application.yml (or pass it with
+# --spring.config.location). The host directories under /srv/mamamia are
+# expected to exist and to be read-only for the ShinyProxy user:
+#
+#   /srv/mamamia/config/assemblies.yml
+#   /srv/mamamia/gcidx/<assembly>/index.gcrank/
+#   /srv/mamamia/bams/                      (optional server-side BAM root)
+#
+# Mount the config and gcidx *directories*, not individual files/indexes: a
+# directory mount makes new indexes visible to new sessions without rebuilding
+# the image, and survives atomic replacement of assemblies.yml.
+#
+# See docs-source/shinyproxy.md for the complete runbook.
+
+proxy:
+  title: MaMaMIA
+  landing-page: /
+  port: 8080
+
+  # Put authenticating reverse proxy (or ShinyProxy LDAP/OIDC/simple auth) in
+  # front of this listener before exposing it outside the host.
+  bind-address: 127.0.0.1
+  authentication: none
+
+  # The analysis blocks the R session, so keep the container alive well past
+  # the longest expected run. Heartbeats are handled by ShinyProxy itself.
+  container-wait-time: 180000
+  heartbeat-rate: 10000
+  heartbeat-timeout: 600000
+  default-proxy-max-lifetime: -1
+
+  container-backend: docker
+  docker:
+    # Set to true when ShinyProxy itself runs in a container on this host.
+    internal-networking: "${SHINYPROXY_INTERNAL_NETWORKING:false}"
+    image-pull-policy: IfNotPresent
+
+  container-log-path: ./container-logs
+
+  specs:
+    - id: mamamia
+      display-name: MaMaMIA
+      description: BAM-first introgression analysis
+      container-image: mamamia:0.99.0
+      container-cmd:
+        - "uvr"
+        - "run"
+        - "/app/deployment/start.R"
+      port: 3838
+      container-env:
+        MAMAMIA_CONFIG: /srv/mamamia/config/assemblies.yml
+        OMP_NUM_THREADS: "1"
+        R_USER_CACHE_DIR: /tmp/mamamia-cache
+        HOME: /home/mamamia
+      container-volumes:
+        - /srv/mamamia/config:/srv/mamamia/config:ro
+        - /srv/mamamia/gcidx:/srv/mamamia/gcidx:ro
+        - /srv/mamamia/bams:/srv/mamamia/bams:ro
+      container-memory-limit: 16g
+      container-cpu-limit: 4
+      # One analysis per user; at most two 16 GB containers on the host.
+      max-instances: 1
+      max-total-instances: 2
+
+# Uploads are proxied to Shiny and bounded by shiny.maxRequestSize in
+# deployment/start.R. Undertow's own POST limit must be lifted as well.
+server:
+  forward-headers-strategy: native
+  servlet:
+    session:
+      timeout: 43200
+  undertow:
+    max-http-post-size: -1
+
+spring:
+  servlet:
+    multipart:
+      max-file-size: 6GB
+      max-request-size: 7GB
+
+logging:
+  file:
+    name: shinyproxy.log
+  level:
+    root: INFO
+    eu.openanalytics: INFO

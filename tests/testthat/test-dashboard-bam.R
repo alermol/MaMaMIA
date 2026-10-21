@@ -752,6 +752,29 @@ test_that("a single BAM runs end to end and cleans up the session", {
     expect_identical(names(out)[[ncol(out)]], "sample")
 })
 
+test_that("per-sample BEDPE helpers fall back to putative calls", {
+    expect_null(bam_sample_selection(list(), "A"))
+    expect_null(bam_sample_selection(list(A = integer()), "A"))
+    expect_null(bam_sample_selection(list(A = 1L), NULL))
+    expect_identical(
+        bam_sample_selection(list(A = c(2, 1), B = 3L), "A"),
+        list(A = c(1L, 2L))
+    )
+
+    expect_identical(
+        bam_bedpe_filename("sample-a"),
+        "mamamia-sample-a-selected-introgressions.bedpe"
+    )
+    expect_identical(
+        bam_bedpe_filename("sample/a b"),
+        "mamamia-sample-a-b-selected-introgressions.bedpe"
+    )
+    expect_identical(
+        bam_bedpe_filename(NULL),
+        "mamamia-selected-introgressions.bedpe"
+    )
+})
+
 test_that("a cohort shows a selector and exports a combined BEDPE", {
     skip_if_no_dashboard()
     skip_if_no_samtools()
@@ -762,6 +785,8 @@ test_that("a cohort shows a selector and exports a combined BEDPE", {
     state <- app_state(fixture)
     target <- tempfile(fileext = ".bedpe")
     on.exit(unlink(target), add = TRUE)
+    sample_target <- tempfile(fileext = ".bedpe")
+    on.exit(unlink(sample_target), add = TRUE)
 
     shiny::testServer(bam_launcher_server(state, cache = FALSE), {
         set_app_inputs(session, server_bams = c(first, second))
@@ -780,6 +805,10 @@ test_that("a cohort shows a selector and exports a combined BEDPE", {
         expect_match(
             output_html(output$cohort_ui),
             "Download selected BEDPE \\(all samples\\)"
+        )
+        expect_match(
+            output_html(output$cohort_ui),
+            "Download BEDPE \\(current sample\\)"
         )
 
         set_explorer_inputs(session)
@@ -806,6 +835,9 @@ test_that("a cohort shows a selector and exports a combined BEDPE", {
         )
 
         expect_true(file.copy(output$download_cohort, target))
+
+        ## The per-sample export follows the selector and the stored rows.
+        expect_true(file.copy(output$download_sample, sample_target))
     })
 
     out <- utils::read.table(
@@ -815,6 +847,80 @@ test_that("a cohort shows a selector and exports a combined BEDPE", {
     expect_identical(nrow(out), 2L)
     expect_identical(sort(unique(out$sample)), c("sample-a", "sample-b"))
     expect_identical(names(out)[[ncol(out)]], "sample")
+
+    per_sample <- utils::read.table(
+        sample_target,
+        header = TRUE, sep = "\t", stringsAsFactors = FALSE
+    )
+    expect_identical(nrow(per_sample), 1L)
+    expect_identical(per_sample$sample, "sample-a")
+    expect_identical(names(per_sample)[[ncol(per_sample)]], "sample")
+})
+
+test_that("a three-sample cohort exports each sample and the cohort BEDPE", {
+    skip_if_no_dashboard()
+    skip_if_no_samtools()
+    fixture <- variable_gc_fixture()
+    on.exit(unlink(fixture$directory, recursive = TRUE), add = TRUE)
+    samples <- c("sample-a", "sample-b", "sample-c")
+    bams <- c(
+        add_variable_gc_bam(fixture, samples[[1L]], step = 4L),
+        add_variable_gc_bam(fixture, samples[[2L]], step = 6L),
+        add_variable_gc_bam(fixture, samples[[3L]], step = 8L)
+    )
+    state <- app_state(fixture)
+    per_sample <- stats::setNames(
+        lapply(samples, function(sample) tempfile(fileext = ".bedpe")),
+        samples
+    )
+    cohort_target <- tempfile(fileext = ".bedpe")
+    on.exit(unlink(c(per_sample, cohort_target)), add = TRUE)
+
+    shiny::testServer(bam_launcher_server(state, cache = FALSE), {
+        set_app_inputs(session, server_bams = bams)
+        expect_true(preflight_state()$ok)
+
+        session$setInputs(reference_sample = "")
+        suppressWarnings(session$setInputs(run = 1))
+        for (sample in samples) {
+            expect_match(output$cohort_table, sample)
+        }
+        expect_match(output$cohort_table, "median")
+        expect_match(output_html(output$cohort_ui), "result_sample")
+
+        set_explorer_inputs(session)
+        for (sample in samples) {
+            session$setInputs(
+                result_sample = sample,
+                `explorer-segments_rows_selected` = NULL
+            )
+            session$setInputs(`explorer-segments_rows_selected` = 1L)
+            expect_identical(selection_map()[[sample]], 1L)
+            expect_true(file.copy(output$download_sample, per_sample[[sample]]))
+        }
+        expect_identical(
+            vapply(selection_map(), length, integer(1L)),
+            c(`sample-a` = 1L, `sample-b` = 1L, `sample-c` = 1L)
+        )
+        expect_true(file.copy(output$download_cohort, cohort_target))
+    })
+
+    for (sample in samples) {
+        out <- utils::read.table(
+            per_sample[[sample]],
+            header = TRUE, sep = "\t", stringsAsFactors = FALSE
+        )
+        expect_identical(nrow(out), 1L)
+        expect_identical(out$sample, sample)
+        expect_identical(names(out)[[ncol(out)]], "sample")
+    }
+
+    cohort <- utils::read.table(
+        cohort_target,
+        header = TRUE, sep = "\t", stringsAsFactors = FALSE
+    )
+    expect_identical(nrow(cohort), 3L)
+    expect_identical(sort(unique(cohort$sample)), samples)
 })
 
 test_that("the cohort card shows zero-coverage warnings", {

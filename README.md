@@ -52,6 +52,42 @@ and the directories can be entered in the sidebar.
 The BioCircos-based circos view is temporarily disabled while the BioCircos
 dependency is removed: the app shows the segment table with the BEDPE export.
 
+## BAM-first workflow
+
+The BAM-first app starts from BAM files instead of precomputed coverage tables.
+It reads the BAM headers, matches them to an assembly registry, generates
+windows, extracts GC content from a `gcrank` index, counts reads, corrects GC
+bias, normalizes cohorts and segments every sample:
+
+```sh
+uvr sync --frozen
+uvr activate --write-shim
+. .uvr/activate
+R CMD INSTALL .
+Rscript -e 'MaMaMIA::runMaMaMIA(config = "assemblies.yml", input = "bam")'
+```
+
+`assemblies.yml` declares the GC indexes, donor/recipient contigs and pairs;
+see `inst/config/assemblies.example.yml`. The registry is validated before any
+BAM work starts (`?validateMaMaMIAConfig`). Uploaded BAMs are staged into a
+private session directory and removed on session end; server-side BAMs under
+`server.bam_root` are only read.
+
+The app accepts one or more BAMs, shows a cohort summary, keeps table
+selections per sample, and exports a per-sample BEDPE or a combined BEDPE with
+a `sample` column. Resolution (`windows_per_chromosome`) and normalization
+(`none` or `median`) are selectable; the GC fit is capped by `max_fit_windows`
+(50,000 by default) for high-resolution runs.
+
+## Deployment
+
+The reproducible image and ShinyProxy configuration live in `deployment/`.
+Build from the repository root with
+`docker build -f deployment/Dockerfile -t mamamia:0.99.0 .` and see
+[`docs-source/shinyproxy.md`](docs-source/shinyproxy.md) for the data
+prerequisites, local smoke test, read-only mounts, upload/timeouts and resource
+limits.
+
 ## Scripted workflow
 
 The same pipeline can be driven from a script; `exploreIntrogressions()` opens
