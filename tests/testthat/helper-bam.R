@@ -132,12 +132,25 @@ add_variable_gc_bam <- function(fixture, sample, filename = NULL, step = 4L) {
     if (is.null(filename)) {
         filename <- paste0(sample, ".bam")
     }
+    contig_length <- if (is.null(fixture$contig_length)) {
+        20000L
+    } else {
+        fixture$contig_length
+    }
     path <- file.path(fixture$directory, filename)
-    write_test_bam(variable_gc_sam(sample, step = step), path, index = FALSE)
+    write_test_bam(
+        variable_gc_sam(
+            sample, contig_length = contig_length, step = step
+        ),
+        path,
+        index = FALSE
+    )
     path
 }
 
-variable_gc_fixture <- function(sample = "synthetic", windows = 100L) {
+variable_gc_fixture <- function(sample = "synthetic", windows = 100L,
+                                contig_length = 20000L,
+                                allowed_windows = c(100L, 1000L, 10000L)) {
     skip_if_no_samtools()
     builder <- gcrank_build_binary()
     if (!nzchar(builder)) {
@@ -149,8 +162,8 @@ variable_gc_fixture <- function(sample = "synthetic", windows = 100L) {
     fasta <- file.path(directory, "variable.fa")
     writeLines(
         c(
-            ">d1", variable_gc_sequence(20000L, 0L),
-            ">r1", variable_gc_sequence(20000L, 8L)
+            ">d1", variable_gc_sequence(contig_length, 0L),
+            ">r1", variable_gc_sequence(contig_length, 8L)
         ),
         fasta
     )
@@ -171,7 +184,7 @@ variable_gc_fixture <- function(sample = "synthetic", windows = 100L) {
         version = 1L,
         defaults = list(
             windows_per_chromosome = as.integer(windows),
-            allowed_windows = c(100L, 1000L, 10000L),
+            allowed_windows = as.integer(allowed_windows),
             mapq = 20L,
             exclude_flags = 2308L,
             max_fit_windows = 1000L,
@@ -203,7 +216,8 @@ variable_gc_fixture <- function(sample = "synthetic", windows = 100L) {
     fixture <- list(
         directory = directory,
         config_path = config_path,
-        sample = sample
+        sample = sample,
+        contig_length = as.integer(contig_length)
     )
     fixture$bam_path <- add_variable_gc_bam(fixture, sample)
     fixture

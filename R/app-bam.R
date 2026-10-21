@@ -39,8 +39,8 @@
         "verify that the BAM is intact and indexed."
     ),
     correction = paste(
-        "Fewer than 2 ideal windows: lower the resolution, raise the max",
-        "fit windows cap, or inspect coverage and GC outliers."
+        "Too few valid or ideal windows for the GC fit: lower the resolution,",
+        "raise the max fit windows cap, or inspect coverage and GC outliers."
     ),
     normalization = paste(
         "Pick a reference sample from the input BAMs,",
@@ -54,7 +54,10 @@
         "Reduce the number of BAMs or their total size; the limits come from",
         "server.max_bams and server.max_total_bytes."
     ),
-    analysis = "See the message above and the server log."
+    analysis = paste(
+        "Check the run controls (MAPQ, exclude flags, cores, max fit windows)",
+        "and the server log."
+    )
 )
 
 #' @noRd
@@ -106,19 +109,82 @@ bam_error_stage <- function(e) {
         return("analysis")
     }
     if (inherits(e, "MaMaMIAAnalysisError") &&
-        grepl("^Normalization failed", message)) {
+        grepl("^(Normalization failed|Reference sample)", message)) {
         return("normalization")
     }
     "analysis"
 }
 
-#' Describe a user-facing error with a stage and a suggested fix
+#' Resolve the input file(s) responsible for an error
+#'
+#' Prefers a `path` in the condition payload, then the sample name embedded in
+#' a `MaMaMIASampleError` message, then the caller's fallback list. File output
+#' always uses the original source path when a preflight table is available,
+#' never the staged session copy.
 #'
 #' @param e A condition.
+#' @param files Fallback file paths.
+#' @param table Optional preflight table with `sample` and `source` columns.
 #'
-#' @return A list with `stage`, `class`, `message` and `suggestion`.
+#' @return A unique character vector of file paths (possibly length zero).
 #' @noRd
-bam_error_info <- function(e) {
+bam_error_files <- function(e, files = NULL, table = NULL) {
+    data <- if (inherits(e, "condition")) e$data else NULL
+    if (is.list(data) && !is.null(data$path)) {
+        paths <- as.character(data$path)
+        paths <- paths[!is.na(paths) & nzchar(paths)]
+        if (length(paths) > 0L) {
+            return(unique(paths))
+        }
+    }
+
+    message <- conditionMessage(e)
+    sample <- sub("^Sample '([^']+)' .*$", "\\1", message, perl = TRUE)
+    if (!identical(sample, message) && is.data.frame(table) &&
+        all(c("sample", "source") %in% names(table))) {
+        rows <- table$sample == sample
+        if (any(rows)) {
+            return(unique(table$source[rows]))
+        }
+    }
+
+    files <- if (is.null(files)) character() else as.character(files)
+    files <- files[!is.na(files) & nzchar(files)]
+    unique(files)
+}
+
+#' Render a compact `File:`/`Files:` line
+#' @noRd
+bam_error_file_label <- function(files, max_files = 5L) {
+    files <- as.character(files)
+    files <- files[!is.na(files) & nzchar(files)]
+    if (length(files) == 0L) {
+        return(NULL)
+    }
+    hidden <- length(files) - max_files
+    if (hidden > 0L) {
+        files <- c(
+            utils::head(files, max_files),
+            sprintf("(+%d more)", hidden)
+        )
+    }
+    sprintf(
+        "%s: %s",
+        if (length(files) == 1L) "File" else "Files",
+        paste(files, collapse = ", ")
+    )
+}
+
+#' Describe a user-facing error with a stage, file and a suggested fix
+#'
+#' @param e A condition.
+#' @param files Fallback file paths when the condition does not name one.
+#' @param table Optional preflight table used to map a sample to its source
+#'   BAM.
+#'
+#' @return A list with `stage`, `class`, `message`, `files` and `suggestion`.
+#' @noRd
+bam_error_info <- function(e, files = NULL, table = NULL) {
     stage <- bam_error_stage(e)
     suggestion <- .bam_error_suggestions[[stage]]
     if (is.null(suggestion) || is.na(suggestion)) {
@@ -128,16 +194,19 @@ bam_error_info <- function(e) {
         stage = stage,
         class = class(e)[[1L]],
         message = conditionMessage(e),
+        files = bam_error_files(e, files = files, table = table),
         suggestion = suggestion
     )
 }
 
 #' @noRd
 bam_error_text <- function(info) {
-    sprintf(
-        "[%s] %s\nSuggested fix: %s",
-        info$stage, info$message, info$suggestion
-    )
+    lines <- sprintf("[%s] %s", info$stage, info$message)
+    file_label <- bam_error_file_label(info$files)
+    if (!is.null(file_label)) {
+        lines <- c(lines, file_label)
+    }
+    paste(c(lines, paste("Suggested fix:", info$suggestion)), collapse = "\n")
 }
 
 ## Configuration -------------------------------------------------------------
@@ -195,7 +264,10 @@ bam_launcher_state <- function(config = NULL) {
             config = NULL,
             path = if (is.character(config)) config else NULL,
             source = source,
-            error = bam_error_info(parsed)
+            error = bam_error_info(
+                parsed,
+                files = if (is.character(config)) config else NULL
+            )
         ))
     }
     list(
@@ -265,14 +337,14 @@ bam_default_resolution <- function(defaults = .config_defaults()) {
 bam_resolution_value <- function(value, defaults = .config_defaults()) {
     allowed <- sort(unique(as.integer(defaults$allowed_windows)))
     if (length(value) != 1L || is.na(value) || !nzchar(as.character(value))) {
-        stop("Choose an analysis resolution", call. = FALSE)
+        .mamamia_error("MaMaMIAWindowError", "Choose an analysis resolution")
     }
     resolution <- suppressWarnings(as.integer(value))
     if (is.na(resolution) || !resolution %in% allowed) {
-        stop(
-            "Resolution must be one of: ",
-            paste(allowed, collapse = ", "),
-            call. = FALSE
+        .mamamia_error(
+            "MaMaMIAWindowError",
+            "Resolution must be one of: %s",
+            paste(allowed, collapse = ", ")
         )
     }
     resolution
@@ -283,14 +355,12 @@ bam_integer <- function(value, label, minimum, maximum) {
     if (length(value) != 1L || is.na(value) || !is.numeric(value) ||
         !is.finite(value) || value != floor(value) ||
         value < minimum || value > maximum) {
-        stop(
-            sprintf(
-                "%s must be a whole number between %s and %s",
-                label,
-                format(minimum, scientific = FALSE),
-                format(maximum, scientific = FALSE)
-            ),
-            call. = FALSE
+        .mamamia_error(
+            "MaMaMIAAnalysisError",
+            "%s must be a whole number between %s and %s",
+            label,
+            format(minimum, scientific = FALSE),
+            format(maximum, scientific = FALSE)
         )
     }
     as.integer(value)
@@ -599,14 +669,17 @@ bam_error_candidates <- function(e, paths, config) {
 }
 
 #' @noRd
-bam_preflight_failure <- function(e, paths, config) {
+bam_preflight_failure <- function(e, paths, config, files = NULL) {
     list(
         ok = FALSE,
         empty = FALSE,
         table = NULL,
         staged = NULL,
         assembly = NULL,
-        error = bam_error_info(e),
+        error = bam_error_info(
+            e,
+            files = if (is.null(files)) paths else files
+        ),
         candidates = bam_error_candidates(e, paths, config)
     )
 }
@@ -622,6 +695,50 @@ bam_assembly_windows <- function(assembly, resolutions) {
             as.integer(length(lengths) * n)
         }
     }, integer(1L))
+}
+
+#' Explain why an assembly cannot use a resolution
+#'
+#' Mirrors the check in [makeAnalysisWindows()] so the dashboard can disable
+#' the Run button before an analysis starts. Returns `NULL` when every target
+#' contig can be tiled into the requested number of windows.
+#'
+#' @param assembly An `AssemblyConfig` list.
+#' @param resolution Windows per chromosome.
+#'
+#' @return `NULL` or a one-element character message.
+#' @noRd
+bam_resolution_problem <- function(assembly, resolution) {
+    if (is.null(assembly) || length(resolution) != 1L || is.na(resolution)) {
+        return(NULL)
+    }
+    resolution <- suppressWarnings(as.numeric(resolution))
+    if (!is.finite(resolution) || resolution < 1) {
+        return(NULL)
+    }
+    targets <- tryCatch(
+        .assembly_target_contigs(assembly),
+        error = function(e) NULL
+    )
+    if (is.null(targets) || !all(c("chr_id", "length") %in% names(targets))) {
+        return(NULL)
+    }
+    short <- targets$length < resolution
+    if (!any(short)) {
+        return(NULL)
+    }
+    contigs <- sprintf(
+        "'%s' (%s bp)",
+        targets$chr_id[short],
+        format(targets$length[short], big.mark = ",", scientific = FALSE)
+    )
+    sprintf(
+        "Contig%s %s %s shorter than the requested %s windows; choose a lower resolution.",
+        if (sum(short) == 1L) "" else "s",
+        paste(contigs, collapse = ", "),
+        if (sum(short) == 1L) "is" else "are",
+        format(resolution, big.mark = ",", scientific = FALSE)
+    )
 }
 
 #' @noRd
@@ -712,7 +829,7 @@ bam_assembly_summary_ui <- function(assembly, resolutions = NULL) {
 #' @noRd
 bam_run_parameters <- function(input, config, samples) {
     if (!is.character(samples) || length(samples) == 0L) {
-        stop("At least one BAM is required", call. = FALSE)
+        .mamamia_error("MaMaMIAAnalysisError", "At least one BAM is required")
     }
     resolution <- bam_resolution_value(input$resolution, config$defaults)
     mapq <- bam_integer(input$mapq, "MAPQ", 0L, 255L)
@@ -723,9 +840,9 @@ bam_run_parameters <- function(input, config, samples) {
         !is.numeric(max_fit_windows) || max_fit_windows <= 0 ||
         (!is.infinite(max_fit_windows) &&
             max_fit_windows != floor(max_fit_windows))) {
-        stop(
-            "Max fit windows must be a positive whole number",
-            call. = FALSE
+        .mamamia_error(
+            "MaMaMIAAnalysisError",
+            "Max fit windows must be a positive whole number"
         )
     }
     if (is.finite(max_fit_windows) &&
@@ -740,12 +857,10 @@ bam_run_parameters <- function(input, config, samples) {
     } else if (length(reference) == 1L && !is.na(reference) &&
         nzchar(reference)) {
         if (!reference %in% samples) {
-            stop(
-                sprintf(
-                    "Reference sample '%s' is not one of: %s",
-                    reference, paste(samples, collapse = ", ")
-                ),
-                call. = FALSE
+            .mamamia_error(
+                "MaMaMIAAnalysisError",
+                "Reference sample '%s' is not one of: %s",
+                reference, paste(samples, collapse = ", ")
             )
         }
         normalization <- "reference"
@@ -790,16 +905,120 @@ bam_progress_stages <- function(n_samples, normalization = "none") {
 
 #' @noRd
 bam_progress_label <- function(stage, detail = list()) {
+    if (!is.list(detail)) {
+        detail <- list()
+    }
     label <- .bam_progress_labels[[stage]]
     if (is.null(label) || is.na(label)) {
         label <- stage
     }
-    sample <- detail$sample
-    if (!is.null(sample) && length(sample) == 1L && !is.na(sample) &&
-        nzchar(sample)) {
-        label <- paste0(label, " for ", sample)
+
+    count <- function(x) {
+        if (length(x) != 1L || !is.numeric(x) || is.na(x) || !is.finite(x)) {
+            return(NULL)
+        }
+        format(x, big.mark = ",", scientific = FALSE)
     }
-    label
+    sample <- detail$sample
+    sample_suffix <- if (!is.null(sample) && length(sample) == 1L &&
+        !is.na(sample) && nzchar(sample)) {
+        paste0(" for ", sample)
+    } else {
+        ""
+    }
+
+    switch(stage,
+        preflight = {
+            n <- count(detail$n_bams)
+            if (is.null(n)) {
+                return(label)
+            }
+            assembly <- detail$assembly
+            sprintf(
+                "%s (%s file%s%s)",
+                label, n,
+                if (isTRUE(detail$n_bams == 1)) "" else "s",
+                if (!is.null(assembly) && length(assembly) == 1L &&
+                    !is.na(assembly) && nzchar(assembly)) {
+                    sprintf(", assembly '%s'", assembly)
+                } else {
+                    ""
+                }
+            )
+        },
+        index = {
+            n <- count(detail$n_bams)
+            staged <- count(detail$staged)
+            if (is.null(n) || is.null(staged)) {
+                return(label)
+            }
+            sprintf("%s (%s of %s staged)", label, staged, n)
+        },
+        windows = {
+            n <- count(detail$n_windows)
+            per <- count(detail$n_per_chromosome)
+            if (is.null(n)) {
+                return(label)
+            }
+            sprintf(
+                "%s (%s window%s%s)",
+                label, n,
+                if (isTRUE(detail$n_windows == 1)) "" else "s",
+                if (!is.null(per)) sprintf(", %s per chromosome", per) else ""
+            )
+        },
+        gc = {
+            n <- count(detail$n_windows)
+            if (is.null(n)) {
+                return(label)
+            }
+            sprintf("%s for %s windows", label, n)
+        },
+        counts = {
+            total <- count(detail$total)
+            if (is.null(total)) {
+                return(paste0(label, sample_suffix))
+            }
+            sprintf("%s%s (%s reads)", label, sample_suffix, total)
+        },
+        correction = {
+            ideal <- count(detail$n_ideal)
+            if (is.null(ideal)) {
+                return(paste0(label, sample_suffix))
+            }
+            sprintf("%s%s (%s ideal windows)", label, sample_suffix, ideal)
+        },
+        normalization = {
+            n <- count(detail$n_samples)
+            mode <- detail$mode
+            if (is.null(n) || is.null(mode) || length(mode) != 1L ||
+                is.na(mode) || !nzchar(mode)) {
+                return(label)
+            }
+            reference <- detail$reference
+            detail_text <- if (identical(mode, "reference") &&
+                !is.null(reference) && length(reference) == 1L &&
+                !is.na(reference) && nzchar(reference)) {
+                sprintf("reference %s", reference)
+            } else {
+                mode
+            }
+            sprintf("%s (%s sample%s, %s)", label, n,
+                if (isTRUE(detail$n_samples == 1)) "" else "s",
+                detail_text
+            )
+        },
+        segmentation = {
+            n <- count(detail$n_segments)
+            if (is.null(n)) {
+                return(paste0(label, sample_suffix))
+            }
+            sprintf("%s%s (%s segment%s)", label, sample_suffix, n,
+                if (isTRUE(detail$n_segments == 1)) "" else "s"
+            )
+        },
+        paste0(label, sample_suffix)
+    )
 }
 
 #' @noRd
@@ -1014,11 +1233,15 @@ bam_selection_update <- function(map, sample, rows) {
 #' @noRd
 bam_launcher_ui <- function(state, bam_paths = NULL) {
     if (!isTRUE(state$ok)) {
+        file_label <- bam_error_file_label(state$error$files)
         return(bslib::page_sidebar(
             title = "MaMaMIA",
             bslib::card(
                 bslib::card_header("Configuration error"),
                 shiny::p(state$error$message),
+                if (!is.null(file_label)) {
+                    shiny::p(class = "text-muted", file_label)
+                },
                 shiny::p(
                     class = "text-muted",
                     paste("Suggested fix:", state$error$suggestion)
@@ -1110,8 +1333,9 @@ bam_launcher_ui <- function(state, bam_paths = NULL) {
             shiny::p(
                 class = "text-muted",
                 paste(
-                    "The analysis runs in this session and blocks until it",
-                    "finishes; the progress bar reports each stage."
+                    "The analysis runs in this session's R process and blocks",
+                    "until it finishes. There is no in-app cancel; a disconnect",
+                    "is handled after the current stage returns."
                 )
             ),
             shiny::hr(),
@@ -1129,7 +1353,8 @@ bam_launcher_ui <- function(state, bam_paths = NULL) {
         bslib::card(
             bslib::card_header("Problems"),
             shiny::uiOutput("preflight_error"),
-            shiny::uiOutput("candidates_ui")
+            shiny::uiOutput("candidates_ui"),
+            shiny::uiOutput("run_error_ui")
         ),
         shiny::uiOutput("cohort_ui"),
         explorer_results_ui("explorer")
@@ -1164,6 +1389,7 @@ bam_launcher_server <- function(state, bam_paths = NULL, cache = NULL) {
         output$server_note <- shiny::renderText(bam_listing_note(listing))
 
         result <- shiny::reactiveVal(NULL)
+        last_error <- shiny::reactiveVal(NULL)
         selection_map <- shiny::reactiveVal(list())
 
         uploaded_paths <- shiny::reactive({
@@ -1229,7 +1455,7 @@ bam_launcher_server <- function(state, bam_paths = NULL, cache = NULL) {
             staged <- tryCatch(staged_bams(), error = function(e) e)
             if (inherits(staged, "condition")) {
                 return(bam_preflight_failure(
-                    staged, paths, config
+                    staged, paths, config, files = paths
                 ))
             }
             table <- tryCatch(
@@ -1241,7 +1467,7 @@ bam_launcher_server <- function(state, bam_paths = NULL, cache = NULL) {
             )
             if (inherits(table, "condition")) {
                 return(bam_preflight_failure(
-                    table, staged$path, config
+                    table, staged$path, config, files = staged$source
                 ))
             }
             table$source <- staged$source
@@ -1303,9 +1529,33 @@ bam_launcher_server <- function(state, bam_paths = NULL, cache = NULL) {
                 ))
             }
             info <- pf$error
+            file_label <- bam_error_file_label(info$files)
             shiny::tagList(
                 shiny::h6(paste0("Stage: ", info$stage)),
                 shiny::p(info$message),
+                if (!is.null(file_label)) {
+                    shiny::p(class = "text-muted", file_label)
+                },
+                shiny::p(
+                    class = "text-muted",
+                    paste0("Suggested fix: ", info$suggestion)
+                )
+            )
+        })
+
+        output$run_error_ui <- shiny::renderUI({
+            info <- last_error()
+            if (is.null(info)) {
+                return(NULL)
+            }
+            file_label <- bam_error_file_label(info$files)
+            shiny::tagList(
+                shiny::hr(),
+                shiny::h6(paste0("Last run error (stage: ", info$stage, ")")),
+                shiny::p(info$message),
+                if (!is.null(file_label)) {
+                    shiny::p(class = "text-muted", file_label)
+                },
                 shiny::p(
                     class = "text-muted",
                     paste0("Suggested fix: ", info$suggestion)
@@ -1353,15 +1603,29 @@ bam_launcher_server <- function(state, bam_paths = NULL, cache = NULL) {
         })
 
         output$run_ui <- shiny::renderUI({
-            ready <- isTRUE(preflight_state()$ok)
-            shiny::tags$button(
-                id = "run", type = "button",
-                class = paste(
-                    "btn btn-primary action-button",
-                    if (!ready) "disabled"
+            pf <- preflight_state()
+            ready <- isTRUE(pf$ok)
+            problem <- NULL
+            if (ready) {
+                problem <- bam_resolution_problem(
+                    config$assemblies[[pf$assembly]],
+                    suppressWarnings(as.integer(input$resolution))
+                )
+                ready <- is.null(problem)
+            }
+            shiny::tagList(
+                shiny::tags$button(
+                    id = "run", type = "button",
+                    class = paste(
+                        "btn btn-primary action-button",
+                        if (!ready) "disabled"
+                    ),
+                    disabled = if (ready) NULL else "",
+                    shiny::span(class = "action-label", "Run analysis")
                 ),
-                disabled = if (ready) NULL else "",
-                shiny::span(class = "action-label", "Run analysis")
+                if (!is.null(problem)) {
+                    shiny::p(class = "text-danger", problem)
+                }
             )
         })
 
@@ -1380,6 +1644,7 @@ bam_launcher_server <- function(state, bam_paths = NULL, cache = NULL) {
         })
         shiny::observeEvent(run_key(), {
             result(NULL)
+            last_error(NULL)
         }, ignoreInit = TRUE)
 
         shiny::observeEvent(result(), {
@@ -1430,8 +1695,30 @@ bam_launcher_server <- function(state, bam_paths = NULL, cache = NULL) {
                 error = function(e) e
             )
             if (inherits(params, "condition")) {
+                info <- bam_error_info(
+                    params, files = pf$table$source, table = pf$table
+                )
+                last_error(info)
                 shiny::showNotification(
-                    conditionMessage(params),
+                    bam_error_text(info),
+                    type = "error", duration = 12
+                )
+                return()
+            }
+
+            resolution_problem <- bam_resolution_problem(
+                config$assemblies[[pf$assembly]], params$resolution
+            )
+            if (!is.null(resolution_problem)) {
+                info <- bam_error_info(
+                    .mamamia_error(
+                        "MaMaMIAWindowError", "%s", resolution_problem
+                    ),
+                    files = pf$table$source, table = pf$table
+                )
+                last_error(info)
+                shiny::showNotification(
+                    bam_error_text(info),
                     type = "error", duration = 12
                 )
                 return()
@@ -1461,8 +1748,12 @@ bam_launcher_server <- function(state, bam_paths = NULL, cache = NULL) {
                     }
                 ),
                 error = function(e) {
+                    info <- bam_error_info(
+                        e, files = pf$table$source, table = pf$table
+                    )
+                    last_error(info)
                     shiny::showNotification(
-                        bam_error_text(bam_error_info(e)),
+                        bam_error_text(info),
                         type = "error", duration = 20
                     )
                     NULL
@@ -1472,6 +1763,7 @@ bam_launcher_server <- function(state, bam_paths = NULL, cache = NULL) {
                 result(previous)
                 return()
             }
+            last_error(NULL)
             result(new_result)
             shiny::showNotification(
                 sprintf(
@@ -1482,6 +1774,13 @@ bam_launcher_server <- function(state, bam_paths = NULL, cache = NULL) {
                 ),
                 type = "message", duration = 6
             )
+            coverage <- bam_coverage_warnings(new_result)
+            if (length(coverage) > 0L) {
+                shiny::showNotification(
+                    paste(coverage, collapse = "\n"),
+                    type = "warning", duration = 15
+                )
+            }
         })
 
         output$cohort_ui <- shiny::renderUI({

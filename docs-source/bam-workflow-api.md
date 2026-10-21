@@ -858,12 +858,28 @@ BAM → `none`; cohort with an empty reference → `median`; a named reference �
 bounded by `detectCores()`; positive `max_fit_windows`), then calls
 `analyzeBamInput()` inside `shiny::withProgress()`. `bam_progress_stages()`
 reports `preflight`, `index`, `windows`, `gc`, one `counts`, `correction` and
-`segmentation` per sample, plus `normalization` for a cohort. Every failure is
+`segmentation` per sample, plus `normalization` for a cohort.
+`bam_progress_label()` adds the detail reported by each stage to the progress
+text: the BAM count and detected assembly, reused versus staged indexes, total
+and per-chromosome windows, reads per sample, ideal fit windows, the
+normalization mode and reference, and segments per sample. Every failure is
 caught, classified by `bam_error_stage()`, and shown as
-`[stage] message / Suggested fix: ...`; the previous result is restored. The
-result is invalidated when the BAM selection, resolution, assembly, reference,
-MAPQ, exclude flags or `max_fit_windows` change, so a stale BEDPE cannot be
-downloaded for different inputs.
+`[stage] message / File: <source> / Suggested fix: ...`; the previous result is
+restored and the last error remains visible in the Problems card. A
+`MaMaMIASampleError` is mapped back to its source BAM through the preflight
+table, so the notification names the file the user supplied rather than the
+staged session copy. The result is invalidated when the BAM selection,
+resolution, assembly, reference, MAPQ, exclude flags or `max_fit_windows`
+change, so a stale BEDPE cannot be downloaded for different inputs.
+
+`bam_resolution_problem()` mirrors the `makeAnalysisWindows()` length check
+before the run starts. A configured contig shorter than the selected resolution
+keeps the Run button disabled and displays the reason; the same check also runs
+inside the handler as defense in depth. The registry validator rejects such a
+configuration at startup, so this guard only matters when a server reuses a
+validated configuration whose allowed set changed. After a successful run,
+zero or near-zero coverage on a side and all-zero windows in a reference sample
+are shown both in the cohort card and as a warning notification.
 
 `session$onSessionEnded()` removes the session directory, including every
 staged BAM and generated CSI index. `server.bam_root` is never written to
@@ -929,3 +945,68 @@ in fresh processes and records elapsed time and peak RSS in
 `inst/benchmarks/fit-subsampling-results.csv`. On an 8-core host, the 280,000
 window run fitted 50,000 of 273,028 ideal windows in 47.0 s with a 4.2 GB peak
 RSS, below the 8 GB budget; the 28,000-window full fit took 9.8 s and 1.1 GB.
+
+---
+
+## 14. Wave 7 implementation notes
+
+### 14.1 Progress and error reporting
+
+`bam_progress_label(stage, detail)` renders the pipeline detail forwarded by
+`analyzeBamInput()`: BAM count and assembly for `preflight`, reused/staged
+indexes for `index`, total and per-chromosome counts for `windows`, window
+counts for `gc`, reads for `counts`, ideal windows for `correction`, mode and
+reference for `normalization`, and segments for `segmentation`. Labels fall
+back to the plain stage name when the pipeline calls `progress()` without
+detail, so the callback remains optional.
+
+`bam_error_info()` returns `stage`, `class`, `message`, `files` and
+`suggestion`. Files are resolved in this order: a `path` in the condition
+payload, the sample name in a `MaMaMIASampleError` mapped through the preflight
+`sample`/`source` columns, then the caller's fallback list. Notifications and
+the Problems card use `File:` for one file and `Files:` for several, capped at
+five paths with a `(+N more)` suffix. `bam_error_file_label()` is the single
+formatter for notifications, the preflight error card and the persistent
+last-run error card.
+
+Run-control errors are MaMaMIA conditions: an invalid resolution raises
+`MaMaMIAWindowError`, a bad MAPQ/flag/core/fit-window value raises
+`MaMaMIAAnalysisError`, and an unknown reference raises `MaMaMIAAnalysisError`
+with a `Reference sample ...` message that `bam_error_stage()` maps to
+`normalization`. This keeps every user-facing failure on the same
+stage/message/file/suggestion path as pipeline failures.
+
+### 14.2 Limits, guards and cancellation
+
+`server.max_bams` and `server.max_total_bytes` are enforced by `preflightBams()`
+before headers are parsed, so an oversized selection never reaches counting.
+The error is a `MaMaMIALimitError` and maps to the `limits` stage. Limits are
+checked on staged paths as well, so an upload cannot bypass them.
+
+Pathological inputs are handled as follows:
+
+| Input | Behaviour |
+|---|---|
+| Contig shorter than the selected resolution | `makeAnalysisWindows()` stops with `MaMaMIAWindowError`; the dashboard disables Run before the analysis through `bam_resolution_problem()`. Config validation rejects such a registry at startup. |
+| Fewer than 2 valid or 10 ideal windows | `correctReadCounts()` stops; `analyzeBamInput()` wraps it as `MaMaMIASampleError` with the `GC correction` stage; the app maps it to `correction` and suggests a lower resolution or a larger fit cap. |
+| Zero or near-zero reads on a side | Normalization uses the pseudocount dosage rule and completes; the cohort card and a warning notification name the sample and side. |
+| All-zero reference windows | `(0 + eps) / (0 + eps) = 1` by the frozen D5 rule; the cohort warning reports the all-zero window count for the reference sample. |
+
+No background process or wall-clock timeout is used: the analysis runs in the
+session's R process and blocks it. The dashboard states this in the sidebar and
+the deployment notes set Shiny, ShinyProxy and reverse-proxy timeouts longer
+than the largest expected run. A browser disconnect is handled after the
+current pipeline stage returns, when Shiny regains control and
+`session$onSessionEnded()` removes the staging directory.
+
+### 14.3 Validation
+
+`tests/testthat/test-dashboard-bam.R` now covers the detailed progress labels,
+the file/sample attribution and file-label truncation, the short-contig guard
+(unit and `testServer`), a mocked `analyzeBamInput()` that raises every error
+category and checks the stage, suggestion, file, persistent card, previous
+result and continued session, an invalid reference selection, the real
+correction failure stage, and the existing end-to-end, cohort, limit and
+cleanup tests. `tests/testthat/test-normalization.R` covers all-zero median and
+reference windows; `tests/testthat/test-correction.R` covers the fit-window cap
+and its errors.

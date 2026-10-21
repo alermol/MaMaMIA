@@ -153,6 +153,23 @@ test_that("a missing configuration renders an error card", {
     expect_match(html, "MAMAMIA_CONFIG")
 })
 
+test_that("an invalid configuration card names the registry file", {
+    skip_if_no_dashboard()
+    path <- tempfile(fileext = ".yml")
+    on.exit(unlink(path), add = TRUE)
+    writeLines(c("version: 1", "assemblies: {}"), path)
+
+    state <- bam_launcher_state(path)
+    expect_false(state$ok)
+    expect_identical(state$error$stage, "config")
+    expect_identical(state$error$files, path)
+
+    html <- paste(as.character(bam_launcher_ui(state)), collapse = "")
+    expect_match(html, "Configuration error")
+    expect_match(html, "File:")
+    expect_match(html, basename(path), fixed = TRUE)
+})
+
 test_that("MAMAMIA_CONFIG supplies the configuration when config is NULL", {
     skip_if_no_dashboard()
     skip_if_no_samtools()
@@ -192,8 +209,12 @@ test_that("resolution choices follow the configuration", {
     )
     expect_identical(bam_default_resolution(limited), "250")
     expect_identical(bam_resolution_value("500", limited), 500L)
-    expect_error(bam_resolution_value("1000", limited), "one of")
-    expect_error(bam_resolution_value(NULL, limited), "resolution")
+    expect_error(bam_resolution_value("1000", limited), "one of",
+        class = "MaMaMIAWindowError"
+    )
+    expect_error(bam_resolution_value(NULL, limited), "resolution",
+        class = "MaMaMIAWindowError"
+    )
 })
 
 test_that("the assembly card counts windows at every resolution", {
@@ -296,6 +317,60 @@ test_that("errors carry a stage and an actionable suggestion", {
 
     plain <- tryCatch(stop("plain failure", call. = FALSE), error = function(e) e)
     expect_identical(bam_error_info(plain)$stage, "analysis")
+
+    table <- data.frame(
+        sample = c("A", "B"),
+        source = c("/srv/bams/a.bam", "/srv/bams/b.bam"),
+        stringsAsFactors = FALSE
+    )
+    sample_error <- tryCatch(
+        .mamamia_error(
+            "MaMaMIASampleError",
+            "Sample 'B' (GC correction): boom"
+        ),
+        error = function(e) e
+    )
+    info <- bam_error_info(
+        sample_error, files = "/tmp/fallback.bam", table = table
+    )
+    expect_identical(info$files, "/srv/bams/b.bam")
+    expect_match(bam_error_text(info), "File: /srv/bams/b.bam", fixed = TRUE)
+    expect_match(bam_error_text(info), "Suggested fix:")
+
+    fallback <- bam_error_info(plain, files = c("/tmp/a.bam", "/tmp/b.bam"))
+    expect_match(
+        bam_error_text(fallback), "Files: /tmp/a.bam, /tmp/b.bam",
+        fixed = TRUE
+    )
+    expect_null(bam_error_file_label(character()))
+    expect_match(
+        bam_error_file_label(paste0("/tmp/", 1:7, ".bam")),
+        "\\(\\+2 more\\)"
+    )
+})
+
+test_that("a contig shorter than the resolution blocks the run", {
+    short <- list(
+        key = "short",
+        label = "Short",
+        description = "",
+        pairs = list(),
+        contigs = list(
+            recipient = data.frame(
+                id = "r1", name = "1R", subgenome = "R", length = 500,
+                stringsAsFactors = FALSE
+            ),
+            donor = data.frame(
+                id = "d1", name = "1D", subgenome = "D", length = 2000,
+                stringsAsFactors = FALSE
+            )
+        )
+    )
+    expect_null(bam_resolution_problem(short, 100L))
+    problem <- bam_resolution_problem(short, 1000L)
+    expect_match(problem, "Contig 'r1' \\(500 bp\\) is shorter")
+    expect_match(problem, "choose a lower resolution")
+    expect_null(bam_resolution_problem(NULL, 1000L))
 })
 
 test_that("progress stages follow the cohort size and normalization", {
@@ -317,6 +392,55 @@ test_that("progress stages follow the cohort size and normalization", {
         "Counting reads for s1"
     )
     expect_identical(bam_progress_label("preflight"), "Checking BAM headers")
+    expect_identical(
+        bam_progress_label(
+            "preflight", list(n_bams = 2L, assembly = "tiny")
+        ),
+        "Checking BAM headers (2 files, assembly 'tiny')"
+    )
+    expect_identical(
+        bam_progress_label("index", list(n_bams = 2L, staged = 1L)),
+        "Ensuring CSI indexes (1 of 2 staged)"
+    )
+    expect_identical(
+        bam_progress_label(
+            "windows", list(n_windows = 2000L, n_per_chromosome = 1000L)
+        ),
+        "Generating analysis windows (2,000 windows, 1,000 per chromosome)"
+    )
+    expect_identical(
+        bam_progress_label("gc", list(n_windows = 2000L)),
+        "Reading GC content for 2,000 windows"
+    )
+    expect_identical(
+        bam_progress_label("counts", list(sample = "s1", total = 1234)),
+        "Counting reads for s1 (1,234 reads)"
+    )
+    expect_identical(
+        bam_progress_label(
+            "correction", list(sample = "s1", n_ideal = 8000L)
+        ),
+        "Correcting GC bias for s1 (8,000 ideal windows)"
+    )
+    expect_identical(
+        bam_progress_label(
+            "normalization", list(n_samples = 3L, mode = "median")
+        ),
+        "Normalizing samples (3 samples, median)"
+    )
+    expect_identical(
+        bam_progress_label(
+            "normalization",
+            list(n_samples = 3L, mode = "reference", reference = "A")
+        ),
+        "Normalizing samples (3 samples, reference A)"
+    )
+    expect_identical(
+        bam_progress_label(
+            "segmentation", list(sample = "s1", n_segments = 12L)
+        ),
+        "Segmenting chromosome pairs for s1 (12 segments)"
+    )
 })
 
 test_that("run parameters resolve normalization and validate controls", {
@@ -353,7 +477,8 @@ test_that("run parameters resolve normalization and validate controls", {
         bam_run_parameters(
             utils::modifyList(base, list(mapq = 500)), config, "s1"
         ),
-        "MAPQ"
+        "MAPQ",
+        class = "MaMaMIAAnalysisError"
     )
     expect_error(
         bam_run_parameters(
@@ -525,6 +650,8 @@ test_that("an assembly mismatch shows candidate scores", {
         error_html <- output_html(output$preflight_error)
         expect_match(error_html, "Stage: assembly")
         expect_match(error_html, "Suggested fix")
+        expect_match(error_html, "File:")
+        expect_match(error_html, "bad\\.bam")
         expect_match(output_html(output$candidates_ui), "Assembly candidates")
         expect_match(output$candidate_table, "variable")
         expect_match(output$candidate_table, "50.0%")
@@ -738,11 +865,141 @@ test_that("a failing run reports the stage and keeps the session alive", {
         suppressWarnings(session$setInputs(run = 1L))
         expect_null(result())
         expect_null(output$cohort_ui)
+        info <- last_error()
+        expect_false(is.null(info))
+        expect_identical(info$stage, "correction")
+        expect_true(length(info$files) > 0L)
+        expect_match(
+            output_html(output$run_error_ui),
+            "Last run error \\(stage: correction\\)"
+        )
         expect_true(preflight_state()$ok)
         expect_match(
             output_html(output$preflight_error),
             "No preflight problems"
         )
+    })
+})
+
+test_that("the run button is disabled when a contig is too short", {
+    skip_if_no_dashboard()
+    skip_if_no_samtools()
+    fixture <- variable_gc_fixture(
+        contig_length = 5000L,
+        allowed_windows = c(100L, 1000L)
+    )
+    on.exit(unlink(fixture$directory, recursive = TRUE), add = TRUE)
+    state <- app_state(fixture)
+    ## A config loaded at startup always fits the largest allowed resolution;
+    ## this simulates a registry whose allowed set changed without a re-read.
+    state$config$defaults$allowed_windows <- c(100L, 1000L, 10000L)
+
+    shiny::testServer(bam_launcher_server(state, cache = FALSE), {
+        set_app_inputs(
+            session,
+            server_bams = fixture$bam_path,
+            resolution = "10000"
+        )
+        expect_true(preflight_state()$ok)
+        expect_match(output_html(output$run_ui), "shorter than")
+        expect_match(output_html(output$run_ui), "disabled")
+
+        session$setInputs(resolution = "1000")
+        expect_false(grepl("disabled", output_html(output$run_ui)))
+    })
+})
+
+test_that("every error category is reported without escaping the server", {
+    skip_if_no_dashboard()
+    skip_if_no_samtools()
+    fixture <- variable_gc_fixture()
+    on.exit(unlink(fixture$directory, recursive = TRUE), add = TRUE)
+    state <- app_state(fixture)
+
+    cases <- list(
+        config = quote(.config_error("bad config")),
+        BAM = quote(.mamamia_error("MaMaMIABamHeaderError", "bad bam")),
+        assembly = quote(.mamamia_error(
+            "MaMaMIAAssemblyMatchError", "no match"
+        )),
+        index = quote(.mamamia_error("MaMaMIAIndexError", "no index")),
+        windows = quote(.mamamia_error("MaMaMIAWindowError", "too short")),
+        GC = quote(.mamamia_error("MaMaMIAGcrankError", "bad gc")),
+        counts = quote(.mamamia_error("MaMaMIACountError", "bad counts")),
+        correction = quote(.mamamia_error(
+            "MaMaMIASampleError",
+            "Sample 'synthetic' (GC correction): too few"
+        )),
+        normalization = quote(.mamamia_error(
+            "MaMaMIAAnalysisError", "Normalization failed: x"
+        )),
+        segmentation = quote(.mamamia_error(
+            "MaMaMIASampleError",
+            "Sample 'synthetic' (segmentation): boom"
+        )),
+        limits = quote(.mamamia_error("MaMaMIALimitError", "too many")),
+        analysis = quote(stop("plain failure", call. = FALSE))
+    )
+
+    check_case <- function(stage) {
+        expression <- cases[[stage]]
+        testthat::local_mocked_bindings(
+            analyzeBamInput = function(...) {
+                error <- tryCatch(
+                    eval(expression), error = function(e) e
+                )
+                stop(error)
+            },
+            .package = "MaMaMIA"
+        )
+        shiny::testServer(bam_launcher_server(state, cache = FALSE), {
+            set_app_inputs(session, server_bams = fixture$bam_path)
+            expect_true(preflight_state()$ok)
+            previous <- fake_bam_result("previous")
+            result(previous)
+
+            suppressWarnings(session$setInputs(run = 1L))
+            info <- last_error()
+            expect_identical(info$stage, stage, info = stage)
+            expect_true(nzchar(info$suggestion), info = stage)
+            expect_true(length(info$files) > 0L, info = stage)
+            expect_match(
+                output_html(output$run_error_ui),
+                paste0("stage: ", stage),
+                fixed = TRUE,
+                info = stage
+            )
+            expect_identical(result(), previous, info = stage)
+            expect_true(preflight_state()$ok, info = stage)
+        })
+    }
+    for (stage in names(cases)) {
+        check_case(stage)
+    }
+})
+
+test_that("invalid reference selection is reported before the analysis", {
+    skip_if_no_dashboard()
+    skip_if_no_samtools()
+    fixture <- variable_gc_fixture()
+    on.exit(unlink(fixture$directory, recursive = TRUE), add = TRUE)
+    second <- add_variable_gc_bam(fixture, "synthetic-2")
+    state <- app_state(fixture)
+
+    shiny::testServer(bam_launcher_server(state, cache = FALSE), {
+        set_app_inputs(
+            session,
+            server_bams = c(fixture$bam_path, second),
+            reference_sample = "nope"
+        )
+        expect_true(preflight_state()$ok)
+
+        suppressWarnings(session$setInputs(run = 1L))
+        info <- last_error()
+        expect_identical(info$stage, "normalization")
+        expect_match(info$message, "Reference sample 'nope'", fixed = TRUE)
+        expect_match(output_html(output$run_error_ui), "Suggested fix")
+        expect_null(result())
     })
 })
 

@@ -2,6 +2,27 @@
 
 * Initial submission.
 
+## BAM-first workflow (wave 7)
+
+* The BAM-first progress bar now reports pipeline detail, not only the stage
+  name: BAM count and assembly, reused/staged indexes, total and per-chromosome
+  window counts, reads per sample, ideal fit windows, normalization mode and
+  reference, and segments per sample.
+* Every run and preflight error now carries the affected source BAM(s) in
+  addition to the stage, message and suggested fix. Sample errors are mapped
+  back through the preflight table, so notifications and the Problems card show
+  the supplied path instead of the staged session copy. Run failures also stay
+  visible in a persistent "Last run error" card; the previous result is kept.
+* The Run button is disabled, with the reason shown, when a contig is shorter
+  than the selected resolution. The same guard runs inside the handler, and the
+  small correction/GC failure and zero-coverage paths remain actionable
+  (`Fewer than N ideal windows`, no reads on a side, all-zero reference
+  windows). Zero/near-zero coverage warnings are repeated as a notification
+  after a successful run.
+* Invalid run controls (resolution, MAPQ, exclude flags, cores, fit cap,
+  reference sample) are now MaMaMIA conditions, so they use the same
+  stage/message/suggestion presentation as pipeline failures.
+
 ## BAM-first workflow (wave 6)
 
 * `runMaMaMIA()` now dispatches between the BAM-first app and the legacy
