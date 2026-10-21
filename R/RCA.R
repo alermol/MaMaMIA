@@ -291,6 +291,11 @@ summary.RCA <- function(object, ...) {
             object$outliers
         } else {
             NULL
+        },
+        fit_sampling = if (isTRUE(object$corrected)) {
+            object$fit_sampling
+        } else {
+            NULL
         }
     )
     class(out) <- "summary.RCA"
@@ -337,6 +342,25 @@ print.summary.RCA <- function(x, ...) {
                 x$outliers$cov_upper_bound,
                 x$outliers$gc_lower_bound,
                 x$outliers$gc_upper_bound
+            )
+        )
+    }
+    if (!is.null(x$fit_sampling)) {
+        cat(
+            sprintf(
+                "Fit windows: %d of %d ideal%s\n",
+                x$fit_sampling$n_fitted,
+                x$fit_sampling$n_ideal,
+                if (isTRUE(x$fit_sampling$sampled)) {
+                    sprintf(
+                        " (subsampled with max_fit_windows = %s)",
+                        format(x$fit_sampling$max_fit_windows,
+                            scientific = FALSE
+                        )
+                    )
+                } else {
+                    ""
+                }
             )
         )
     }

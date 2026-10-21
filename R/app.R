@@ -363,62 +363,133 @@ launcher_app <- function(analysis_dir = NULL, assemblies_dir = NULL, cache = NUL
 #' Run MaMaMIA as a local Shiny dashboard
 #'
 #' `runMaMaMIA()` is the main entry point of the package. It opens a locally
-#' running Shiny application that reads windowed coverage and GC-content
-#' tables, runs the MaMaMIA pipeline, and then hands the result to the
-#' interactive introgression explorer of [exploreIntrogressions()].
+#' running Shiny application. With `input = "bam"` (or when `config` or
+#' `bam_paths` is supplied and `input = "auto"`), the BAM-first app reads BAM
+#' headers, matches them to a configured assembly, stages the files in session
+#' temporary storage, and runs [analyzeBamInput()] before handing the per-sample
+#' `ISA` objects to the introgression explorer of [exploreIntrogressions()].
+#' The legacy directory-layout app remains reachable through `input = "files"`
+#' or `input = "example"` until it is decommissioned.
 #'
-#' The input is either the packaged `triticum` example or a directory layout
-#' read by [readMaMaMIAInput()]: an analysis directory with per-sample coverage
-#' tables and an assemblies directory with per-reference GC-content tables and
-#' chromosome metadata. Pick the sample, reference, donor and recipient
-#' subgenomes in the app, then press *Run analysis*. Donor-recipient chromosome
-#' pairs are matched by chromosome number with [defaultTargetPairs()].
+#' The BAM-first app reads its assembly registry from `config` or, when that is
+#' `NULL`, from the `MAMAMIA_CONFIG` environment variable (the ShinyProxy
+#' deployment path). A missing or invalid registry is rendered as a
+#' configuration error card rather than a crash.
 #'
-#' The app runs the pipeline in the R session, so the GC-bias fit keeps the
-#' session busy while it runs; a fit cache (see the `cache` argument of
-#' [correctReadCounts()]) makes re-runs of the same windows much faster.
+#' Uploaded BAMs and server-side BAMs under `server.bam_root` are staged into a
+#' private per-session directory (symlinked for large files, copied for small
+#' files and when symlinks are unsupported) and indexed there. The source
+#' directories are never written to; the session directory and every staged BAM
+#' and CSI index are removed when the session ends. GC index handles are
+#' process-wide and are not cleared at session end.
 #'
-#' The explorer currently shows the segment table with the BEDPE export; its
-#' BioCircos circos view is temporarily disabled together with the BioCircos
-#' dependency.
+#' The analysis runs in the R session, so the session blocks while it runs; the
+#' progress bar reports the pipeline stages (headers, indexes, windows, GC,
+#' counts, correction, normalization, segmentation). Errors are reported with
+#' the failing stage and a suggested fix.
+#'
+#' The explorer shows the mirror/difference plot, the segment table with the
+#' BEDPE export, and, for a cohort, a per-sample selector, a cohort summary and
+#' a combined BEDPE download carrying the `sample` column. Its BioCircos circos
+#' view is temporarily disabled together with the BioCircos dependency.
 #'
 #' Dashboard packages are optional MaMaMIA dependencies. Install them with
 #' `install.packages(c("shiny", "bslib", "shinyWidgets", "DT"))`
 #' before calling this function.
 #'
 #' @param analysis_dir Optional path to an analysis directory, prefilling the
-#'   corresponding input in the app.
+#'   corresponding input in the legacy app.
 #' @param assemblies_dir Optional path to an assemblies directory, prefilling
-#'   the corresponding input in the app.
+#'   the corresponding input in the legacy app.
 #' @param cache Optional path to an `.rds` file used to memoise the GC-bias
 #'   model fit, passed to [correctReadCounts()]. Defaults to a file in the
 #'   user cache directory.
+#' @param config Optional assembly registry: a path to a YAML configuration or
+#'   a validated configuration list from [readMaMaMIAConfig()]. The BAM-first
+#'   app falls back to the `MAMAMIA_CONFIG` environment variable when this is
+#'   `NULL`.
+#' @param bam_paths Optional character vector of server-side BAM paths used to
+#'   preselect the BAM picker. The paths must still pass preflight (under
+#'   `server.bam_root` when it is configured).
+#' @param input Input mode. `"auto"` selects the BAM-first app when `config` or
+#'   `bam_paths` is supplied and the legacy app otherwise; `"bam"` forces the
+#'   BAM-first app; `"files"` and `"example"` force the legacy app.
+#' @param max_request_size Maximum size in bytes of a single Shiny upload,
+#'   passed to `options(shiny.maxRequestSize = )`. Defaults to 5 GiB.
 #' @param host Host passed to [shiny::runApp()].
 #' @param port Port passed to [shiny::runApp()]. Use `NULL` to let Shiny choose.
 #' @param launch.browser Logical passed to [shiny::runApp()].
 #'
 #' @return The return value of [shiny::runApp()]. Called for its side effect of
 #'   launching the dashboard.
-#' @seealso [exploreIntrogressions()], [readMaMaMIAInput()]
+#' @seealso [exploreIntrogressions()], [analyzeBamInput()], [readMaMaMIAInput()]
 #' @examples
 #' \dontrun{
+#' runMaMaMIA(config = "assemblies.yml", input = "bam")
 #' runMaMaMIA(
 #'   analysis_dir = "mamamia_analysis",
-#'   assemblies_dir = "assemblies"
+#'   assemblies_dir = "assemblies",
+#'   input = "files"
 #' )
 #' }
 #' @export
 runMaMaMIA <- function(analysis_dir = NULL, assemblies_dir = NULL, cache = NULL,
-                       host = "127.0.0.1", port = NULL, launch.browser = interactive()) {
+                       config = NULL, bam_paths = NULL,
+                       input = c("auto", "bam", "files", "example"),
+                       max_request_size = 5 * 1024^3,
+                       host = "127.0.0.1", port = NULL,
+                       launch.browser = interactive()) {
     require_dashboard_packages()
+    if (!is.numeric(max_request_size) || length(max_request_size) != 1L ||
+        is.na(max_request_size) || max_request_size <= 0) {
+        stop(
+            "`max_request_size` must be a positive number of bytes",
+            call. = FALSE
+        )
+    }
+    options(shiny.maxRequestSize = max_request_size)
     if (is.null(cache)) {
         cache <- default_fit_cache()
     }
 
-    app <- launcher_app(analysis_dir, assemblies_dir, cache)
+    app <- mamamia_app(
+        analysis_dir = analysis_dir,
+        assemblies_dir = assemblies_dir,
+        cache = cache,
+        config = config,
+        bam_paths = bam_paths,
+        input = input
+    )
     args <- list(appDir = app, host = host, launch.browser = launch.browser)
     if (!is.null(port)) {
         args$port <- port
     }
     do.call(shiny::runApp, args)
+}
+
+#' Build the app object without starting a server
+#'
+#' The `mamamia_input` attribute records the resolved mode (`"bam"`, `"files"`
+#' or `"example"`), which lets tests verify the `input = "auto"` dispatch
+#' without launching Shiny.
+#'
+#' @noRd
+mamamia_app <- function(analysis_dir = NULL, assemblies_dir = NULL,
+                        cache = NULL, config = NULL, bam_paths = NULL,
+                        input = c("auto", "bam", "files", "example")) {
+    input <- match.arg(input)
+    mode <- if (identical(input, "auto")) {
+        if (!is.null(config) || !is.null(bam_paths)) "bam" else "files"
+    } else if (input %in% c("files", "example")) {
+        input
+    } else {
+        "bam"
+    }
+    app <- if (identical(mode, "bam")) {
+        bam_launcher_app(config = config, bam_paths = bam_paths, cache = cache)
+    } else {
+        launcher_app(analysis_dir, assemblies_dir, cache)
+    }
+    attr(app, "mamamia_input") <- mode
+    app
 }

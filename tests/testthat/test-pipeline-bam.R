@@ -6,7 +6,7 @@ pipeline_fixture <- function() {
 
 run_pipeline <- function(fixture, bams = fixture$bam_path,
                          normalization = "none", reference_sample = NULL,
-                         max_fit_windows = Inf, ...) {
+                         max_fit_windows = Inf, windows = 100L, ...) {
     stages <- list()
     progress <- function(stage, detail) {
         stages[[length(stages) + 1L]] <<- list(
@@ -18,7 +18,7 @@ run_pipeline <- function(fixture, bams = fixture$bam_path,
         fixture$config_path,
         normalization = normalization,
         reference_sample = reference_sample,
-        windows_per_chromosome = 100L,
+        windows_per_chromosome = windows,
         cores = 1L,
         max_fit_windows = max_fit_windows,
         progress = progress,
@@ -84,6 +84,12 @@ test_that("analyzeBamInput() returns a valid BamAnalysisResult", {
     expect_null(result$normalization$reference)
     expect_true(result$normalization$by_side)
     expect_identical(result$normalization$pseudocount, 0.5)
+    expect_false(result$rca$synthetic$fit_sampling$sampled)
+    expect_identical(result$rca$synthetic$fit_sampling$max_fit_windows, Inf)
+    expect_identical(
+        result$rca$synthetic$fit_sampling$n_fitted,
+        result$rca$synthetic$fit_sampling$n_ideal
+    )
 })
 
 test_that("analyzeBamInput() reports every progress stage in order", {
@@ -130,7 +136,7 @@ test_that("analyzeBamInput() records provenance and writes the fit cache", {
     expect_identical(provenance$mapq, 20L)
     expect_identical(provenance$exclude_flags, 2308L)
     expect_identical(provenance$max_fit_windows, Inf)
-    expect_false(provenance$max_fit_windows_enforced)
+    expect_true(provenance$max_fit_windows_enforced)
     expect_identical(provenance$n_samples, 1L)
     expect_identical(provenance$total_windows, 200L)
     expect_identical(provenance$count_semantics, "bamsignals_start_based")
@@ -371,7 +377,7 @@ test_that("the cohort performance guard warns above max_fit_windows", {
             normalization = "none",
             windows_per_chromosome = 100L,
             cores = 1L,
-            max_fit_windows = 100L,
+            max_fit_windows = 300L,
             cache = FALSE
         ),
         warning = function(w) {
@@ -381,8 +387,33 @@ test_that("the cohort performance guard warns above max_fit_windows", {
     )
 
     expect_true(any(grepl("Total analysis windows", warnings)))
-    expect_identical(result$provenance$max_fit_windows, 100L)
+    expect_identical(result$provenance$max_fit_windows, 300L)
     expect_identical(result$provenance$total_windows, 400L)
+})
+
+test_that("the pipeline applies the fit-window cap per sample", {
+    fixture <- pipeline_fixture()
+    on.exit(unlink(fixture$directory, recursive = TRUE), add = TRUE)
+    run <- run_pipeline(
+        fixture,
+        max_fit_windows = 500L,
+        windows = 500L
+    )
+    sampling <- run$result$rca$synthetic$fit_sampling
+
+    expect_true(sampling$sampled)
+    expect_identical(sampling$max_fit_windows, 500)
+    expect_identical(sampling$n_fitted, 500L)
+    expect_gt(sampling$n_ideal, sampling$n_fitted)
+    expect_identical(sum(sampling$strata$n_fitted), 500L)
+    expect_true(all(
+        sampling$strata$n_fitted >= pmin(sampling$strata$n_ideal, 10L)
+    ))
+    expect_true(all(is.finite(run$result$rca$synthetic$data$cor.gc)))
+    expect_true(run$result$provenance$max_fit_windows_enforced)
+    expect_identical(run$result$provenance$max_fit_windows, 500L)
+    expect_gte(nrow(sampling$strata), 2L)
+    expect_lte(nrow(sampling$strata), 20L)
 })
 
 test_that("a constant-GC sample fails inside the correction stage", {

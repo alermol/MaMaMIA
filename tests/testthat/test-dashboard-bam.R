@@ -1,0 +1,766 @@
+## T6.1-T6.4: BAM-first Shiny application.
+
+skip_if_no_dashboard <- function() {
+    for (package in c("shiny", "bslib", "DT", "shinyWidgets")) {
+        testthat::skip_if_not_installed(package)
+    }
+}
+
+app_state <- function(fixture) {
+    state <- bam_launcher_state(fixture$config_path)
+    expect_true(state$ok)
+    state
+}
+
+app_inputs <- function(...) {
+    defaults <- list(
+        resolution = "100",
+        assembly = "",
+        reference_sample = "",
+        mapq = 20,
+        exclude_flags = 2308,
+        cores = 1,
+        max_fit_windows = 1000
+    )
+    utils::modifyList(defaults, list(...))
+}
+
+set_app_inputs <- function(session, ...) {
+    do.call(session$setInputs, app_inputs(...))
+}
+
+explorer_inputs <- function(...) {
+    defaults <- list(
+        `explorer-chr_ids` = c("d1", "r1"),
+        `explorer-pair_ids` = "d1 -> r1",
+        `explorer-threshold_type` = "median",
+        `explorer-threshold_value` = 0,
+        `explorer-min_width` = 2,
+        `explorer-putative_only` = TRUE,
+        `explorer-plot_type` = "mirror"
+    )
+    utils::modifyList(defaults, list(...))
+}
+
+set_explorer_inputs <- function(session, ...) {
+    do.call(session$setInputs, explorer_inputs(...))
+}
+
+## `renderUI()` values arrive as a list of tags plus a trailing dependency
+## marker in `testServer`; flatten them for regex assertions.
+output_html <- function(output) {
+    paste(as.character(output), collapse = "")
+}
+
+fake_bam_result <- function(samples = c("A", "B"), isas = NULL,
+                            counts = NULL) {
+    if (is.null(isas)) {
+        isas <- stats::setNames(rep(list(seg_step()), length(samples)), samples)
+    }
+    if (is.null(counts)) {
+        side <- matrix(
+            10, nrow = 60L, ncol = length(samples),
+            dimnames = list(NULL, samples)
+        )
+        counts <- list(donor = side, recipient = side)
+    }
+    mode <- if (length(samples) > 1L) "median" else "none"
+    paths <- if (length(samples) == 0L) {
+        character()
+    } else {
+        paste0(samples, ".bam")
+    }
+    structure(
+        list(
+            assembly = NULL,
+            config = NULL,
+            bams = data.frame(
+                path = paths,
+                sample = samples,
+                index_path = rep("", length(samples)),
+                n_targets = rep(2L, length(samples)),
+                stringsAsFactors = FALSE
+            ),
+            samples = data.frame(
+                sample = samples,
+                path = paths,
+                assembly = rep("variable", length(samples)),
+                index_path = rep("", length(samples)),
+                reference = rep(FALSE, length(samples)),
+                normalization = rep(mode, length(samples)),
+                n_windows = rep(60L, length(samples)),
+                n_segments = vapply(
+                    isas, function(x) nrow(x$segments), integer(1)
+                ),
+                n_putative_introgressions = vapply(
+                    isas,
+                    function(x) {
+                        sum(x$segments$putative_introgression, na.rm = TRUE)
+                    },
+                    integer(1)
+                ),
+                stringsAsFactors = FALSE
+            ),
+            windows = list(
+                table = data.frame(
+                    chr_id = rep(c("d1", "r1"), each = 30L),
+                    start = 0L,
+                    stop = 1L,
+                    role = rep(c("donor", "recipient"), each = 30L),
+                    chr_name = "",
+                    subgenome = "",
+                    stringsAsFactors = FALSE
+                ),
+                n_per_chromosome = 30L
+            ),
+            gc = data.frame(
+                chr_id = character(), start = integer(),
+                stop = integer(), gc = numeric()
+            ),
+            counts = counts,
+            rca = list(),
+            isa = isas,
+            normalization = list(
+                mode = mode, reference = NULL,
+                by_side = TRUE, pseudocount = 0.5
+            ),
+            provenance = list()
+        ),
+        class = c("BamAnalysisResult", "list")
+    )
+}
+
+test_that("a missing configuration renders an error card", {
+    skip_if_no_dashboard()
+    old <- Sys.getenv("MAMAMIA_CONFIG", unset = NA_character_)
+    on.exit(
+        if (is.na(old)) {
+            Sys.unsetenv("MAMAMIA_CONFIG")
+        } else {
+            Sys.setenv(MAMAMIA_CONFIG = old)
+        },
+        add = TRUE
+    )
+    Sys.unsetenv("MAMAMIA_CONFIG")
+
+    state <- bam_launcher_state(NULL)
+    expect_false(state$ok)
+    expect_identical(state$error$stage, "config")
+    expect_match(state$error$message, "MAMAMIA_CONFIG")
+
+    html <- paste(as.character(bam_launcher_ui(state)), collapse = "")
+    expect_match(html, "Configuration error")
+    expect_match(html, "MAMAMIA_CONFIG")
+})
+
+test_that("MAMAMIA_CONFIG supplies the configuration when config is NULL", {
+    skip_if_no_dashboard()
+    skip_if_no_samtools()
+    fixture <- variable_gc_fixture()
+    on.exit(unlink(fixture$directory, recursive = TRUE), add = TRUE)
+    old <- Sys.getenv("MAMAMIA_CONFIG", unset = NA_character_)
+    on.exit(
+        if (is.na(old)) {
+            Sys.unsetenv("MAMAMIA_CONFIG")
+        } else {
+            Sys.setenv(MAMAMIA_CONFIG = old)
+        },
+        add = TRUE
+    )
+    Sys.setenv(MAMAMIA_CONFIG = fixture$config_path)
+
+    state <- bam_launcher_state(NULL)
+    expect_true(state$ok)
+    expect_identical(state$source, "environment")
+    expect_identical(state$config$assemblies$variable$label,
+        "Variable-GC synthetic assembly"
+    )
+})
+
+test_that("resolution choices follow the configuration", {
+    defaults <- .config_defaults()
+    choices <- bam_resolution_choices(defaults)
+    expect_identical(unname(choices), c("100", "1000", "10000"))
+    expect_match(names(choices)[[1L]], "Low")
+    expect_match(names(choices)[[2L]], "Medium")
+    expect_match(names(choices)[[3L]], "High")
+    expect_identical(bam_default_resolution(defaults), "1000")
+
+    limited <- list(
+        allowed_windows = c(250L, 500L),
+        windows_per_chromosome = 250L
+    )
+    expect_identical(bam_default_resolution(limited), "250")
+    expect_identical(bam_resolution_value("500", limited), 500L)
+    expect_error(bam_resolution_value("1000", limited), "one of")
+    expect_error(bam_resolution_value(NULL, limited), "resolution")
+})
+
+test_that("the assembly card counts windows at every resolution", {
+    state <- bam_launcher_state(tiny_config_path())
+    expect_true(state$ok)
+    assembly <- state$config$assemblies$tiny
+
+    info <- bam_assembly_info(assembly, c(100L, 1000L))
+    expect_identical(info$key, "tiny")
+    expect_identical(info$donor, "d1 (1D)")
+    expect_identical(info$recipient, "r1 (1R)")
+    expect_identical(info$pairs, "d1 -> r1")
+    expect_identical(info$windows$n_windows, c(200L, 2000L))
+
+    short <- list(
+        key = "short",
+        label = "Short",
+        description = "",
+        pairs = list(),
+        contigs = list(
+            recipient = data.frame(
+                id = "r1", name = "1R", subgenome = "R", length = 500,
+                stringsAsFactors = FALSE
+            ),
+            donor = data.frame(
+                id = "d1", name = "1D", subgenome = "D", length = 2000,
+                stringsAsFactors = FALSE
+            )
+        )
+    )
+    expect_identical(
+        bam_assembly_windows(short, c(100L, 1000L)),
+        c(200L, NA_integer_)
+    )
+    expect_match(
+        paste(
+            as.character(bam_assembly_summary_ui(short, c(100L, 1000L))),
+            collapse = ""
+        ),
+        "too short"
+    )
+})
+
+test_that("the preflight card lists file, sample, targets and index", {
+    table <- data.frame(
+        path = "/tmp/session/001-sample.bam",
+        source = "/srv/mamamia/bams/sample.bam",
+        sample = "sample",
+        assembly = "tiny",
+        n_targets = 3L,
+        n_assembly_targets = 2L,
+        index_action = "reuse",
+        warnings = "",
+        stringsAsFactors = FALSE
+    )
+    display <- bam_preflight_display(table)
+    expect_identical(
+        names(display),
+        c("file", "sample", "assembly", "targets", "index", "warnings")
+    )
+    expect_identical(display$file, "sample.bam")
+    expect_identical(display$targets, "3/2")
+    expect_identical(display$index, "reuse")
+    expect_identical(nrow(bam_preflight_display(NULL)), 0L)
+})
+
+test_that("errors carry a stage and an actionable suggestion", {
+    cases <- list(
+        config = quote(.config_error("bad config")),
+        BAM = quote(.mamamia_error("MaMaMIABamHeaderError", "bad bam")),
+        assembly = quote(.mamamia_error(
+            "MaMaMIAAssemblyMatchError", "no match"
+        )),
+        index = quote(.mamamia_error("MaMaMIAIndexError", "no index")),
+        windows = quote(.mamamia_error("MaMaMIAWindowError", "too short")),
+        GC = quote(.mamamia_error("MaMaMIAGcrankError", "bad gc")),
+        counts = quote(.mamamia_error("MaMaMIACountError", "bad counts")),
+        correction = quote(.mamamia_error(
+            "MaMaMIASampleError", "Sample 's' (GC correction): too few"
+        )),
+        normalization = quote(.mamamia_error(
+            "MaMaMIAAnalysisError", "Normalization failed: x"
+        )),
+        segmentation = quote(.mamamia_error(
+            "MaMaMIASampleError", "Sample 's' (segmentation): boom"
+        )),
+        limits = quote(.mamamia_error("MaMaMIALimitError", "too many"))
+    )
+    for (stage in names(cases)) {
+        error <- tryCatch(eval(cases[[stage]]), error = function(e) e)
+        info <- bam_error_info(error)
+        expect_identical(info$stage, stage, info = stage)
+        expect_true(nzchar(info$suggestion), info = stage)
+        expect_match(
+            bam_error_text(info),
+            paste0("\\[", stage, "\\]"),
+            info = stage
+        )
+    }
+
+    plain <- tryCatch(stop("plain failure", call. = FALSE), error = function(e) e)
+    expect_identical(bam_error_info(plain)$stage, "analysis")
+})
+
+test_that("progress stages follow the cohort size and normalization", {
+    expect_identical(
+        bam_progress_stages(1L, "none"),
+        c(
+            "preflight", "index", "windows", "gc", "counts",
+            "correction", "segmentation"
+        )
+    )
+    cohort <- bam_progress_stages(3L, "median")
+    expect_identical(sum(cohort == "counts"), 3L)
+    expect_identical(sum(cohort == "correction"), 3L)
+    expect_identical(sum(cohort == "segmentation"), 3L)
+    expect_identical(sum(cohort == "normalization"), 1L)
+    expect_identical(length(bam_progress_stages(3L, "none")), 13L)
+    expect_identical(
+        bam_progress_label("counts", list(sample = "s1")),
+        "Counting reads for s1"
+    )
+    expect_identical(bam_progress_label("preflight"), "Checking BAM headers")
+})
+
+test_that("run parameters resolve normalization and validate controls", {
+    config <- list(defaults = .config_defaults())
+    base <- list(
+        resolution = "1000", mapq = 20, exclude_flags = 2308,
+        cores = 1, max_fit_windows = 50000, reference_sample = ""
+    )
+
+    single <- bam_run_parameters(base, config, "s1")
+    expect_identical(single$resolution, 1000L)
+    expect_identical(single$normalization, "none")
+    expect_null(single$reference_sample)
+
+    cohort <- bam_run_parameters(base, config, c("s1", "s2"))
+    expect_identical(cohort$normalization, "median")
+    expect_null(cohort$reference_sample)
+
+    reference <- bam_run_parameters(
+        utils::modifyList(base, list(reference_sample = "s2")),
+        config, c("s1", "s2")
+    )
+    expect_identical(reference$normalization, "reference")
+    expect_identical(reference$reference_sample, "s2")
+
+    expect_error(
+        bam_run_parameters(
+            utils::modifyList(base, list(reference_sample = "nope")),
+            config, c("s1", "s2")
+        ),
+        "not one of"
+    )
+    expect_error(
+        bam_run_parameters(
+            utils::modifyList(base, list(mapq = 500)), config, "s1"
+        ),
+        "MAPQ"
+    )
+    expect_error(
+        bam_run_parameters(
+            utils::modifyList(base, list(exclude_flags = 9000)),
+            config, "s1"
+        ),
+        "Exclude flags"
+    )
+    expect_error(
+        bam_run_parameters(
+            utils::modifyList(base, list(cores = 0)), config, "s1"
+        ),
+        "Cores"
+    )
+    expect_error(
+        bam_run_parameters(
+            utils::modifyList(base, list(max_fit_windows = 0)),
+            config, "s1"
+        ),
+        "Max fit windows"
+    )
+})
+
+test_that("the cohort summary reports reads, calls and normalization", {
+    result <- fake_bam_result(c("A", "B"))
+    summary <- bam_cohort_summary(result)
+
+    expect_identical(summary$sample, c("A", "B"))
+    expect_identical(summary$reads_donor, c(600, 600))
+    expect_identical(summary$reads_recipient, c(600, 600))
+    expect_identical(summary$reads_total, c(1200, 1200))
+    expect_identical(
+        summary$n_segments,
+        c(nrow(result$isa$A$segments), nrow(result$isa$B$segments))
+    )
+    expect_identical(summary$normalization, c("median", "median"))
+    expect_identical(summary$reference, c("", ""))
+
+    empty <- bam_cohort_summary(fake_bam_result(character()))
+    expect_identical(nrow(empty), 0L)
+    expect_identical(bam_sample_choices(NULL), character())
+})
+
+test_that("coverage warnings find zero, near-zero and all-zero references", {
+    zero <- fake_bam_result(
+        "A",
+        counts = list(
+            donor = matrix(0, 60L, 1L, dimnames = list(NULL, "A")),
+            recipient = matrix(10, 60L, 1L, dimnames = list(NULL, "A"))
+        )
+    )
+    warnings <- bam_coverage_warnings(zero)
+    expect_true(any(grepl("no reads on the donor", warnings)))
+    expect_false(any(grepl("recipient", warnings)))
+
+    near <- fake_bam_result(
+        "A",
+        counts = list(
+            donor = matrix(0.1, 60L, 1L, dimnames = list(NULL, "A")),
+            recipient = matrix(10, 60L, 1L, dimnames = list(NULL, "A"))
+        )
+    )
+    expect_true(any(grepl("near-zero coverage on the donor", bam_coverage_warnings(near))))
+
+    healthy <- fake_bam_result("A")
+    expect_identical(bam_coverage_warnings(healthy), character())
+
+    reference <- fake_bam_result(c("A", "B"))
+    reference$samples$reference[[1L]] <- TRUE
+    reference$normalization$mode <- "reference"
+    reference$counts$donor[1L, "A"] <- 0
+    reference$counts$recipient[1L, "A"] <- 0
+    reference_warnings <- bam_coverage_warnings(reference)
+    expect_true(any(grepl("Reference sample 'A' has 1 donor and 1 recipient", reference_warnings)))
+    expect_true(any(grepl("pseudocount", reference_warnings)))
+})
+
+test_that("selection maps keep rows per sample", {
+    result <- fake_bam_result(c("A", "B"))
+    map <- bam_selection_map(result)
+    expect_identical(map, list(A = integer(), B = integer()))
+
+    map <- bam_selection_update(map, "A", c(3, 1, 3, NA))
+    expect_identical(map$A, c(1L, 3L))
+    expect_identical(map$B, integer())
+
+    map <- bam_selection_update(map, NULL, 2L)
+    expect_identical(map$A, c(1L, 3L))
+    map <- bam_selection_update(map, "B", integer())
+    expect_identical(map$B, integer())
+})
+
+test_that("the app shows preflight, assembly and a disabled run button", {
+    skip_if_no_dashboard()
+    skip_if_no_samtools()
+    fixture <- variable_gc_fixture()
+    on.exit(unlink(fixture$directory, recursive = TRUE), add = TRUE)
+    state <- app_state(fixture)
+
+    shiny::testServer(bam_launcher_server(state, cache = FALSE), {
+        expect_match(output_html(output$run_ui), "disabled")
+        expect_match(output_html(output$assembly_summary), "Select one or more")
+        expect_match(output$preflight_table, "Select one or more")
+
+        session$setInputs(server_bams = fixture$bam_path)
+        pf <- preflight_state()
+        expect_true(pf$ok)
+        expect_identical(pf$table$sample, "synthetic")
+        expect_match(output$preflight_table, "synthetic")
+        expect_match(output$preflight_table, "synthetic.bam")
+        expect_match(output_html(output$assembly_summary), "Variable-GC")
+        expect_match(output_html(output$assembly_summary), "d1 \\(1D\\)")
+        expect_match(output_html(output$preflight_error), "No preflight problems")
+        expect_false(grepl("disabled", output_html(output$run_ui)))
+    })
+})
+
+test_that("uploaded BAMs are staged before preflight", {
+    skip_if_no_dashboard()
+    skip_if_no_samtools()
+    fixture <- variable_gc_fixture()
+    on.exit(unlink(fixture$directory, recursive = TRUE), add = TRUE)
+    state <- app_state(fixture)
+
+    upload <- data.frame(
+        name = basename(fixture$bam_path),
+        size = file.info(fixture$bam_path)$size,
+        type = "application/octet-stream",
+        datapath = fixture$bam_path,
+        stringsAsFactors = FALSE
+    )
+    shiny::testServer(bam_launcher_server(state, cache = FALSE), {
+        session$setInputs(bams = upload)
+        pf <- preflight_state()
+        expect_true(pf$ok)
+        expect_false(identical(pf$staged, fixture$bam_path))
+        expect_true(all(file.exists(pf$staged)))
+        expect_true(all(dirname(pf$staged) != dirname(fixture$bam_path)))
+    })
+})
+
+test_that("an assembly mismatch shows candidate scores", {
+    skip_if_no_dashboard()
+    skip_if_no_samtools()
+    fixture <- variable_gc_fixture()
+    on.exit(unlink(fixture$directory, recursive = TRUE), add = TRUE)
+    bad <- file.path(fixture$directory, "bad.bam")
+    write_test_bam(
+        c(
+            "@HD\tVN:1.6\tSO:coordinate",
+            "@SQ\tSN:r1\tLN:20000",
+            "@SQ\tSN:d1\tLN:19000",
+            "@RG\tID:bad\tSM:bad-sample"
+        ),
+        bad,
+        index = FALSE
+    )
+    state <- app_state(fixture)
+
+    shiny::testServer(bam_launcher_server(state, cache = FALSE), {
+        session$setInputs(server_bams = bad)
+        pf <- preflight_state()
+        expect_false(pf$ok)
+        expect_identical(pf$error$stage, "assembly")
+        expect_true(is.data.frame(pf$candidates))
+        expect_true("variable" %in% pf$candidates$key)
+        expect_true(any(pf$candidates$n_length_mismatches > 0L))
+
+        error_html <- output_html(output$preflight_error)
+        expect_match(error_html, "Stage: assembly")
+        expect_match(error_html, "Suggested fix")
+        expect_match(output_html(output$candidates_ui), "Assembly candidates")
+        expect_match(output$candidate_table, "variable")
+        expect_match(output$candidate_table, "50.0%")
+        expect_match(output_html(output$run_ui), "disabled")
+    })
+})
+
+test_that("missing BAMs and server limits fail without crashing the session", {
+    skip_if_no_dashboard()
+    skip_if_no_samtools()
+    fixture <- variable_gc_fixture()
+    on.exit(unlink(fixture$directory, recursive = TRUE), add = TRUE)
+    second <- add_variable_gc_bam(fixture, "synthetic-2")
+    state <- app_state(fixture)
+
+    shiny::testServer(bam_launcher_server(state, cache = FALSE), {
+        session$setInputs(
+            server_bams = file.path(fixture$directory, "missing.bam")
+        )
+        pf <- preflight_state()
+        expect_false(pf$ok)
+        expect_identical(pf$error$stage, "BAM")
+        expect_match(output_html(output$preflight_error), "Suggested fix")
+        expect_match(output_html(output$run_ui), "disabled")
+    })
+
+    config <- yaml::read_yaml(fixture$config_path)
+    config$server$max_bams <- 1
+    limited_path <- file.path(fixture$directory, "limited.yml")
+    writeLines(yaml::as.yaml(config), limited_path)
+    limited <- bam_launcher_state(limited_path)
+    expect_true(limited$ok)
+
+    shiny::testServer(bam_launcher_server(limited, cache = FALSE), {
+        session$setInputs(server_bams = c(fixture$bam_path, second))
+        pf <- preflight_state()
+        expect_false(pf$ok)
+        expect_identical(pf$error$stage, "limits")
+        expect_match(output_html(output$preflight_error), "Too many BAM files")
+        expect_match(output_html(output$run_ui), "disabled")
+    })
+
+    config$server$max_bams <- 4
+    config$server$max_total_bytes <- 1
+    byte_limit_path <- file.path(fixture$directory, "byte-limit.yml")
+    writeLines(yaml::as.yaml(config), byte_limit_path)
+    byte_limited <- bam_launcher_state(byte_limit_path)
+    expect_true(byte_limited$ok)
+
+    shiny::testServer(bam_launcher_server(byte_limited, cache = FALSE), {
+        session$setInputs(server_bams = fixture$bam_path)
+        pf <- preflight_state()
+        expect_false(pf$ok)
+        expect_identical(pf$error$stage, "limits")
+        expect_match(output_html(output$preflight_error), "exceeds")
+        expect_match(output_html(output$run_ui), "disabled")
+    })
+})
+
+test_that("a single BAM runs end to end and cleans up the session", {
+    skip_if_no_dashboard()
+    skip_if_no_samtools()
+    fixture <- variable_gc_fixture()
+    on.exit(unlink(fixture$directory, recursive = TRUE), add = TRUE)
+    state <- app_state(fixture)
+    before <- list.files(tempdir(), pattern = "^mamamia-session-")
+    target <- tempfile(fileext = ".bedpe")
+    on.exit(unlink(target), add = TRUE)
+
+    shiny::testServer(bam_launcher_server(state, cache = FALSE), {
+        set_app_inputs(session, server_bams = fixture$bam_path)
+        expect_true(preflight_state()$ok)
+
+        suppressWarnings(session$setInputs(run = 1))
+        expect_match(output$cohort_table, "synthetic")
+        expect_match(output$cohort_table, "none")
+        expect_false(grepl("result_sample", output_html(output$cohort_ui)))
+
+        set_explorer_inputs(session)
+        expect_match(output[["explorer-isa_plot"]]$src, "^data:image/png")
+
+        session$setInputs(`explorer-segments_rows_selected` = 1L)
+        expect_identical(selection_map()[["synthetic"]], 1L)
+        expect_true(file.copy(output$download_cohort, target))
+    })
+
+    expect_false(file.exists(paste0(fixture$bam_path, ".csi")))
+    expect_identical(
+        setdiff(list.files(tempdir(), pattern = "^mamamia-session-"), before),
+        character()
+    )
+    out <- utils::read.table(
+        target,
+        header = TRUE, sep = "\t", stringsAsFactors = FALSE
+    )
+    expect_identical(nrow(out), 1L)
+    expect_identical(out$sample, "synthetic")
+    expect_identical(names(out)[[ncol(out)]], "sample")
+})
+
+test_that("a cohort shows a selector and exports a combined BEDPE", {
+    skip_if_no_dashboard()
+    skip_if_no_samtools()
+    fixture <- variable_gc_fixture()
+    on.exit(unlink(fixture$directory, recursive = TRUE), add = TRUE)
+    first <- add_variable_gc_bam(fixture, "sample-a", step = 4L)
+    second <- add_variable_gc_bam(fixture, "sample-b", step = 6L)
+    state <- app_state(fixture)
+    target <- tempfile(fileext = ".bedpe")
+    on.exit(unlink(target), add = TRUE)
+
+    shiny::testServer(bam_launcher_server(state, cache = FALSE), {
+        set_app_inputs(session, server_bams = c(first, second))
+        expect_true(preflight_state()$ok)
+        expect_match(
+            output_html(output$reference_ui),
+            "None \\(median normalization\\)"
+        )
+
+        session$setInputs(reference_sample = "")
+        suppressWarnings(session$setInputs(run = 1))
+        expect_match(output$cohort_table, "sample-a")
+        expect_match(output$cohort_table, "sample-b")
+        expect_match(output$cohort_table, "median")
+        expect_match(output_html(output$cohort_ui), "result_sample")
+        expect_match(
+            output_html(output$cohort_ui),
+            "Download selected BEDPE \\(all samples\\)"
+        )
+
+        set_explorer_inputs(session)
+        session$setInputs(`explorer-segments_rows_selected` = 1L)
+        expect_identical(selection_map()[["sample-a"]], 1L)
+
+        session$setInputs(
+            result_sample = "sample-b",
+            `explorer-segments_rows_selected` = NULL
+        )
+        session$setInputs(`explorer-segments_rows_selected` = 1L)
+        expect_identical(selection_map()[["sample-b"]], 1L)
+        expect_identical(selection_map()[["sample-a"]], 1L)
+
+        ## Switching back restores the rows chosen for the first sample.
+        session$setInputs(result_sample = "sample-a")
+        rendered <- jsonlite::fromJSON(
+            output[["explorer-segments"]],
+            simplifyVector = FALSE
+        )
+        expect_identical(
+            as.integer(unlist(rendered$x$selection$selected)),
+            1L
+        )
+
+        expect_true(file.copy(output$download_cohort, target))
+    })
+
+    out <- utils::read.table(
+        target,
+        header = TRUE, sep = "\t", stringsAsFactors = FALSE
+    )
+    expect_identical(nrow(out), 2L)
+    expect_identical(sort(unique(out$sample)), c("sample-a", "sample-b"))
+    expect_identical(names(out)[[ncol(out)]], "sample")
+})
+
+test_that("the cohort card shows zero-coverage warnings", {
+    skip_if_no_dashboard()
+    skip_if_no_tiny_fixtures()
+    state <- bam_launcher_state(tiny_config_path())
+    expect_true(state$ok)
+    fake <- fake_bam_result(
+        "A",
+        counts = list(
+            donor = matrix(0, 60L, 1L, dimnames = list(NULL, "A")),
+            recipient = matrix(10, 60L, 1L, dimnames = list(NULL, "A"))
+        )
+    )
+
+    shiny::testServer(bam_launcher_server(state, cache = FALSE), {
+        result(fake)
+        expect_match(output$cohort_table, "A")
+        expect_match(
+            output_html(output$cohort_ui),
+            "no reads on the donor"
+        )
+    })
+})
+
+test_that("a failing run reports the stage and keeps the session alive", {
+    skip_if_no_dashboard()
+    skip_if_no_tiny_fixtures()
+    state <- bam_launcher_state(tiny_config_path())
+    expect_true(state$ok)
+
+    shiny::testServer(bam_launcher_server(state, cache = FALSE), {
+        session$setInputs(
+            server_bams = tiny_bam_path(),
+            resolution = "100",
+            mapq = 20,
+            exclude_flags = 2308,
+            cores = 1,
+            max_fit_windows = 1000,
+            reference_sample = "",
+            assembly = ""
+        )
+        expect_true(preflight_state()$ok)
+        expect_null(result())
+
+        ## The committed tiny fixture has a constant GC profile, so the fit
+        ## fails inside the correction stage. The handler must catch it.
+        suppressWarnings(session$setInputs(run = 1L))
+        expect_null(result())
+        expect_null(output$cohort_ui)
+        expect_true(preflight_state()$ok)
+        expect_match(
+            output_html(output$preflight_error),
+            "No preflight problems"
+        )
+    })
+})
+
+test_that("the entrypoint dispatches the BAM app and validates upload size", {
+    skip_if_no_dashboard()
+    skip_if_no_samtools()
+    fixture <- variable_gc_fixture()
+    on.exit(unlink(fixture$directory, recursive = TRUE), add = TRUE)
+
+    app <- mamamia_app(config = fixture$config_path, cache = FALSE)
+    expect_s3_class(app, "shiny.appobj")
+    expect_identical(attr(app, "mamamia_input"), "bam")
+
+    auto <- mamamia_app(bam_paths = fixture$bam_path, cache = FALSE)
+    expect_identical(attr(auto, "mamamia_input"), "bam")
+
+    legacy <- mamamia_app(input = "files", cache = FALSE)
+    expect_identical(attr(legacy, "mamamia_input"), "files")
+
+    expect_error(runMaMaMIA(max_request_size = 0), "positive")
+})

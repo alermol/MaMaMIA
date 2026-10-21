@@ -200,9 +200,16 @@ explorer_results_ui <- function(id) {
 ## `NULL` while no analysis has run yet; the explorer stays idle in that case.
 ## `chr_ids` optionally limits the chromosomes selected on arrival. `sample` is
 ## an optional sample name (or reactive returning one); when supplied, the BEDPE
-## download gains the `sample` column, so a per-sample file can be merged into a
-## cohort export without losing its identity.
-explorer_server <- function(id, ISA, chr_ids = NULL, sample = NULL) {
+## download gains the `sample` column, so a per-sample file can be merged into
+## a cohort export without losing its identity.
+##
+## `selection` optionally supplies the row ids (the `.row_id` values) to
+## preselect when the table is rendered, so the parent app can restore the rows
+## chosen for another sample when the user switches back. `on_selection` is
+## called with `(rows, sample)` whenever the current selection changes; the
+## parent uses it to keep a per-sample selection map for the combined export.
+explorer_server <- function(id, ISA, chr_ids = NULL, sample = NULL,
+                            selection = NULL, on_selection = NULL) {
     shiny::moduleServer(id, function(input, output, session) {
         ## Changing the threshold re-flags the segments without re-running CBS
         ## (see `subset.ISA`); the segment rows are kept in their original order,
@@ -297,6 +304,20 @@ explorer_server <- function(id, ISA, chr_ids = NULL, sample = NULL) {
             as.character(value)
         }
 
+        ## Rows the parent asked to preselect. Read inside `renderDT()` with
+        ## `isolate()` so a selection callback cannot re-render the table in a
+        ## loop; a sample switch invalidates `visible_segments()` instead.
+        preselected_rows <- function() {
+            if (is.null(selection)) {
+                return(integer())
+            }
+            value <- if (shiny::is.reactive(selection)) selection() else selection
+            if (is.null(value)) {
+                return(integer())
+            }
+            suppressWarnings(as.integer(value))
+        }
+
         ## A new ISA object resets the pickers to the full set and syncs the
         ## threshold controls with the metrics the object was segmented with.
         shiny::observeEvent(ISA(), {
@@ -326,6 +347,15 @@ explorer_server <- function(id, ISA, chr_ids = NULL, sample = NULL) {
             }
             visible$.row_id[selected]
         })
+
+        ## Report the selection to the parent so it can keep a per-sample map for
+        ## the combined cohort export.
+        shiny::observeEvent(selected_rows(), {
+            if (is.null(on_selection)) {
+                return()
+            }
+            on_selection(selected_rows(), current_sample())
+        }, ignoreNULL = FALSE)
 
         output$selection_status <- shiny::renderText({
             if (is.null(ISA())) {
@@ -415,10 +445,21 @@ explorer_server <- function(id, ISA, chr_ids = NULL, sample = NULL) {
             shiny::validate(
                 shiny::need(!is.null(ISA()), "Run the analysis to list segments")
             )
+            visible <- visible_segments()
+            selected <- shiny::isolate(preselected_rows())
+            positions <- if (is.null(visible)) {
+                integer()
+            } else {
+                match(selected, visible$.row_id)
+            }
+            positions <- positions[!is.na(positions)]
             DT::datatable(
-                isa_dashboard_table(visible_segments()),
+                isa_dashboard_table(visible),
                 rownames = FALSE,
-                selection = "multiple",
+                selection = list(
+                    mode = "multiple",
+                    selected = as.integer(positions)
+                ),
                 filter = "top",
                 options = list(pageLength = 10, scrollX = TRUE)
             )

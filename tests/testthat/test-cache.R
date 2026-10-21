@@ -23,6 +23,34 @@ test_that("the fit cache key follows data, cores, versions and model", {
     expect_identical(key, MaMaMIA:::fit_cache_key(windows, 4L, as.call(relabelled)))
 })
 
+test_that("the fit cache key covers the cap and the selected rows", {
+    call <- MaMaMIA:::coverage_model_call(1L)
+    key <- MaMaMIA:::fit_cache_key(windows, 1L, call)
+
+    expect_false(identical(
+        key,
+        MaMaMIA:::fit_cache_key(windows, 1L, call, max_fit_windows = 3)
+    ))
+    expect_false(identical(
+        key,
+        MaMaMIA:::fit_cache_key(
+            windows, 1L, call,
+            selected_rows = windows[c(1L, 3L), c("chr_id", "iid")]
+        )
+    ))
+    ## The seed follows the full-set key, not the selected rows.
+    seed <- MaMaMIA:::fit_sampling_seed(windows, 1L, call, 3)
+    expect_type(seed, "integer"); expect_length(seed, 1L)
+    expect_identical(
+        seed,
+        MaMaMIA:::fit_sampling_seed(windows, 1L, call, 3)
+    )
+    expect_false(identical(
+        seed,
+        MaMaMIA:::fit_sampling_seed(windows, 1L, call, 2)
+    ))
+})
+
 test_that("cached fits are reused only when the key and format match", {
     path <- tempfile(fileext = ".rds"); on.exit(unlink(path), add = TRUE)
     expect_null(MaMaMIA:::read_cached_fit(NULL, "key")); expect_null(MaMaMIA:::read_cached_fit(path, "key"))

@@ -56,3 +56,150 @@ test_that("correctReadCounts() output feeds segmentation", {
     expect_true(all(isa$segments$chr_id.rec %in% res$meta$rec_chr_ids))
     expect_true(all(is.finite(isa$segments$seg.median)))
 })
+
+test_that("fit subsampling respects the cap and the per-stratum minimum", {
+    skip_on_cran()
+    x <- do.call(RCA, triticum_one_pair())
+    sampled <- correctReadCounts(
+        x,
+        cores = 1L,
+        verbose = FALSE,
+        max_fit_windows = 500L
+    )
+    sampling <- sampled$fit_sampling
+
+    expect_true(sampling$sampled)
+    expect_identical(sampling$max_fit_windows, 500)
+    expect_identical(sampling$n_fitted, 500L)
+    expect_gt(sampling$n_ideal, sampling$n_fitted)
+    expect_identical(sum(sampling$strata$n_fitted), 500L)
+    expect_true(all(
+        sampling$strata$n_fitted >=
+            pmin(sampling$strata$n_ideal, 10L)
+    ))
+    expect_true(all(sampling$strata$n_fitted <= sampling$strata$n_ideal))
+    expect_identical(
+        names(sampling$strata),
+        c("subgenome", "gc_decile", "n_ideal", "n_fitted")
+    )
+    expect_identical(anyDuplicated(paste(
+        sampling$strata$subgenome, sampling$strata$gc_decile
+    )), 0L)
+    expect_true(all(is.finite(sampled$data$cor.gc)))
+    expect_output(print(summary(sampled)), "Fit windows: 500 of")
+})
+
+test_that("fit subsampling is reproducible and leaves the RNG alone", {
+    skip_on_cran()
+    x <- do.call(RCA, triticum_one_pair())
+    set.seed(42L)
+    before <- get(".Random.seed", envir = globalenv(), inherits = FALSE)
+    first <- correctReadCounts(
+        x, cores = 1L, verbose = FALSE, max_fit_windows = 500L
+    )
+    expect_identical(
+        get(".Random.seed", envir = globalenv(), inherits = FALSE),
+        before
+    )
+    second <- correctReadCounts(
+        x, cores = 1L, verbose = FALSE, max_fit_windows = 500L
+    )
+    expect_identical(second$fit_sampling, first$fit_sampling)
+    expect_equal(second$data$cor.gc, first$data$cor.gc, tolerance = 1e-10)
+    expect_equal(
+        glmmTMB::fixef(second$fit), glmmTMB::fixef(first$fit),
+        tolerance = 1e-8
+    )
+})
+
+test_that("the fit cache follows max_fit_windows", {
+    skip_on_cran()
+    x <- do.call(RCA, triticum_one_pair())
+    path <- tempfile(fileext = ".rds")
+    on.exit(unlink(path), add = TRUE)
+
+    first <- correctReadCounts(
+        x, cores = 1L, verbose = FALSE, cache = path,
+        max_fit_windows = 500L
+    )
+    key <- readRDS(path)$key
+    expect_identical(first$fit_sampling$n_fitted, 500L)
+
+    warm <- correctReadCounts(
+        x, cores = 1L, verbose = FALSE, cache = path,
+        max_fit_windows = 500L
+    )
+    expect_identical(readRDS(path)$key, key)
+    expect_equal(warm$data$cor.gc, first$data$cor.gc, tolerance = 1e-10)
+
+    larger <- correctReadCounts(
+        x, cores = 1L, verbose = FALSE, cache = path,
+        max_fit_windows = 700L
+    )
+    expect_false(identical(readRDS(path)$key, key))
+    expect_identical(larger$fit_sampling$n_fitted, 700L)
+})
+
+test_that("a subsampled fit stays close to the full fit", {
+    skip_on_cran()
+    full <- triticum_fit()
+    sampled <- correctReadCounts(
+        do.call(RCA, triticum_one_pair()),
+        cores = 1L,
+        verbose = FALSE,
+        max_fit_windows = 600L
+    )
+    common <- full$data$valid & sampled$data$valid
+    expect_gt(sum(common), 1000L)
+    expect_true(all(is.finite(sampled$data$cor.gc[common])))
+    expect_gt(
+        stats::cor(full$data$cor.gc[common], sampled$data$cor.gc[common]),
+        0.90
+    )
+    relative <- abs(
+        full$data$cor.gc[common] - sampled$data$cor.gc[common]
+    ) / pmax(abs(full$data$cor.gc[common]), 1e-8)
+    expect_lt(stats::median(relative), 0.05)
+})
+
+test_that("a subsampled fit feeds segmentation", {
+    skip_on_cran()
+    sampled <- correctReadCounts(
+        do.call(RCA, triticum_one_pair()),
+        cores = 1L,
+        verbose = FALSE,
+        max_fit_windows = 600L
+    )
+    isa <- segments(
+        sampled,
+        target_pairs = stats::setNames(
+            sampled$meta$rec_chr_ids,
+            sampled$meta$don_chr_ids
+        ),
+        verbose = FALSE
+    )
+    expect_s3_class(isa, "ISA")
+    expect_gt(nrow(isa$segments), 0L)
+    expect_true(all(is.finite(isa$segments$seg.median)))
+})
+
+test_that("fit subsampling validates its cap and reports too-small caps", {
+    skip_on_cran()
+    x <- do.call(RCA, triticum_one_pair())
+    expect_error(
+        correctReadCounts(x, cores = 1L, verbose = FALSE, max_fit_windows = 0),
+        "positive integer or Inf"
+    )
+    expect_error(
+        correctReadCounts(x, cores = 1L, verbose = FALSE, max_fit_windows = 1.5),
+        "positive integer or Inf"
+    )
+    expect_error(
+        correctReadCounts(x, cores = 1L, verbose = FALSE, max_fit_windows = NA),
+        "positive integer or Inf"
+    )
+    expect_error(
+        correctReadCounts(x, cores = 1L, verbose = FALSE, max_fit_windows = 1L),
+        "at least"
+    )
+})

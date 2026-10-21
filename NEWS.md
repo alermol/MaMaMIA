@@ -2,6 +2,52 @@
 
 * Initial submission.
 
+## BAM-first workflow (wave 6)
+
+* `runMaMaMIA()` now dispatches between the BAM-first app and the legacy
+  directory app. `input = "auto"` chooses the BAM app when `config` or
+  `bam_paths` is supplied; `"bam"` forces it, and `"files"`/`"example"` keep
+  the legacy launcher reachable until T7.5. The new `config`, `bam_paths`,
+  `input` and `max_request_size` arguments are documented; `max_request_size`
+  sets `options(shiny.maxRequestSize)` (5 GiB by default).
+* The BAM-first app (`R/app-bam.R`) shows the configuration summary, uploads and
+  a bounded server-side BAM picker, resolution/reference/assembly controls and
+  advanced MAPQ, exclude-flag, core and fit-window inputs. Preflight is staged
+  into a private session directory (symlink preferred) and displayed as a
+  per-BAM table with index action and warnings; the detected-assembly card
+  lists donor/recipient contigs, pairs and window counts for every allowed
+  resolution; assembly failures show candidate scores. The Run button stays
+  disabled until preflight succeeds.
+* The run flow reports pipeline stages through `withProgress()`, catches every
+  failure with the stage and a suggested fix, keeps the previous result on
+  error, and invalidates a result as soon as an input that affects it changes.
+  The session blocks during analysis (no background process); the UI says so.
+  `server.max_bams` and `server.max_total_bytes` are enforced by preflight, and
+  zero/near-zero coverage, all-zero reference windows and failed fits are
+  reported without escaping the Shiny server.
+* Multi-sample results gain a sample selector, a cohort summary (reads on
+  donor and recipient targets, segments, putative introgressions and
+  normalization mode), a per-sample selection map and a combined
+  "Download selected BEDPE (all samples)" export through
+  `writeCohortToBedpe()`. Switching samples restores the rows selected for the
+  other sample.
+* Uploaded and server-side BAMs are staged read-only into the session temp
+  directory; the source BAM and `server.bam_root` are never written to. Small
+  files (below 1 MiB) are copied, larger files are symlinked, so
+  temporary-directory cleanup cannot touch the source metadata. The session
+  directory, staged BAMs and CSI indexes are removed on session end. GC index
+  handles stay cached per process; no session clears them.
+* `explorer_server()` gained `selection` and `on_selection`, which preselect
+  rows from a parent-owned map and report the current selection per sample.
+* `correctReadCounts()` gained `max_fit_windows` (default `Inf`) for
+  high-resolution data. Above the cap, the GC fit uses a deterministic sample
+  stratified by subgenome and GC decile, with at least ten windows per
+  non-empty stratum and predictions still covering every window. The RCA
+  records `fit_sampling`, the fit cache key covers the cap and the selected
+  rows, and `analyzeBamInput()` applies the cap per sample. A 280,000-window
+  benchmark fits 50,000 ideal windows in 47 s with a 4.2 GB peak RSS; see
+  `inst/benchmarks/`.
+
 ## BAM-first workflow (wave 5)
 
 * The introgression explorer now renders the thresholded `ISA` as a mirror or

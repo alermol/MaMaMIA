@@ -8,6 +8,10 @@ runMaMaMIA(
   analysis_dir = NULL,
   assemblies_dir = NULL,
   cache = NULL,
+  config = NULL,
+  bam_paths = NULL,
+  input = c("auto", "bam", "files", "example"),
+  max_request_size = 5 * 1024^3,
   host = "127.0.0.1",
   port = NULL,
   launch.browser = interactive()
@@ -15,14 +19,30 @@ runMaMaMIA(
 }
 \arguments{
 \item{analysis_dir}{Optional path to an analysis directory, prefilling the
-corresponding input in the app.}
+corresponding input in the legacy app.}
 
 \item{assemblies_dir}{Optional path to an assemblies directory, prefilling
-the corresponding input in the app.}
+the corresponding input in the legacy app.}
 
 \item{cache}{Optional path to an \code{.rds} file used to memoise the GC-bias
 model fit, passed to \code{\link[=correctReadCounts]{correctReadCounts()}}. Defaults to a file in the
 user cache directory.}
+
+\item{config}{Optional assembly registry: a path to a YAML configuration or
+a validated configuration list from \code{\link[=readMaMaMIAConfig]{readMaMaMIAConfig()}}. The BAM-first
+app falls back to the \code{MAMAMIA_CONFIG} environment variable when this is
+\code{NULL}.}
+
+\item{bam_paths}{Optional character vector of server-side BAM paths used to
+preselect the BAM picker. The paths must still pass preflight (under
+\code{server.bam_root} when it is configured).}
+
+\item{input}{Input mode. \code{"auto"} selects the BAM-first app when \code{config} or
+\code{bam_paths} is supplied and the legacy app otherwise; \code{"bam"} forces the
+BAM-first app; \code{"files"} and \code{"example"} force the legacy app.}
+
+\item{max_request_size}{Maximum size in bytes of a single Shiny upload,
+passed to \code{options(shiny.maxRequestSize = )}. Defaults to 5 GiB.}
 
 \item{host}{Host passed to \code{\link[shiny:runApp]{shiny::runApp()}}.}
 
@@ -36,25 +56,36 @@ launching the dashboard.
 }
 \description{
 \code{runMaMaMIA()} is the main entry point of the package. It opens a locally
-running Shiny application that reads windowed coverage and GC-content
-tables, runs the MaMaMIA pipeline, and then hands the result to the
-interactive introgression explorer of \code{\link[=exploreIntrogressions]{exploreIntrogressions()}}.
+running Shiny application. With \code{input = "bam"} (or when \code{config} or
+\code{bam_paths} is supplied and \code{input = "auto"}), the BAM-first app reads BAM
+headers, matches them to a configured assembly, stages the files in session
+temporary storage, and runs \code{\link[=analyzeBamInput]{analyzeBamInput()}} before handing the per-sample
+\code{ISA} objects to the introgression explorer of \code{\link[=exploreIntrogressions]{exploreIntrogressions()}}.
+The legacy directory-layout app remains reachable through \code{input = "files"}
+or \code{input = "example"} until it is decommissioned.
 }
 \details{
-The input is either the packaged \code{triticum} example or a directory layout
-read by \code{\link[=readMaMaMIAInput]{readMaMaMIAInput()}}: an analysis directory with per-sample coverage
-tables and an assemblies directory with per-reference GC-content tables and
-chromosome metadata. Pick the sample, reference, donor and recipient
-subgenomes in the app, then press \emph{Run analysis}. Donor-recipient chromosome
-pairs are matched by chromosome number with \code{\link[=defaultTargetPairs]{defaultTargetPairs()}}.
+The BAM-first app reads its assembly registry from \code{config} or, when that is
+\code{NULL}, from the \code{MAMAMIA_CONFIG} environment variable (the ShinyProxy
+deployment path). A missing or invalid registry is rendered as a
+configuration error card rather than a crash.
 
-The app runs the pipeline in the R session, so the GC-bias fit keeps the
-session busy while it runs; a fit cache (see the \code{cache} argument of
-\code{\link[=correctReadCounts]{correctReadCounts()}}) makes re-runs of the same windows much faster.
+Uploaded BAMs and server-side BAMs under \code{server.bam_root} are staged into a
+private per-session directory (symlinked for large files, copied for small
+files and when symlinks are unsupported) and indexed there. The source
+directories are never written to; the session directory and every staged BAM
+and CSI index are removed when the session ends. GC index handles are
+process-wide and are not cleared at session end.
 
-The explorer currently shows the segment table with the BEDPE export; its
-BioCircos circos view is temporarily disabled together with the BioCircos
-dependency.
+The analysis runs in the R session, so the session blocks while it runs; the
+progress bar reports the pipeline stages (headers, indexes, windows, GC,
+counts, correction, normalization, segmentation). Errors are reported with
+the failing stage and a suggested fix.
+
+The explorer shows the mirror/difference plot, the segment table with the
+BEDPE export, and, for a cohort, a per-sample selector, a cohort summary and
+a combined BEDPE download carrying the \code{sample} column. Its BioCircos circos
+view is temporarily disabled together with the BioCircos dependency.
 
 Dashboard packages are optional MaMaMIA dependencies. Install them with
 \code{install.packages(c("shiny", "bslib", "shinyWidgets", "DT"))}
@@ -62,12 +93,14 @@ before calling this function.
 }
 \examples{
 \dontrun{
+runMaMaMIA(config = "assemblies.yml", input = "bam")
 runMaMaMIA(
   analysis_dir = "mamamia_analysis",
-  assemblies_dir = "assemblies"
+  assemblies_dir = "assemblies",
+  input = "files"
 )
 }
 }
 \seealso{
-\code{\link[=exploreIntrogressions]{exploreIntrogressions()}}, \code{\link[=readMaMaMIAInput]{readMaMaMIAInput()}}
+\code{\link[=exploreIntrogressions]{exploreIntrogressions()}}, \code{\link[=analyzeBamInput]{analyzeBamInput()}}, \code{\link[=readMaMaMIAInput]{readMaMaMIAInput()}}
 }

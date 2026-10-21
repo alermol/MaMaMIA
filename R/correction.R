@@ -4,12 +4,17 @@
 
 #' @export
 #' @importFrom rlang .data
-correctReadCounts <- function(RCA, cores = 1L, verbose = TRUE, cache = NULL) {
+correctReadCounts <- function(RCA, cores = 1L, verbose = TRUE, cache = NULL,
+                              max_fit_windows = Inf) {
     stopifnot("Input is not RCA object" = inherits(RCA, "RCA"))
 
     cov_outlier <- 0.01
     gc_outlier <- 0.01
 
+    max_fit_windows <- validate_max_fit_windows(max_fit_windows)
+    if (identical(cache, FALSE)) {
+        cache <- NULL
+    }
     cores <- check_cores(cores)
 
     if (verbose) {
@@ -54,7 +59,25 @@ correctReadCounts <- function(RCA, cores = 1L, verbose = TRUE, cache = NULL) {
     }
     ideal_data <- dplyr::filter(RCA$data, .data$ideal)
     fit_call <- coverage_model_call(cores)
-    cache_key <- if (is.null(cache)) NULL else fit_cache_key(ideal_data, cores, fit_call)
+    sampling_seed <- if (is.finite(max_fit_windows) &&
+        nrow(ideal_data) > max_fit_windows) {
+        fit_sampling_seed(ideal_data, cores, fit_call, max_fit_windows)
+    } else {
+        NA_integer_
+    }
+    fit_sample <- select_fit_windows(ideal_data, max_fit_windows, sampling_seed)
+    ideal_data <- fit_sample$data
+    cache_key <- if (is.null(cache)) {
+        NULL
+    } else {
+        fit_cache_key(
+            ideal_data,
+            cores,
+            fit_call,
+            max_fit_windows = max_fit_windows,
+            selected_rows = ideal_data[c("chr_id", "iid")]
+        )
+    }
     fit <- read_cached_fit(cache, cache_key)
     if (is.null(fit)) {
         fit <- eval(fit_call)
@@ -88,6 +111,7 @@ correctReadCounts <- function(RCA, cores = 1L, verbose = TRUE, cache = NULL) {
 
     RCA$corrected <- TRUE
     RCA$fit <- fit
+    RCA$fit_sampling <- fit_sample$sampling
     RCA$outliers <- list(
         gc_lower_bound = gc_q[1],
         gc_upper_bound = gc_q[2],
@@ -95,6 +119,186 @@ correctReadCounts <- function(RCA, cores = 1L, verbose = TRUE, cache = NULL) {
     )
 
     return(RCA)
+}
+
+## Fit-window subsampling ----------------------------------------------------
+
+#' Validate the fit-window cap
+#' @noRd
+validate_max_fit_windows <- function(max_fit_windows) {
+    if (length(max_fit_windows) != 1L || is.na(max_fit_windows) ||
+        !is.numeric(max_fit_windows) || max_fit_windows <= 0 ||
+        (!is.infinite(max_fit_windows) &&
+            max_fit_windows != floor(max_fit_windows))) {
+        stop(
+            "`max_fit_windows` must be a positive integer or Inf",
+            call. = FALSE
+        )
+    }
+    as.numeric(max_fit_windows)
+}
+
+#' Deterministic stratified subsample of the ideal windows
+#'
+#' Strata are the cross-classification of subgenome and GC decile. Every
+#' non-empty stratum contributes at least ten windows (or all of its windows
+#' when it is smaller). The remaining slots are allocated proportionally to the
+#' remaining capacity. Sampling within a stratum uses a caller-supplied,
+#' cache-key-derived seed, and the caller's RNG state is restored afterwards.
+#'
+#' @param ideal_data Ideal rows of `RCA$data`.
+#' @param max_fit_windows Positive integer cap or `Inf`.
+#' @param seed Integer seed; required when subsampling.
+#'
+#' @return A list with `data` (the rows used for fitting) and `sampling` (the
+#'   `RCA$fit_sampling` metadata).
+#' @noRd
+select_fit_windows <- function(ideal_data, max_fit_windows,
+                               seed = NA_integer_) {
+    n_ideal <- nrow(ideal_data)
+    max_fit_windows <- validate_max_fit_windows(max_fit_windows)
+
+    gc_decile <- as.integer(dplyr::ntile(ideal_data$gc, 10L))
+    stratum <- paste(
+        as.character(ideal_data$subgenome), gc_decile,
+        sep = "\r"
+    )
+    keys <- sort(unique(stratum))
+    sizes <- as.integer(table(factor(stratum, levels = keys)))
+    strata <- data.frame(
+        subgenome = sub("\r.*$", "", keys),
+        gc_decile = as.integer(sub("^.*\r", "", keys)),
+        n_ideal = sizes,
+        stringsAsFactors = FALSE
+    )
+
+    sampled <- is.finite(max_fit_windows) && n_ideal > max_fit_windows
+    if (!sampled) {
+        strata$n_fitted <- strata$n_ideal
+        return(list(
+            data = ideal_data,
+            sampling = list(
+                sampled = FALSE,
+                max_fit_windows = max_fit_windows,
+                n_ideal = n_ideal,
+                n_fitted = n_ideal,
+                seed = NA_integer_,
+                strata = strata
+            )
+        ))
+    }
+
+    size <- as.integer(min(max_fit_windows, n_ideal))
+    allocation <- allocate_fit_windows(sizes, size)
+    strata$n_fitted <- allocation
+
+    if (length(seed) != 1L || is.na(seed) || !is.numeric(seed)) {
+        stop("A finite integer seed is required for fit subsampling",
+            call. = FALSE
+        )
+    }
+    selected <- with_preserved_seed(seed, {
+        sort(unlist(lapply(seq_along(keys), function(j) {
+            rows <- which(stratum == keys[[j]])
+            if (allocation[[j]] >= length(rows)) {
+                rows
+            } else {
+                sample(rows, allocation[[j]])
+            }
+        }), use.names = FALSE))
+    })
+
+    list(
+        data = ideal_data[selected, , drop = FALSE],
+        sampling = list(
+            sampled = TRUE,
+            max_fit_windows = max_fit_windows,
+            n_ideal = n_ideal,
+            n_fitted = length(selected),
+            seed = as.integer(seed),
+            strata = strata
+        )
+    )
+}
+
+#' Allocate the fit sample across strata
+#'
+#' Each stratum keeps at least `min(n, 10)` windows. The remaining slots are
+#' allocated in proportion to the remaining capacity, with the largest
+#' fractional remainders receiving the leftover slots. The result always sums to
+#' `size` and never exceeds the stratum sizes.
+#' @noRd
+allocate_fit_windows <- function(sizes, size) {
+    sizes <- as.integer(sizes)
+    minimum <- pmin(sizes, 10L)
+    required <- sum(minimum)
+    if (size < required) {
+        stop(
+            sprintf(
+                paste0(
+                    "`max_fit_windows` (%s) is too small for %d ",
+                    "subgenome x GC-decile strata; at least %s windows are ",
+                    "required to fit at least 10 windows per stratum"
+                ),
+                format(size, scientific = FALSE),
+                length(sizes),
+                format(required, scientific = FALSE)
+            ),
+            call. = FALSE
+        )
+    }
+
+    allocation <- minimum
+    remaining <- size - sum(allocation)
+    capacity <- sizes - allocation
+    total_capacity <- sum(capacity)
+    if (remaining <= 0L || total_capacity == 0L) {
+        return(allocation)
+    }
+
+    quota <- remaining * capacity / total_capacity
+    add <- floor(quota)
+    allocation <- allocation + as.integer(add)
+    remaining <- size - sum(allocation)
+    if (remaining <= 0L) {
+        return(allocation)
+    }
+
+    ## The fractional part is below one per stratum, so at most one extra
+    ## window per open stratum is needed.
+    fraction <- quota - floor(quota)
+    open <- which(allocation < sizes)
+    order_open <- open[order(-fraction[open], open)]
+    for (j in order_open) {
+        if (remaining <= 0L) {
+            break
+        }
+        allocation[[j]] <- allocation[[j]] + 1L
+        remaining <- remaining - 1L
+    }
+    allocation
+}
+
+#' Evaluate an expression under a temporary seed
+#'
+#' The caller's `.Random.seed` is restored on exit, so fit subsampling is
+#' reproducible and does not perturb the surrounding analysis.
+#' @noRd
+with_preserved_seed <- function(seed, expr) {
+    global <- globalenv()
+    had_seed <- exists(".Random.seed", envir = global, inherits = FALSE)
+    if (had_seed) {
+        old_seed <- get(".Random.seed", envir = global, inherits = FALSE)
+    }
+    on.exit({
+        if (had_seed) {
+            assign(".Random.seed", old_seed, envir = global)
+        } else if (exists(".Random.seed", envir = global, inherits = FALSE)) {
+            rm(".Random.seed", envir = global)
+        }
+    }, add = TRUE)
+    set.seed(seed)
+    force(expr)
 }
 
 ## The ZINB response is evaluated once for the distinct (GC, subgenome) pairs.

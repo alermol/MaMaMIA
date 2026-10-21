@@ -247,6 +247,77 @@ test_that("the explorer download keeps the legacy layout without a sample", {
     expect_false("sample" %in% header)
 })
 
+test_that("the explorer preselects rows from a selection map", {
+    testthat::skip_if_not_installed("shiny")
+    testthat::skip_if_not_installed("DT")
+    testthat::skip_if_not_installed("shinyWidgets")
+
+    isa <- seg_step()
+    shiny::testServer(
+        explorer_server,
+        args = list(
+            ISA = shiny::reactive(isa),
+            selection = shiny::reactive(c(1L, 2L))
+        ),
+        {
+            session$setInputs(
+                chr_ids = c("d1", "r1"),
+                pair_ids = "d1 -> r1",
+                putative_only = FALSE,
+                threshold_type = "median",
+                threshold_value = 0,
+                min_width = 2
+            )
+            rendered <- jsonlite::fromJSON(
+                output$segments,
+                simplifyVector = FALSE
+            )
+            expect_identical(
+                as.integer(unlist(rendered$x$selection$selected)),
+                c(1L, 2L)
+            )
+        }
+    )
+})
+
+test_that("the explorer reports selections with the current sample", {
+    testthat::skip_if_not_installed("shiny")
+    testthat::skip_if_not_installed("DT")
+    testthat::skip_if_not_installed("shinyWidgets")
+
+    isa <- seg_step()
+    seen <- list()
+    shiny::testServer(
+        explorer_server,
+        args = list(
+            ISA = shiny::reactive(isa),
+            sample = shiny::reactive("sample-a"),
+            selection = shiny::reactive(integer()),
+            on_selection = function(rows, sample) {
+                seen[[length(seen) + 1L]] <<- list(
+                    rows = rows, sample = sample
+                )
+            }
+        ),
+        {
+            session$setInputs(
+                chr_ids = c("d1", "r1"),
+                pair_ids = "d1 -> r1",
+                putative_only = FALSE,
+                threshold_type = "median",
+                threshold_value = 0,
+                min_width = 2,
+                segments_rows_selected = c(1L, 2L)
+            )
+            picked <- Filter(function(x) {
+                identical(x$sample, "sample-a") &&
+                    identical(x$rows, c(1L, 2L))
+            }, seen)
+            expect_gt(length(picked), 0L)
+        }
+    )
+})
+
 ## The circos widget test is commented out together with the BioCircos
 ## dependency and the corresponding code in R/circos.R. Reinstate both
 ## together.

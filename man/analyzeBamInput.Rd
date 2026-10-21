@@ -44,8 +44,12 @@ most specific exact match.}
 
 \item{cores}{Number of cores for the GC-bias fit.}
 
-\item{max_fit_windows}{Fit-window cap recorded for T7.1. Not enforced yet; a
-cohort whose total window count exceeds it emits a performance warning.}
+\item{max_fit_windows}{Maximum number of ideal windows used for each
+sample's GC-bias fit. Larger ideal sets are subsampled deterministically by
+subgenome and GC decile with at least ten windows per non-empty stratum;
+predictions still cover every window. \code{Inf} disables subsampling. A cohort
+whose total window count exceeds this value also emits a performance
+warning.}
 
 \item{cache}{Optional fit-cache \code{.rds} path. \code{NULL} uses a per-process file
 in session temp; \code{FALSE} disables the cache.}
@@ -84,8 +88,9 @@ callback aborts the analysis, which lets a Shiny session cancel a long run.
 
 A warning is emitted when the total analysis window count across samples
 (\code{length(bam_paths) * nrow(windows$table)}) exceeds \code{max_fit_windows}; this
-is a performance guard, not an error. The fit-window cap itself is recorded
-in provenance and enforced in T7.1.
+is a performance guard, not an error. The fit-window cap itself is applied
+per sample by \code{\link[=correctReadCounts]{correctReadCounts()}} and recorded in provenance and in each
+\code{RCA$fit_sampling}.
 
 BAMs whose directory is not writable are staged in session temp before
 indexing; the result records the staging decision in \code{provenance$staged}.

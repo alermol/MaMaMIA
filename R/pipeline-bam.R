@@ -316,7 +316,7 @@
         mapq = mapq,
         exclude_flags = exclude_flags,
         max_fit_windows = max_fit_windows,
-        max_fit_windows_enforced = FALSE,
+        max_fit_windows_enforced = TRUE,
         normalization_requested = requested_normalization,
         normalization_mode = normalization$mode,
         normalization_by_side = normalization$by_side,
@@ -356,8 +356,9 @@
 #'
 #' A warning is emitted when the total analysis window count across samples
 #' (`length(bam_paths) * nrow(windows$table)`) exceeds `max_fit_windows`; this
-#' is a performance guard, not an error. The fit-window cap itself is recorded
-#' in provenance and enforced in T7.1.
+#' is a performance guard, not an error. The fit-window cap itself is applied
+#' per sample by [correctReadCounts()] and recorded in provenance and in each
+#' `RCA$fit_sampling`.
 #'
 #' BAMs whose directory is not writable are staged in session temp before
 #' indexing; the result records the staging decision in `provenance$staged`.
@@ -377,8 +378,12 @@
 #' @param mapq Minimum mapping quality.
 #' @param exclude_flags SAM flag mask; a read is excluded when any bit is set.
 #' @param cores Number of cores for the GC-bias fit.
-#' @param max_fit_windows Fit-window cap recorded for T7.1. Not enforced yet; a
-#'   cohort whose total window count exceeds it emits a performance warning.
+#' @param max_fit_windows Maximum number of ideal windows used for each
+#'   sample's GC-bias fit. Larger ideal sets are subsampled deterministically by
+#'   subgenome and GC decile with at least ten windows per non-empty stratum;
+#'   predictions still cover every window. `Inf` disables subsampling. A cohort
+#'   whose total window count exceeds this value also emits a performance
+#'   warning.
 #' @param cache Optional fit-cache `.rds` path. `NULL` uses a per-process file
 #'   in session temp; `FALSE` disables the cache.
 #' @param progress Optional `function(stage, detail)` progress callback.
@@ -568,7 +573,8 @@ analyzeBamInput <- function(bam_paths,
                 rca,
                 cores = cores,
                 verbose = FALSE,
-                cache = cache
+                cache = cache,
+                max_fit_windows = max_fit_windows
             ),
             error = function(e) {
                 .sample_stage_error(e, sample, "GC correction")

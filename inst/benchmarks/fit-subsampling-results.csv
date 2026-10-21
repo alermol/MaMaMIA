@@ -1,0 +1,3 @@
+n_contigs,windows_total,windows_per_contig,max_fit_windows,n_ideal,n_fitted,sampled,cores,elapsed_s,peak_rss_mb,peak_rss_delta_mb,peak_heap_mb,finite_cor_gc
+28,28000,1000,50000,27328,27328,FALSE,8,9.842,1134.1,997.36,249.04,TRUE
+28,280000,10000,50000,273028,50000,TRUE,8,46.99,4213.77,4024.28,333.86,TRUE

@@ -21,11 +21,13 @@ An object of class \code{summary.RCA}: a list with
 \code{chromosomes_per_subgenome} (named integer vector of chromosome counts
 per subgenome label), \code{corrected}, \code{normalization} (the
 \code{mode}, \code{reference}, \code{by_side} and \code{pseudocount} list added
-by \code{normalizeReadCounts()}, or \code{NULL}), and \code{outliers} (the GC
+by \code{normalizeReadCounts()}, or \code{NULL}), \code{outliers} (the GC
 and coverage bounds from \code{correctReadCounts()}, or \code{NULL} if
+correction has not been applied), and \code{fit_sampling} (the fit-window
+subsampling metadata from \code{correctReadCounts()}, or \code{NULL} if
 correction has not been applied). Printing the object shows a
-human-readable summary, including outlier thresholds and the normalization
-mode when available.
+human-readable summary, including outlier thresholds, the fit-window count and
+the normalization mode when available.
 }
 \description{
 Builds a structured summary of chromosome and subgenome counts for an

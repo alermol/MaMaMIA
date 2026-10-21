@@ -51,6 +51,10 @@ An object of class \code{RCA}: a list with components
   \item{\code{normalization}}{Optional list (\code{mode}, \code{reference},
     \code{by_side}, \code{pseudocount}) added by
     \code{normalizeReadCounts()}.}
+  \item{\code{fit_sampling}}{Optional list added by
+    \code{correctReadCounts()}: \code{sampled}, \code{max_fit_windows},
+    \code{n_ideal}, \code{n_fitted}, \code{seed} and a \code{strata} data
+    frame describing the subgenome x GC-decile strata used by the fit.}
 }
 }
 \description{

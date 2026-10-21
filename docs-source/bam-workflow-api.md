@@ -229,12 +229,24 @@ normalizeReadCounts(rcas, reference = NULL, by_side = TRUE, pseudocount = 0.5)
 segments(RCA, target_pairs, value_col = NULL, ...)
 writeToBedpe(ISA, file, sample = NULL)
 writeCohortToBedpe(result, file, samples = NULL, selected = NULL)
+
+# Application entrypoint
+runMaMaMIA(analysis_dir = NULL, assemblies_dir = NULL, cache = NULL,
+           config = NULL, bam_paths = NULL,
+           input = c("auto", "bam", "files", "example"),
+           max_request_size = 5 * 1024^3,
+           host = "127.0.0.1", port = NULL, launch.browser = interactive())
 ```
 
 `readMaMaMIAConfig()` and `validateMaMaMIAConfig()` return the normalized
 configuration invisibly; `listMaMaMIAAssemblies()` returns one row per assembly
 with `key`, `label`, `description`, `n_donor`, `n_recipient`, `n_pairs` and
 `n_gc_indexes`.
+
+`runMaMaMIA()` is the only application entrypoint. The legacy directory app is
+still reachable through `input = "files"`/`"example"` until T7.5, but the BAM
+workflow is selected whenever `config` or `bam_paths` is supplied (or when
+`input = "bam"`). `bam_launcher_app()` and `mamamia_app()` are internal.
 
 ---
 
@@ -708,7 +720,7 @@ between the correction and segmentation stages.
 The performance guard warns when `n_samples * n_windows` exceeds
 `max_fit_windows`. The existing `max_fit_windows` setting is used because the
 configuration schema defines no separate cohort-window limit; the fit cap
-itself remains a T7.1 task.
+itself is applied per sample by `correctReadCounts()` (section 13.6).
 
 ### 11.4 Validation
 
@@ -785,3 +797,135 @@ invalid sample names or row ids. Dashboard tests cover
 no-data and no-selection validation paths, and downloads with and without a
 sample name. A gated synthetic two-sample cohort run confirms that a real
 `BamAnalysisResult` exports a combined BEDPE with `sample` last.
+
+---
+
+## 13. Wave 6 implementation notes
+
+### 13.1 Entrypoint dispatch
+
+`runMaMaMIA(analysis_dir, assemblies_dir, cache, config, bam_paths, input,
+max_request_size, host, port, launch.browser)` keeps the legacy arguments and
+adds the BAM-first ones. `input` is one of `"auto"`, `"bam"`, `"files"` or
+`"example"`. `"auto"` selects the BAM app when `config` or `bam_paths` is
+supplied and the legacy app otherwise; `"bam"` always selects the BAM app and
+`"files"`/`"example"` keep the legacy launcher available through T7.5.
+`max_request_size` (default 5 GiB) is passed to `options(shiny.maxRequestSize)`.
+The internal `mamamia_app()` builds the app object without launching it and
+records the resolved mode in the `mamamia_input` attribute, which tests use.
+
+### 13.2 BAM-first application
+
+`bam_launcher_app(config, bam_paths = NULL, cache = NULL)` is the internal app
+factory. `config` is a YAML path, a validated configuration list or `NULL`; a
+`NULL` falls back to `MAMAMIA_CONFIG`. A missing or invalid registry renders a
+configuration error card instead of stopping the process.
+
+Sidebar controls: configuration summary; `fileInput("bams")`;
+`pickerInput("server_bams")` when `server.bam_root` is configured or initial
+`bam_paths` are supplied (bounded to depth 3 and 2,000 files, listed once per
+session); resolution radio buttons built from `defaults.allowed_windows` (Low =
+100, Medium = 1,000, High = 10,000, default
+`defaults.windows_per_chromosome`); the reference selector (hidden for one
+BAM); the assembly override; advanced MAPQ, exclude-flags, cores and
+`max_fit_windows`; and a Run button that carries the `disabled` attribute and
+the Bootstrap `disabled` class until preflight succeeds.
+
+Main cards: a preflight table (`file`, `sample`, `assembly`, `targets`,
+`index`, `warnings`), the detected-assembly card (label, description, donor and
+recipient contigs, pairs, window counts per allowed resolution) and a problems
+card with the error stage, message, suggested fix and, for assembly failures,
+the candidate scores. Candidate scores are computed with the same
+`.match_candidate()`/`.candidate_table()` helpers as `matchAssembly()`, so they
+are available even for header-length mismatches whose condition payload has no
+candidate table.
+
+### 13.3 Preflight, staging and run flow
+
+The preflight reactive collects uploaded `datapath`s and server-side picker
+paths, stages each BAM (and an existing CSI sibling) into a per-session
+directory (symlink for files of at least 1 MiB, copy for smaller files and when
+symlinks are unsupported), and calls `preflightBams()` on the staged paths. The
+copy path also means temporary-directory cleanup that follows and chmods
+symlinks cannot touch the source metadata. Staging normalizes sources to
+absolute paths, so relative picker values cannot create dangling symlinks. The
+table reports the original path as `source` but keeps the staged path for the
+run.
+
+The run handler validates the controls through `bam_run_parameters()` (single
+BAM → `none`; cohort with an empty reference → `median`; a named reference →
+`reference`; resolution from `allowed_windows`; MAPQ 0-255; flags 0-4095; cores
+bounded by `detectCores()`; positive `max_fit_windows`), then calls
+`analyzeBamInput()` inside `shiny::withProgress()`. `bam_progress_stages()`
+reports `preflight`, `index`, `windows`, `gc`, one `counts`, `correction` and
+`segmentation` per sample, plus `normalization` for a cohort. Every failure is
+caught, classified by `bam_error_stage()`, and shown as
+`[stage] message / Suggested fix: ...`; the previous result is restored. The
+result is invalidated when the BAM selection, resolution, assembly, reference,
+MAPQ, exclude flags or `max_fit_windows` change, so a stale BEDPE cannot be
+downloaded for different inputs.
+
+`session$onSessionEnded()` removes the session directory, including every
+staged BAM and generated CSI index. `server.bam_root` is never written to
+because the pipeline only sees the staged copies. GC index handles are
+process-wide and are not cleared on session end. The analysis is synchronous:
+the UI states that the session blocks and no cancellation path is offered.
+
+### 13.4 Multi-sample results
+
+`bam_cohort_summary()` reports `sample`, `reads_donor`, `reads_recipient`,
+`reads_total`, `n_segments`, `n_putative_introgressions`, `normalization` and
+`reference`. The results card shows it with a `selectInput("result_sample")`
+for cohorts and a combined `downloadButton("download_cohort")`.
+`bam_coverage_warnings()` flags a side with zero reads or fewer than one read
+per window on average and reference samples with all-zero windows. The
+selection map is a named list of `.row_id` vectors initialized to
+`integer(0)` per sample; the explorer reports changes through
+`on_selection(rows, sample)` and preselects the stored rows through
+`selection`. `download_cohort` calls
+`writeCohortToBedpe(result, file, selected = selection_map())`, so every sample
+with selected rows contributes to one file with `sample` last.
+
+### 13.5 Validation
+
+`tests/testthat/test-dashboard-bam.R` covers the configuration cards, the
+`MAMAMIA_CONFIG` fallback, resolution/assembly helpers, the error taxonomy, run
+parameters, the cohort summary and coverage warnings, selection maps, preflight
+text and button state, upload staging, assembly candidates, missing paths, both
+server limits, a full single-BAM `testServer` run (plot and download), a
+two-sample cohort run with selector, selection persistence and combined BEDPE,
+a failing run that stays inside the server, and the entrypoint dispatch. The
+dashboard tests add preselection and `on_selection` coverage for the module.
+
+### 13.6 High-resolution fit subsampling
+
+`correctReadCounts()` gained `max_fit_windows = Inf`. When the ideal set is
+larger, `select_fit_windows()` draws a deterministic sample from the
+cross-classification of subgenome and GC decile. Every non-empty stratum keeps
+at least ten windows (or all of its windows when it is smaller); remaining
+slots are allocated in proportion to the remaining capacity, with the largest
+fractional remainders receiving the leftover slots. A cap below the required
+per-stratum minimum stops with an error that names the minimum valid value.
+
+Sampling uses a seed derived from the full-set cache key (`fit_sampling_seed()`)
+and restores the caller's RNG state. `fit_cache_key()` covers
+`max_fit_windows`, the fitted rows and a fingerprint of the selected rows.
+Prediction still covers every window. The `RCA$fit_sampling` metadata records
+`sampled`, `max_fit_windows`, `n_ideal`, `n_fitted`, `seed` and the per-stratum
+allocation; `summary.RCA()` prints the fitted/ideal counts. `analyzeBamInput()`
+passes its `max_fit_windows` to every sample, sets
+`provenance$max_fit_windows_enforced = TRUE`, and keeps the cohort-wide
+performance warning.
+
+Validation: `tests/testthat/test-cache.R` covers the new key fields and seed
+stability; `tests/testthat/test-correction.R` covers the sample size, the
+per-stratum minimum, reproducibility, RNG isolation, cache invalidation,
+finite predictions, invalid caps and a full-versus-subsample comparison on the
+packaged `triticum` pair; `tests/testthat/test-pipeline-bam.R` confirms the cap
+is applied per sample and recorded in provenance.
+
+`inst/benchmarks/benchmark-fit-subsampling.R` runs 28,000 and 280,000 windows
+in fresh processes and records elapsed time and peak RSS in
+`inst/benchmarks/fit-subsampling-results.csv`. On an 8-core host, the 280,000
+window run fitted 50,000 of 273,028 ideal windows in 47.0 s with a 4.2 GB peak
+RSS, below the 8 GB budget; the 28,000-window full fit took 9.8 s and 1.1 GB.
