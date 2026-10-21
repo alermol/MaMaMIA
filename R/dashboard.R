@@ -9,6 +9,11 @@ dashboard_packages <- c(
     "bslib", "DT", "shiny", "shinyWidgets"
 )
 
+## The mirror plot draws two points per window, so a high-resolution run has
+## hundreds of thousands of them. The dashboard thins the drawn points to this
+## cap; segments and the BEDPE export stay complete.
+dashboard_max_plot_points <- 20000L
+
 require_dashboard_packages <- function() {
     missing <- dashboard_packages[!vapply(dashboard_packages, requireNamespace, logical(1), quietly = TRUE)]
     if (length(missing) > 0L) {
@@ -70,6 +75,38 @@ selected_isa_for_bedpe <- function(ISA, selected_rows) {
     out <- ISA
     out$segments$putative_introgression <- seq_len(nrow(out$segments)) %in% selected_rows
     out
+}
+
+## Subset an ISA to the explorer's chromosome, pair and width filters so that
+## the plot follows the table. Only the pieces `plot.ISA()` reads are subset.
+## Returns `NULL` when no window survives the filters.
+filter_dashboard_isa <- function(ISA, chr_ids = NULL, pair_ids = NULL,
+                                 min_width = NULL) {
+    out <- ISA$out
+    keep <- rep(TRUE, nrow(out))
+    if (!is.null(chr_ids)) {
+        keep <- keep & out$chr_id.don %in% chr_ids & out$chr_id.rec %in% chr_ids
+    }
+    pair_labels <- paste(out$chr_id.don, out$chr_id.rec, sep = " -> ")
+    if (!is.null(pair_ids)) {
+        keep <- keep & pair_labels %in% pair_ids
+    }
+    out <- out[keep, , drop = FALSE]
+    if (nrow(out) == 0L) {
+        return(NULL)
+    }
+
+    segments <- ISA$segments
+    segment_keep <- isa_dashboard_pair_labels(segments) %in%
+        paste(out$chr_id.don, out$chr_id.rec, sep = " -> ")
+    if (!is.null(min_width)) {
+        segment_keep <- segment_keep &
+            (segments$loc.end - segments$loc.start + 1L) >= min_width
+    }
+
+    ISA$out <- out
+    ISA$segments <- segments[segment_keep, , drop = FALSE]
+    ISA
 }
 
 ## Add a clicked call to the selection, or remove it when it was already picked.
@@ -138,6 +175,15 @@ explorer_results_ui <- function(id) {
         #     BioCircos::BioCircosOutput(ns("circos"), height = "650px")
         # ),
         bslib::card(
+            bslib::card_header("Introgression plot"),
+            shiny::radioButtons(
+                ns("plot_type"), "Plot",
+                choices = c("Mirror" = "mirror", "Difference" = "diff"),
+                inline = TRUE
+            ),
+            shiny::plotOutput(ns("isa_plot"), height = "420px")
+        ),
+        bslib::card(
             bslib::card_header("Segments"),
             shiny::p(
                 class = "text-muted",
@@ -152,8 +198,11 @@ explorer_results_ui <- function(id) {
 
 ## Server for the explorer. `ISA` is a reactive returning an `ISA` object, or
 ## `NULL` while no analysis has run yet; the explorer stays idle in that case.
-## `chr_ids` optionally limits the chromosomes selected on arrival.
-explorer_server <- function(id, ISA, chr_ids = NULL) {
+## `chr_ids` optionally limits the chromosomes selected on arrival. `sample` is
+## an optional sample name (or reactive returning one); when supplied, the BEDPE
+## download gains the `sample` column, so a per-sample file can be merged into a
+## cohort export without losing its identity.
+explorer_server <- function(id, ISA, chr_ids = NULL, sample = NULL) {
     shiny::moduleServer(id, function(input, output, session) {
         ## Changing the threshold re-flags the segments without re-running CBS
         ## (see `subset.ISA`); the segment rows are kept in their original order,
@@ -218,6 +267,35 @@ explorer_server <- function(id, ISA, chr_ids = NULL) {
                 putative_only = input$putative_only
             )
         })
+
+        ## The plot follows the table filters: the thresholded ISA is narrowed to
+        ## the selected chromosomes and pairs before `plot.ISA()` sees it.
+        plot_isa <- shiny::reactive({
+            isa <- isa_thresholded()
+            if (is.null(isa)) {
+                return(NULL)
+            }
+            filter_dashboard_isa(
+                isa,
+                chr_ids = input$chr_ids,
+                pair_ids = input$pair_ids,
+                min_width = min_width()
+            )
+        })
+
+        ## Sample name for the BEDPE download; the parent app can pass a reactive
+        ## that follows its sample selector.
+        current_sample <- function() {
+            if (is.null(sample)) {
+                return(NULL)
+            }
+            value <- if (shiny::is.reactive(sample)) sample() else sample
+            if (is.null(value) || length(value) != 1L ||
+                is.na(value) || !nzchar(value)) {
+                return(NULL)
+            }
+            as.character(value)
+        }
 
         ## A new ISA object resets the pickers to the full set and syncs the
         ## threshold controls with the metrics the object was segmented with.
@@ -306,6 +384,33 @@ explorer_server <- function(id, ISA, chr_ids = NULL) {
         #     isa_dashboard_circos(isa, visible_segments(), genome)
         # })
 
+        output$isa_plot <- shiny::renderPlot({
+            isa <- plot_isa()
+            shiny::validate(
+                shiny::need(!is.null(ISA()), "Run the analysis to plot"),
+                shiny::need(!is.null(isa), "Select at least one chromosome and pair to plot")
+            )
+            plot_type <- input$plot_type
+            if (!identical(plot_type, "mirror") && !identical(plot_type, "diff")) {
+                plot_type <- "mirror"
+            }
+            tryCatch(
+                plot(
+                    isa,
+                    plot.type = plot_type,
+                    all_segments = !isTRUE(input$putative_only),
+                    max_points = dashboard_max_plot_points
+                ),
+                error = function(e) {
+                    shiny::showNotification(
+                        paste("Could not draw the plot:", conditionMessage(e)),
+                        type = "warning", duration = 8
+                    )
+                    shiny::validate(shiny::need(FALSE, "Could not draw the plot"))
+                }
+            )
+        })
+
         output$segments <- DT::renderDT({
             shiny::validate(
                 shiny::need(!is.null(ISA()), "Run the analysis to list segments")
@@ -320,14 +425,26 @@ explorer_server <- function(id, ISA, chr_ids = NULL) {
         })
 
         output$download_bedpe <- shiny::downloadHandler(
-            filename = function() "mamamia-selected-introgressions.bedpe",
+            filename = function() {
+                sample_name <- current_sample()
+                if (is.null(sample_name)) {
+                    "mamamia-selected-introgressions.bedpe"
+                } else {
+                    safe <- gsub("[^A-Za-z0-9._-]+", "-", sample_name)
+                    paste0("mamamia-", safe, "-selected-introgressions.bedpe")
+                }
+            },
             content = function(file) {
                 isa <- ISA()
                 rows <- selected_rows()
                 if (is.null(isa) || length(rows) == 0L) {
                     stop("Select at least one segment before downloading", call. = FALSE)
                 }
-                writeToBedpe(selected_isa_for_bedpe(isa, rows), file)
+                writeToBedpe(
+                    selected_isa_for_bedpe(isa, rows),
+                    file,
+                    sample = current_sample()
+                )
             }
         )
     })
@@ -337,12 +454,14 @@ explorer_server <- function(id, ISA, chr_ids = NULL) {
 #'
 #' Opens a small Shiny application for interactively inspecting an `ISA` object
 #' returned by [segments()]. The app offers searchable chromosome and
-#' chromosome-pair filters, a sortable `DT` segment table, and exports the
-#' currently selected table rows with [writeToBedpe()].
+#' chromosome-pair filters, a mirror or difference plot of the donor-recipient
+#' difference, a sortable `DT` segment table, and exports the currently selected
+#' table rows with [writeToBedpe()].
 #'
 #' The BioCircos genomic circos plot is temporarily unavailable: the BioCircos
 #' dependency has been removed and the circos code is commented out. The
-#' explorer shows the segment table and the BEDPE export only.
+#' explorer shows the mirror/difference plot, the segment table and the BEDPE
+#' export.
 #'
 #' Call and threshold filters re-flag the segments on the fly through
 #' [subset.ISA], so the call threshold and the minimum segment width can be

@@ -227,6 +227,7 @@ analyzeBamInput(bam_paths, config,
 # Normalization and export
 normalizeReadCounts(rcas, reference = NULL, by_side = TRUE, pseudocount = 0.5)
 segments(RCA, target_pairs, value_col = NULL, ...)
+writeToBedpe(ISA, file, sample = NULL)
 writeCohortToBedpe(result, file, samples = NULL, selected = NULL)
 ```
 
@@ -718,3 +719,69 @@ shuffled window orders, approximate scale invariance, by-side vs joint mode,
 invalid inputs, a 3-BAM median cohort, a 3-BAM reference cohort, duplicate
 sample names, a nearly empty sample and the performance warning. The gated
 golden regression confirms that segmentation without dose is unchanged.
+
+---
+
+## 12. Wave 5 implementation notes
+
+### 12.1 Dashboard introgression plot
+
+`explorer_results_ui()` gained an "Introgression plot" card with
+`radioButtons("plot_type", c("Mirror" = "mirror", "Difference" = "diff"))` and
+`plotOutput("isa_plot", height = "420px")`. `explorer_server()` renders the
+thresholded ISA through `plot.ISA()`. Before plotting, `filter_dashboard_isa()`
+narrows the ISA to the selected chromosomes and chromosome pairs and to segments
+that pass the minimum-width filter, so the plot and the table agree on the
+visible calls. `putative_only = FALSE` passes `all_segments = TRUE`, which keeps
+the plot in step with the "show putative introgressions only" checkbox.
+
+The render validates when no analysis is loaded ("Run the analysis to plot") and
+when the filters leave no window ("Select at least one chromosome and pair to
+plot"). A failure inside `plot.ISA()` is reported as a warning notification and
+a plot-level validation message; it does not break the table or the download.
+The plot card is independent of the parked BioCircos view, which stays disabled.
+
+A 280,000-window synthetic ISA rendered in about 7.6 s (`diff`) and 11.1 s
+(`mirror`). `plot.ISA()` gained `max_points` (default `Inf`, so all other callers
+are unchanged): a finite cap keeps the peak absolute window in each of
+`max_points` bins, while the axis and the segment lines still use every window.
+The dashboard passes `dashboard_max_plot_points = 20000L`, which renders the
+same case in about 2.7 s and 1.6 s. The BEDPE export always uses the full,
+unthinned ISA.
+
+### 12.2 BEDPE export with sample identity
+
+`writeToBedpe(ISA, file, sample = NULL)` keeps the legacy 14-column layout when
+`sample` is `NULL`; the table, header and numeric formatting are unchanged.
+With a sample name, a `sample` column is appended as the last column. The
+zero-row path keeps the header (including `sample`) and warns.
+
+`writeCohortToBedpe(result, file, samples = NULL, selected = NULL)` accepts a
+`BamAnalysisResult` or a named list of `ISA` objects. `samples` selects and
+orders the exported samples. `selected` is a named list of 1-based row ids into
+each sample's `ISA$segments` (the explorer's `.row_id`):
+
+- `selected = NULL` exports every putative introgression of every exported
+  sample.
+- A sample named in `selected` exports exactly the listed rows, even when a row
+  is not flagged as a putative introgression.
+- A sample absent from `selected` contributes no rows.
+- An explicit `NULL` entry exports every putative introgression for that
+  sample; `integer(0)` exports none.
+
+Row ids are validated per sample (whole numbers within `1..nrow(segments)`) and
+samples are validated against the result. Zero rows still produce a header, with
+`sample` last. The explorer passes its `sample` argument to `writeToBedpe()` so a
+per-sample download is already tagged; the combined cohort download is wired in
+T6.3 with the per-sample selection map.
+
+### 12.3 Validation
+
+Tests cover the exact legacy BEDPE bytes with `sample = NULL`, the appended
+sample column, header preservation with zero rows, cohort combination, sample
+subsetting, per-sample row selection, samples missing from the selection, and
+invalid sample names or row ids. Dashboard tests cover
+`filter_dashboard_isa()`, `testServer` rendering of both plot types, the
+no-data and no-selection validation paths, and downloads with and without a
+sample name. A gated synthetic two-sample cohort run confirms that a real
+`BamAnalysisResult` exports a combined BEDPE with `sample` last.

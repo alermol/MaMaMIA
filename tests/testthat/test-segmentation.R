@@ -62,6 +62,45 @@ test_that("plot.ISA() uses the normalized value column", {
     expect_s3_class(ggplot2::ggplot_build(difference), "ggplot_built")
 })
 
+test_that("plot.ISA() downsamples points but keeps every segment line", {
+    isa <- seg_step()
+    n_windows <- nrow(isa$out)
+
+    full <- ggplot2::ggplot_build(plot(isa, plot.type = "diff"))
+    expect_equal(nrow(full$data[[1L]]), n_windows)
+
+    thinned <- ggplot2::ggplot_build(plot(
+        isa,
+        plot.type = "diff",
+        max_points = 7L
+    ))
+    expect_equal(nrow(thinned$data[[1L]]), 7L)
+    expect_equal(
+        nrow(thinned$data[[3L]]),
+        sum(isa$segments$putative_introgression)
+    )
+
+    mirror <- ggplot2::ggplot_build(plot(
+        isa,
+        plot.type = "mirror",
+        max_points = 5L
+    ))
+    expect_equal(nrow(mirror$data[[1L]]), 5L)
+    expect_equal(nrow(mirror$data[[2L]]), 5L)
+
+    expect_equal(
+        nrow(ggplot2::ggplot_build(plot(isa, max_points = Inf))$data[[1L]]),
+        n_windows
+    )
+    expect_equal(
+        nrow(ggplot2::ggplot_build(plot(isa, max_points = NULL))$data[[1L]]),
+        n_windows
+    )
+    for (bad in list(-1, 0, NA_real_, "many")) {
+        expect_error(plot(isa, max_points = bad), "positive number")
+    }
+})
+
 test_that("segments() honours thresholds, widths and input validation", {
     permissive <- seg_step()
     strict <- seg_step(min_segment_median = 1e9)

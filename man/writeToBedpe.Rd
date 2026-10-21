@@ -2,13 +2,18 @@
 \alias{writeToBedpe}
 \title{Write putative introgressions to a BEDPE file}
 \usage{
-writeToBedpe(ISA, file)
+writeToBedpe(ISA, file, sample = NULL)
 }
 \arguments{
 \item{ISA}{An object of class \code{ISA}, as returned by \code{segments()}.}
 
 \item{file}{Path to the output file. Written as a tab-separated table with a
 header row.}
+
+\item{sample}{Optional sample name. When supplied, it is written to an extra
+\code{sample} column so that single-sample and cohort exports can be merged
+without losing the sample identity. \code{NULL} preserves the legacy column
+layout byte for byte.}
 }
 \value{
 Called for its side effect of writing \code{file}. Invisibly returns
@@ -24,7 +29,8 @@ Only segments with \code{putative_introgression = TRUE} are written.
 Coordinates are taken from the donor and recipient windows that span each
 segment (\code{start}/\code{stop} of the first and last ideal windows).
 If no putative introgressions are present, a warning is issued and a
-header-only file is written.
+header-only file is written. With \code{sample} supplied, the \code{sample} column is
+appended last; the frozen multi-sample format (D11, resolved question 5).
 
 Output columns (in order):
 \itemize{
@@ -39,7 +45,11 @@ Output columns (in order):
   \item \code{chrom_name1}, \code{chrom_name2}: human-readable chromosome
     names
   \item \code{subgen_name1}, \code{subgen_name2}: subgenome labels
+  \item \code{sample}: sample name, only when \code{sample} is supplied
 }
+}
+\seealso{
+\code{\link[=writeCohortToBedpe]{writeCohortToBedpe()}}
 }
 \examples{
 data(triticum)

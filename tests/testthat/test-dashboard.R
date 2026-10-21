@@ -27,6 +27,29 @@ test_that("selected_isa_for_bedpe() marks selected source rows only", {
     expect_false(identical(selected$segments$putative_introgression, isa$segments$putative_introgression))
 })
 
+test_that("filter_dashboard_isa() follows the table filters", {
+    isa <- seg_step()
+    filtered <- filter_dashboard_isa(
+        isa,
+        chr_ids = c("d1", "r1"),
+        pair_ids = "d1 -> r1",
+        min_width = 2L
+    )
+
+    expect_s3_class(filtered, "ISA")
+    expect_true(all(filtered$out$chr_id.don == "d1"))
+    expect_true(all(filtered$out$chr_id.rec == "r1"))
+    expect_equal(nrow(filtered$segments), nrow(isa$segments))
+
+    expect_null(filter_dashboard_isa(isa, chr_ids = "nope"))
+    expect_null(filter_dashboard_isa(isa, pair_ids = "nope"))
+    expect_null(filter_dashboard_isa(isa, chr_ids = character()))
+
+    wide <- filter_dashboard_isa(isa, min_width = 1e9)
+    expect_s3_class(wide, "ISA")
+    expect_equal(nrow(wide$segments), 0L)
+})
+
 test_that("dashboard genome uses chromosome lengths from ISA windows", {
     isa <- seg_step()
     genome <- isa_dashboard_genome(isa)
@@ -83,6 +106,145 @@ test_that("selection toggles from the table and from a band click", {
     expect_equal(isa_dashboard_toggle_selection(c(1L, 3L), 2L), c(1L, 3L, 2L))
     expect_equal(isa_dashboard_toggle_selection(c(1L, 3L), NA_integer_), c(1L, 3L))
     expect_equal(isa_dashboard_toggle_selection(integer(), integer()), integer())
+})
+
+test_that("the results card exposes the plot controls", {
+    testthat::skip_if_not_installed("shiny")
+    testthat::skip_if_not_installed("bslib")
+    testthat::skip_if_not_installed("DT")
+
+    html <- as.character(explorer_results_ui("explorer"))
+    expect_true(any(grepl("explorer-plot_type", html)))
+    expect_true(any(grepl("explorer-isa_plot", html)))
+})
+
+test_that("the explorer renders mirror and difference plots", {
+    testthat::skip_if_not_installed("shiny")
+    testthat::skip_if_not_installed("DT")
+    testthat::skip_if_not_installed("shinyWidgets")
+
+    isa <- seg_step()
+    shiny::testServer(
+        explorer_server,
+        args = list(ISA = shiny::reactive(isa)),
+        {
+            session$setInputs(
+                chr_ids = c("d1", "r1"),
+                pair_ids = "d1 -> r1",
+                putative_only = TRUE,
+                threshold_type = "median",
+                threshold_value = 0,
+                min_width = 2,
+                plot_type = "mirror"
+            )
+            expect_match(output$isa_plot$src, "^data:image/png")
+
+            session$setInputs(plot_type = "diff")
+            expect_match(output$isa_plot$src, "^data:image/png")
+
+            session$setInputs(plot_type = "unexpected")
+            expect_match(output$isa_plot$src, "^data:image/png")
+        }
+    )
+})
+
+test_that("the explorer plot validates without data or filters", {
+    testthat::skip_if_not_installed("shiny")
+    testthat::skip_if_not_installed("DT")
+    testthat::skip_if_not_installed("shinyWidgets")
+
+    shiny::testServer(
+        explorer_server,
+        args = list(ISA = shiny::reactive(NULL)),
+        {
+            session$setInputs(plot_type = "mirror")
+            expect_error(output$isa_plot, "Run the analysis to plot")
+        }
+    )
+
+    isa <- seg_step()
+    shiny::testServer(
+        explorer_server,
+        args = list(ISA = shiny::reactive(isa)),
+        {
+            session$setInputs(
+                chr_ids = character(),
+                pair_ids = character(),
+                threshold_type = "median",
+                threshold_value = 0,
+                min_width = 2,
+                plot_type = "mirror"
+            )
+            expect_error(
+                output$isa_plot,
+                "Select at least one chromosome and pair to plot"
+            )
+        }
+    )
+})
+
+test_that("the explorer download carries the sample name", {
+    testthat::skip_if_not_installed("shiny")
+    testthat::skip_if_not_installed("DT")
+    testthat::skip_if_not_installed("shinyWidgets")
+
+    isa <- seg_step()
+    target <- tempfile(fileext = ".bedpe")
+    on.exit(unlink(target), add = TRUE)
+    shiny::testServer(
+        explorer_server,
+        args = list(ISA = shiny::reactive(isa), sample = shiny::reactive("sample-a")),
+        {
+            session$setInputs(
+                chr_ids = c("d1", "r1"),
+                pair_ids = "d1 -> r1",
+                putative_only = TRUE,
+                threshold_type = "median",
+                threshold_value = 0,
+                min_width = 2,
+                segments_rows_selected = 1L
+            )
+            ## The mock session removes its download files when it closes, so
+            ## copy the export while the session is still alive.
+            expect_true(file.copy(output$download_bedpe, target))
+        }
+    )
+
+    header <- strsplit(readLines(target)[1L], "\t")[[1L]]
+    expect_identical(header[[length(header)]], "sample")
+    out <- utils::read.table(target, header = TRUE, sep = "\t")
+    expect_identical(nrow(out), 1L)
+    expect_identical(out$sample, "sample-a")
+})
+
+test_that("the explorer download keeps the legacy layout without a sample", {
+    testthat::skip_if_not_installed("shiny")
+    testthat::skip_if_not_installed("DT")
+    testthat::skip_if_not_installed("shinyWidgets")
+
+    isa <- seg_step()
+    target <- tempfile(fileext = ".bedpe")
+    on.exit(unlink(target), add = TRUE)
+    shiny::testServer(
+        explorer_server,
+        args = list(ISA = shiny::reactive(isa)),
+        {
+            session$setInputs(
+                chr_ids = c("d1", "r1"),
+                pair_ids = "d1 -> r1",
+                putative_only = TRUE,
+                threshold_type = "median",
+                threshold_value = 0,
+                min_width = 2,
+                segments_rows_selected = 1L
+            )
+            expect_true(file.copy(output$download_bedpe, target))
+        }
+    )
+
+    header <- strsplit(readLines(target)[1L], "\t")[[1L]]
+    expect_identical(length(header), 14L)
+    expect_false("sample" %in% header)
 })
 
 ## The circos widget test is commented out together with the BioCircos

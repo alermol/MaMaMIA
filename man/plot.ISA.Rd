@@ -2,7 +2,13 @@
 \alias{plot.ISA}
 \title{Plot method for ISA objects}
 \usage{
-\method{plot}{ISA}(x, plot.type = c("mirror", "diff"), all_segments = FALSE, ...)
+\method{plot}{ISA}(
+  x,
+  plot.type = c("mirror", "diff"),
+  all_segments = FALSE,
+  max_points = Inf,
+  ...
+)
 }
 \arguments{
 \item{x}{An object of class \code{ISA}, as returned by \code{segments()}.}
@@ -14,6 +20,11 @@
 \item{all_segments}{Logical; if \code{FALSE} (default), only segments marked
 \code{putative_introgression} are drawn on difference plots. If
 \code{TRUE}, all segments are shown.}
+
+\item{max_points}{Maximum number of windows to draw as points. \code{Inf}
+(default) keeps every window. A finite value thins the drawn points to the peak
+absolute value in each of \code{max_points} bins; the axis and the segment lines
+still use every window. The dashboard uses this for high-resolution runs.}
 
 \item{...}{Additional arguments (ignored); present for compatibility with
 the generic \code{plot()}.}

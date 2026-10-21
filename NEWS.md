@@ -2,6 +2,22 @@
 
 * Initial submission.
 
+## BAM-first workflow (wave 5)
+
+* The introgression explorer now renders the thresholded `ISA` as a mirror or
+  donor-recipient difference plot next to the segment table. The plot follows
+  the chromosome, pair, minimum-width, call-threshold and putative-only
+  filters, and shows a validation message instead of an empty plot when no
+  analysis or no chromosome pair is selected. `plot.ISA()` gained `max_points`
+  for point thinning; the dashboard caps the drawn points at 20,000 while
+  keeping every segment line and the full export data.
+* `writeToBedpe()` gained `sample`. A supplied sample name is appended as the
+  last column; `sample = NULL` keeps the legacy BEDPE layout byte for byte.
+* `writeCohortToBedpe()` combines putative calls, or selected segment rows,
+  from several samples of a `BamAnalysisResult` (or a named list of `ISA`
+  objects) into one BEDPE with a `sample` column. It keeps the header when no
+  row is selected and validates sample names and row ids per sample.
+
 ## BAM-first workflow (wave 4)
 
 * `normalizeReadCounts()` turns the GC-corrected coverage of a named list of

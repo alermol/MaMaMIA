@@ -263,6 +263,31 @@ test_that("reference normalization makes the reference sample's dose one", {
     }
 })
 
+test_that("a cohort result exports a combined BEDPE", {
+    cohort <- cohort_fixture(c(4L, 6L))
+    on.exit(unlink(cohort$fixture$directory, recursive = TRUE), add = TRUE)
+    result <- run_pipeline(
+        cohort$fixture,
+        bams = cohort$bams,
+        normalization = "median"
+    )$result
+
+    target <- tempfile(fileext = ".bedpe")
+    on.exit(unlink(target), add = TRUE)
+    selection <- stats::setNames(
+        lapply(result$isa, function(isa) 1L),
+        names(result$isa)
+    )
+    suppressMessages(writeCohortToBedpe(result, target, selected = selection))
+
+    out <- utils::read.table(target, header = TRUE, sep = "\t")
+    expect_identical(nrow(out), 2L)
+    expect_identical(out$chrom1, rep("d1", 2L))
+    expect_identical(out$chrom2, rep("r1", 2L))
+    expect_identical(out$sample, cohort$samples)
+    expect_identical(names(out)[[ncol(out)]], "sample")
+})
+
 test_that("reference normalization validates the reference sample", {
     cohort <- cohort_fixture(c(4L, 6L))
     on.exit(unlink(cohort$fixture$directory, recursive = TRUE), add = TRUE)

@@ -31,13 +31,15 @@ launching the dashboard.
 \description{
 Opens a small Shiny application for interactively inspecting an \code{ISA} object
 returned by \code{\link[=segments]{segments()}}. The app offers searchable chromosome and
-chromosome-pair filters, a sortable \code{DT} segment table, and exports the
-currently selected table rows with \code{\link[=writeToBedpe]{writeToBedpe()}}.
+chromosome-pair filters, a mirror or difference plot of the donor-recipient
+difference, a sortable \code{DT} segment table, and exports the currently selected
+table rows with \code{\link[=writeToBedpe]{writeToBedpe()}}.
 }
 \details{
 The BioCircos genomic circos plot is temporarily unavailable: the BioCircos
 dependency has been removed and the circos code is commented out. The
-explorer shows the segment table and the BEDPE export only.
+explorer shows the mirror/difference plot, the segment table and the BEDPE
+export.
 
 Call and threshold filters re-flag the segments on the fly through
 \link{subset.ISA}, so the call threshold and the minimum segment width can be

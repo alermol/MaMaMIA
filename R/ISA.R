@@ -7,8 +7,10 @@
 plot.ISA <- function(x,
                      plot.type = c("mirror", "diff"),
                      all_segments = FALSE,
+                     max_points = Inf,
                      ...) {
     plot_type <- match.arg(plot.type)
+    max_points <- validate_plot_points(max_points)
 
     if (is.null(x$out) || nrow(x$out) == 0L) {
         stop("No pairwise windows available to plot", call. = FALSE)
@@ -84,10 +86,20 @@ plot.ISA <- function(x,
         max_y <- max(c(don_values + don_offset,
                        rec_values + rec_offset))
 
+        ## Only the drawn points are thinned; the axis and the segment geometry
+        ## stay based on every window.
+        point_weights <- pmax(abs(don_values), abs(rec_values))
+        point_weights[!is.finite(point_weights)] <- -Inf
+        keep <- plot_point_indices(nrow(x$out), max_points, point_weights)
+        points <- x$out[keep, , drop = FALSE]
+        points$don.plot <- don_values[keep] + don_offset
+        points$rec.plot <- -rec_values[keep] - rec_offset
+
         plot + ggplot2::geom_point(
+            data = points,
             mapping = ggplot2::aes(
                 x = .data$iid.e2e,
-                y = don_values + don_offset,
+                y = .data$don.plot,
                 color = factor(.data$color.don)
             ),
             size = 0.5
@@ -95,9 +107,10 @@ plot.ISA <- function(x,
             ggplot2::scale_color_manual(values = c("grey60", "grey80")) +
             ggnewscale::new_scale_color() +
             ggplot2::geom_point(
+                data = points,
                 mapping = ggplot2::aes(
                     x = .data$iid.e2e,
-                    y = -rec_values - rec_offset,
+                    y = .data$rec.plot,
                     color = factor(.data$color.rec)
                 ),
                 size = 0.5
@@ -114,8 +127,13 @@ plot.ISA <- function(x,
             x$out$diff <- don_values - rec_values
         }
         max_y <- max(abs(x$out$diff))
+        point_weights <- abs(x$out$diff)
+        point_weights[!is.finite(point_weights)] <- -Inf
+        keep <- plot_point_indices(nrow(x$out), max_points, point_weights)
+        points <- x$out[keep, , drop = FALSE]
         plot +
             ggplot2::geom_point(
+                data = points,
                 mapping = ggplot2::aes(
                     x = .data$iid.e2e,
                     y = .data$diff,
@@ -148,6 +166,50 @@ plot.ISA <- function(x,
                 limits = c(-max_y, max_y)
             )
     }
+}
+
+## Resolve and validate `max_points`. `Inf` and `NULL` keep every window.
+#' @noRd
+validate_plot_points <- function(max_points) {
+    if (is.null(max_points)) {
+        return(Inf)
+    }
+    if (!is.numeric(max_points) || length(max_points) != 1L ||
+        is.na(max_points)) {
+        stop(
+            "`max_points` must be NULL, Inf, or a positive number",
+            call. = FALSE
+        )
+    }
+    if (is.finite(max_points)) {
+        if (max_points >= .Machine$integer.max) {
+            return(Inf)
+        }
+        max_points <- as.integer(max_points)
+        if (max_points < 1L) {
+            stop(
+                "`max_points` must be NULL, Inf, or a positive number",
+                call. = FALSE
+            )
+        }
+    }
+    max_points
+}
+
+## Keep at most `max_points` drawn windows, choosing the peak of `weights` in
+## each equal-width bin. The row order (and therefore the x-axis) is preserved.
+#' @noRd
+plot_point_indices <- function(n, max_points, weights) {
+    if (n == 0L || !is.finite(max_points) || max_points >= n) {
+        return(seq_len(n))
+    }
+    max_points <- max(1L, as.integer(max_points))
+    if (max_points == 1L) {
+        return(which.max(weights))
+    }
+    bin <- cut(seq_len(n), breaks = max_points, labels = FALSE)
+    keep <- tapply(seq_len(n), bin, function(i) i[which.max(weights[i])])
+    sort(as.integer(keep))
 }
 
 ## Resolve the per-window value column of an ISA, falling back to `cor.gc`
