@@ -137,7 +137,8 @@ SampleTables <- list(
 
 `SampleTables` is passed to the existing `RCA()` constructor as
 `do.call(RCA, SampleTables[c("dcov", "dgc", "rcov", "rgc", "meta")])`.
-The extra fields are provenance for the pipeline and the UI.
+The extra fields are provenance for the pipeline and the UI. `buildSampleTables()`
+returns this list with class `c("SampleTables", "list")`.
 
 ### 1.2 Example `BamAnalysisResult`
 
@@ -173,6 +174,8 @@ BamAnalysisResult <- list(
   )
 )
 ```
+
+`analyzeBamInput()` returns this list with class `c("BamAnalysisResult", "list")`.
 
 ---
 
@@ -280,6 +283,7 @@ assembly, contig, file). Functions must stop before expensive work starts.
 | `MaMaMIAAssemblyMatchError` | preflight | `BAM '<path>' covers only one side of assembly '<key>'` |
 | `MaMaMIAPreflightError` | preflight | malformed `paths` argument |
 | `MaMaMIACountError` | `countReads()` | `Could not count reads in BAM '<path>': <reason>` |
+| `MaMaMIAAnalysisError` | `analyzeBamInput()` | invalid pipeline argument or unsupported normalization mode |
 
 Config validation messages implemented in Wave 0 include, among others:
 
@@ -532,13 +536,95 @@ implementation supports at most six bits (63 passes) and raises
 Sq54 tiny fixture locks the difference down: a direct `filteredFlag = 2308`
 call returns `c(5, 8)` in window order, while the correct count is `c(5, 6)`.
 
-Counting is start-based: a read belongs to the window containing its alignment
-start, not to every window it overlaps. The gated Sq54 regression counts the
-legacy BED intervals and matches the legacy tables up to boundary-crossing
-reads: 229/28,000 windows differ (0.82%; recipient 1.09%, donor 0%), maximum
-delta 14, total absolute delta 708/3,535,298 (0.02%), and all deltas are
-non-positive as expected from the overlap-versus-start difference.
+**Counting is 5'-end based.** bamsignals assigns a forward-strand read to the
+window containing its leftmost coordinate and a reverse-strand read to the
+window containing its rightmost coordinate (the alignment end). A reverse read
+can therefore belong to the window after the one containing its SAM `POS`.
+This differs from `bedtools coverage -counts`, which counts a read in every
+window it overlaps. The difference is confined to reads whose 5' end is outside
+the window while the alignment span overlaps it; it is not a pure
+"alignment start" rule. `tests/testthat/test-counts.R` includes a reverse-strand
+boundary test that locks this down.
+
+The gated Sq54 regression counts the legacy BED intervals and matches the
+legacy tables within the documented tolerance: 229/28,000 windows differ
+(0.82%; all on the recipient side, donor 0%), maximum delta 14, total absolute
+delta 708/3,535,298 (0.02%), all deltas non-positive. Every mismatch is
+explained exactly by the number of overlapping reads whose 5' end is outside
+the window (verified with `samtools view`, 229/229), and per-contig 5'-end
+totals equal `samtools view -c` exactly.
 
 Set `options(MaMaMIA.count_chunk_size = n)` to split very large window sets into
 chunks. The default `0` disables chunking because every chunk repeats the
 bamsignals passes.
+
+---
+
+## 10. Wave 3 implementation notes
+
+### 10.1 Per-sample tables
+
+`buildSampleTables(counts, gc, windows, assembly, sample)` returns a classed
+`SampleTables` list with the documented names. `counts` and `gc` may be numeric
+vectors aligned to `windows$table`, or a `donor`/`recipient` list; `gc` may
+also be the data frame returned by `extractWindowGc()`. The function validates
+that the values are aligned to the window table, that every contig has one
+role/name/subgenome, that each chromosome has the same number of windows, and
+that donor and recipient IDs are disjoint.
+
+Pairs come from `assembly$pairs` when configured; otherwise
+`defaultTargetPairs()` derives them from chromosome numbers. Explicit pairs
+that name an unknown or missing contig, duplicate a donor, or reuse a
+recipient raise `MaMaMIASampleError`. The assembled tables are passed through
+`RCA()` and the result must be uncorrected, so malformed data fails before the
+GC-bias fit. Validation errors are re-raised with the sample name.
+
+### 10.2 Single-BAM orchestration
+
+`analyzeBamInput()` runs preflight, index, windows, GC, counts, tables, RCA,
+correction and segmentation in that order. It stages BAMs whose directory is
+not writable before indexing, uses a per-process fit cache in session temp when
+`cache = NULL`, and records provenance (config path/hash, BAM sizes/mtimes,
+package/htslib/gcrank/uvr versions, `uvr.lock` hash, window rule, filters,
+normalization and timings).
+
+The `progress` callback is `function(stage, detail)` and is called after each
+completed stage: `preflight`, `index`, `windows`, `gc`, `counts`,
+`correction`, `segmentation`. For several samples the last three stages repeat
+per sample. A callback error aborts the run (used for cancellation).
+
+For one BAM the normalization mode is forced to `"none"` and CBS consumes
+`cor.gc` (D7). Multi-sample runs with `normalization = "none"` are supported;
+`"median"` and `"reference"` stop with `MaMaMIAAnalysisError` until T4.1/T4.2.
+A sample with zero reads in every analysis window stops before the fit with
+`MaMaMIASampleError`.
+
+`counts$donor` and `counts$recipient` are integer matrices with one column per
+sample (columns named by sample). `rca` and `isa` are named lists keyed by
+sample. The result is classed `BamAnalysisResult`.
+
+### 10.3 Golden regression
+
+`tools/benchmark-bam-pipeline.R` and the opt-in
+`tests/testthat/test-golden-bam.R` (`MAMAMIA_SLOW_TESTS=1`) compare Sq54 with
+the legacy directory-layout tables. Results:
+
+| Check | Result |
+|---|---|
+| counts on legacy intervals | 229/28,000 windows differ, max delta 14, total abs delta 708 (0.02%), all explained by 5' ends |
+| GC on legacy intervals | identical at six decimals (28,000/28,000) |
+| generated windows | exact-N tiling; per-contig 5'-end totals equal `samtools view -c` |
+| full pipeline vs legacy segments | same 7 pairs; segment/putative count deltas 0; introgression bp relative delta 9.3e-7 |
+| core on the same intervals | identical breakpoints and putative calls; segment medians within 0.13% of scale |
+
+Both pipelines use the config's explicit pairs (seven rye donors to the seven
+A-genome recipients); the legacy chromosome-number rule would leave these pairs
+unmatched because every rye chromosome number matches three wheat chromosomes.
+
+The legacy BEDs use fixed-width windows with a stretched last window, whereas
+`makeAnalysisWindows()` uses the T2.2 distributed-remainder formula. The two
+tilings differ by at most 999 bp (963 bp on this data) and only 126/28,000
+intervals are identical, so per-window golden comparisons are made on the
+legacy intervals and the generated windows are validated by exact-N tiling plus
+per-contig totals. No production or test-only GC fallback is used; the golden
+test skips cleanly when `test_data` is absent.

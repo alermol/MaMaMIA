@@ -79,6 +79,136 @@ write_test_bam <- function(lines, path, index = FALSE) {
     path
 }
 
+## The committed tiny fixture has exactly 40% and 60% GC, so the ZINB smooth
+## cannot be fitted on it. These helpers build a small assembly whose GC varies
+## between 20% and 100% in 20 bp blocks, plus a densely covered BAM, entirely in
+## session temp. They need samtools and the gcrank builder.
+
+gcrank_build_binary <- function() {
+    candidate <- Sys.which("gcrank-build")
+    if (nzchar(candidate)) {
+        return(candidate)
+    }
+    candidate <- file.path(
+        mamamia_test_data_dir(), "gcidx", "gcrank-build"
+    )
+    if (file.exists(candidate)) {
+        return(candidate)
+    }
+    ""
+}
+
+variable_gc_sequence <- function(length_bp, offset) {
+    blocks <- length_bp / 20L
+    gc_counts <- ((seq_len(blocks) + offset) %% 17L) + 4L
+    paste0(vapply(gc_counts, function(gc) {
+        paste0(strrep("G", gc), strrep("A", 20L - gc))
+    }, character(1)), collapse = "")
+}
+
+variable_gc_sam <- function(sample, contig_length = 20000L,
+                            read_length = 50L) {
+    sequence <- strrep("A", read_length)
+    quality <- strrep("I", read_length)
+    positions <- seq(1L, contig_length - read_length + 1L, by = 4L)
+    make_read <- function(contig, position) {
+        sprintf(
+            "r_%s_%d\t0\t%s\t%d\t60\t%dM\t*\t0\t0\t%s\t%s",
+            contig, position, contig, position, read_length,
+            sequence, quality
+        )
+    }
+    c(
+        "@HD\tVN:1.6\tSO:coordinate",
+        sprintf("@SQ\tSN:d1\tLN:%d", contig_length),
+        sprintf("@SQ\tSN:r1\tLN:%d", contig_length),
+        sprintf("@RG\tID:%s\tSM:%s", sample, sample),
+        make_read("d1", positions),
+        make_read("r1", positions)
+    )
+}
+
+add_variable_gc_bam <- function(fixture, sample, filename = NULL) {
+    if (is.null(filename)) {
+        filename <- paste0(sample, ".bam")
+    }
+    path <- file.path(fixture$directory, filename)
+    write_test_bam(variable_gc_sam(sample), path, index = FALSE)
+    path
+}
+
+variable_gc_fixture <- function(sample = "synthetic", windows = 100L) {
+    skip_if_no_samtools()
+    builder <- gcrank_build_binary()
+    if (!nzchar(builder)) {
+        testthat::skip("gcrank-build is not available")
+    }
+
+    directory <- tempfile("variable-gc-")
+    dir.create(directory)
+    fasta <- file.path(directory, "variable.fa")
+    writeLines(
+        c(
+            ">d1", variable_gc_sequence(20000L, 0L),
+            ">r1", variable_gc_sequence(20000L, 8L)
+        ),
+        fasta
+    )
+    status <- system2(
+        builder,
+        c(
+            "--fasta", fasta, "--out", directory,
+            "--name", "variable", "--threads", "1"
+        ),
+        stdout = FALSE, stderr = FALSE
+    )
+    if (!identical(status, 0L)) {
+        unlink(directory, recursive = TRUE)
+        testthat::skip("gcrank-build could not create the variable-GC index")
+    }
+
+    config <- list(
+        version = 1L,
+        defaults = list(
+            windows_per_chromosome = as.integer(windows),
+            allowed_windows = c(100L, 1000L, 10000L),
+            mapq = 20L,
+            exclude_flags = 2308L,
+            max_fit_windows = 1000L,
+            gc_mmap = TRUE,
+            gc_validate_crc = FALSE,
+            normalization_by_side = TRUE
+        ),
+        server = list(max_bams = 4L, max_total_bytes = 20 * 1024^2),
+        assemblies = list(
+            variable = list(
+                label = "Variable-GC synthetic assembly",
+                description = "Two 20 kb contigs with variable GC",
+                gc_indexes = list(file.path(directory, "variable.gcrank")),
+                contigs = list(
+                    recipient = list(list(
+                        id = "r1", name = "1R", subgenome = "R"
+                    )),
+                    donor = list(list(
+                        id = "d1", name = "1D", subgenome = "D"
+                    ))
+                ),
+                pairs = list(d1 = "r1")
+            )
+        )
+    )
+    config_path <- file.path(directory, "assemblies.yml")
+    writeLines(yaml::as.yaml(config), config_path)
+
+    fixture <- list(
+        directory = directory,
+        config_path = config_path,
+        sample = sample
+    )
+    fixture$bam_path <- add_variable_gc_bam(fixture, sample)
+    fixture
+}
+
 mamamia_test_data_dir <- function() {
     configured <- Sys.getenv("MAMAMIA_TEST_DATA_DIR", unset = "")
     if (nzchar(configured)) {

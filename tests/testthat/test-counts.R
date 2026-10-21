@@ -71,7 +71,7 @@ test_that("countReads() preserves GRanges order and creates the CSI index", {
     expect_true(MaMaMIA:::.bam_index_magic(index))
 })
 
-test_that("countReads() is start-based at window boundaries", {
+test_that("countReads() assigns forward reads by their 5' end", {
     skip_if_no_samtools()
     directory <- tempfile("boundary-bam-")
     dir.create(directory)
@@ -96,9 +96,51 @@ test_that("countReads() is start-based at window boundaries", {
         IRanges::IRanges(c(1L, 1001L), c(1000L, 2000L)),
         seqlengths = c(chr1 = 3000)
     )
-    ## The read starting at 960 crosses into the second window, but it belongs
-    ## to the first window under bamsignals' start-based assignment.
+    ## The forward read starting at 960 crosses into the second window but its
+    ## 5' end is the alignment start, so it belongs to the first window.
     expect_identical(countReads(path, gr, exclude_flags = 2308L), c(1L, 1L))
+})
+
+test_that("countReads() assigns reverse-strand reads by their 5' end", {
+    skip_if_no_samtools()
+    directory <- tempfile("fiveprime-bam-")
+    dir.create(directory)
+    on.exit(unlink(directory, recursive = TRUE), add = TRUE)
+    path <- file.path(directory, "fiveprime.bam")
+    sequence <- strrep("A", 100L)
+    quality <- strrep("I", 100L)
+    make_read <- function(name, flag, position) {
+        sprintf(
+            "%s\t%d\tchr1\t%d\t60\t100M\t*\t0\t0\t%s\t%s",
+            name, flag, position, sequence, quality
+        )
+    }
+    write_test_bam(
+        c(
+            "@HD\tVN:1.6\tSO:coordinate",
+            "@SQ\tSN:chr1\tLN:3000",
+            ## Forward read starting in window 1: 5' end 960 -> window 1.
+            make_read("forward_cross", 0L, 960L),
+            ## Reverse read starting in window 1, ending at 1069: 5' end ->
+            ## window 2. bedtools would count it in both windows.
+            make_read("reverse_cross", 16L, 970L),
+            ## Reverse read fully inside window 2: 5' end 1599 -> window 2.
+            make_read("reverse_inside", 16L, 1500L),
+            ## Forward read inside window 3.
+            make_read("forward_inside", 0L, 2100L)
+        ),
+        path
+    )
+
+    gr <- GenomicRanges::GRanges(
+        "chr1",
+        IRanges::IRanges(
+            c(1L, 1001L, 2001L),
+            c(1000L, 2000L, 3000L)
+        ),
+        seqlengths = c(chr1 = 3000)
+    )
+    expect_identical(countReads(path, gr, exclude_flags = 0L), c(1L, 2L, 1L))
 })
 
 test_that("countReads() supports optional chunking without changing counts", {

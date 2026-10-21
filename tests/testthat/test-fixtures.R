@@ -116,25 +116,26 @@ test_that("the tiny BAM has exact counts for MAPQ/flag assertions", {
     expect_identical(count(0, 1024), c(9L, 4L))
 })
 
-test_that("the tiny fixture can run the end-to-end BAM pipeline", {
-    skip_if_no_tiny_fixtures()
-    if (!exists("analyzeBamInput", envir = asNamespace("MaMaMIA"), inherits = FALSE)) {
-        testthat::skip("analyzeBamInput() is implemented in T3.3")
-    }
+test_that("a tiny fixture can run the end-to-end BAM pipeline", {
+    ## The committed tiny fixture has constant GC (40% and 60%), which cannot
+    ## support the ZINB smooth. The variable-GC fixture exercises the same
+    ## contract with a GC profile the correction model can fit.
+    fixture <- variable_gc_fixture()
+    on.exit(unlink(fixture$directory, recursive = TRUE), add = TRUE)
 
-    config <- readMaMaMIAConfig(tiny_config_path())
-    result <- analyzeBamInput(
-        tiny_bam_path(), config,
-        normalization = "none", cores = 1L
-    )
+    result <- suppressWarnings(analyzeBamInput(
+        fixture$bam_path, fixture$config_path,
+        normalization = "none", windows_per_chromosome = 100L,
+        cores = 1L
+    ))
 
     expect_named(result, c(
         "assembly", "config", "bams", "windows", "gc", "counts",
         "rca", "isa", "normalization", "provenance"
     ))
-    expect_identical(result$bams$sample, "tiny-sample")
-    expect_identical(result$windows$n_per_chromosome, 1000L)
-    expect_named(result$rca, "tiny-sample")
-    expect_named(result$isa, "tiny-sample")
+    expect_identical(result$bams$sample, "synthetic")
+    expect_identical(result$windows$n_per_chromosome, 100L)
+    expect_named(result$rca, "synthetic")
+    expect_named(result$isa, "synthetic")
     expect_identical(result$normalization$mode, "none")
 })

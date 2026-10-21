@@ -13,9 +13,12 @@
 ## 2308 = 4 + 256 + 2048 this is seven bamsignals passes. The exponent is
 ## bounded because every extra bit doubles the work.
 ##
-## Reads are assigned to the window containing their alignment start (5' end),
-## not to every window they overlap. This matches bamsignals and is documented
-## as a deliberate difference from bedtools coverage -counts.
+## Reads are assigned to the window containing their 5' end, not to every
+## window they overlap. bamsignals places a forward-strand read at its leftmost
+## coordinate and a reverse-strand read at its rightmost coordinate (the
+## alignment end), so a reverse read can belong to the window after the one
+## containing its SAM POS. This is documented as the deliberate difference from
+## bedtools coverage -counts.
 
 .MaMaMIACountMaxBits <- 6L
 
@@ -192,7 +195,7 @@
 
 #' Count reads in genomic windows
 #'
-#' Counts reads whose alignment start falls inside each window using
+#' Counts reads whose 5' end falls inside each window using
 #' [bamsignals::bamCount()]. A valid CSI index is ensured first.
 #'
 #' `exclude_flags` follows `samtools view -F`: a read is excluded when **any**
@@ -201,10 +204,13 @@
 #' `2308 = 0x904 = unmapped + secondary + supplementary` matches the legacy
 #' `samtools view -F 2308` filter.
 #'
-#' Counting is start-based: a read belongs to the window containing its
-#' alignment start (5' end), not to every window it overlaps. This differs from
-#' `bedtools coverage -counts`, which counts overlaps; the difference is
-#' confined to reads that start in the previous window and cross the boundary.
+#' Counting is 5'-end based: bamsignals assigns a forward-strand read to the
+#' window containing its leftmost coordinate and a reverse-strand read to the
+#' window containing its rightmost coordinate (the alignment end). A reverse
+#' read can therefore belong to the window after the one containing its SAM
+#' `POS`. This differs from `bedtools coverage -counts`, which counts a read in
+#' every window it overlaps; the difference is confined to reads whose 5' end
+#' lies outside the window while the alignment span overlaps it.
 #'
 #' For very large window sets, the option `MaMaMIA.count_chunk_size` splits the
 #' GRanges into chunks before counting. It is disabled (`0`) by default; each

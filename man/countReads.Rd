@@ -23,7 +23,7 @@ every seqname.}
 An integer vector aligned to \code{gr}.
 }
 \description{
-Counts reads whose alignment start falls inside each window using
+Counts reads whose 5' end falls inside each window using
 \code{\link[bamsignals:bamCount]{bamsignals::bamCount()}}. A valid CSI index is ensured first.
 }
 \details{
@@ -33,10 +33,13 @@ set, so a combined mask is decomposed with inclusion-exclusion. The default
 \code{2308 = 0x904 = unmapped + secondary + supplementary} matches the legacy
 \verb{samtools view -F 2308} filter.
 
-Counting is start-based: a read belongs to the window containing its
-alignment start (5' end), not to every window it overlaps. This differs from
-\verb{bedtools coverage -counts}, which counts overlaps; the difference is
-confined to reads that start in the previous window and cross the boundary.
+Counting is 5'-end based: bamsignals assigns a forward-strand read to the
+window containing its leftmost coordinate and a reverse-strand read to the
+window containing its rightmost coordinate (the alignment end). A reverse
+read can therefore belong to the window after the one containing its SAM
+\code{POS}. This differs from \verb{bedtools coverage -counts}, which counts a read in
+every window it overlaps; the difference is confined to reads whose 5' end
+lies outside the window while the alignment span overlaps it.
 
 For very large window sets, the option \code{MaMaMIA.count_chunk_size} splits the
 GRanges into chunks before counting. It is disabled (\code{0}) by default; each

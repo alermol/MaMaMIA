@@ -2,6 +2,30 @@
 
 * Initial submission.
 
+## BAM-first workflow (wave 3)
+
+* `buildSampleTables()` joins generated windows, gcrank GC and bamsignals
+  counts into the `SampleTables` contract and validates the result through
+  `RCA()`. Explicit `assembly$pairs` win over the chromosome-number rule, and
+  malformed samples fail with the sample name before the GC-bias fit.
+* `analyzeBamInput()` turns one or more BAMs into `BamAnalysisResult`: preflight,
+  CSI indexing (staging read-only BAMs in session temp), exact-N windows,
+  gcrank GC, read counting, per-sample RCA, GC correction and pairwise CBS. It
+  records provenance and reports `preflight`, `index`, `windows`, `gc`,
+  `counts`, `correction` and `segmentation` progress stages. A single BAM is
+  always normalized with mode `"none"`; multi-sample normalization arrives in
+  wave 4.
+* `countReads()` now documents bamsignals' actual 5'-end semantics: forward
+  reads are assigned by their leftmost coordinate and reverse reads by their
+  rightmost coordinate. The Sq54 golden regression explains all 229 legacy
+  count differences with this rule, and a reverse-strand boundary test locks it
+  down.
+* `tools/benchmark-bam-pipeline.R` and the opt-in
+  `tests/testthat/test-golden-bam.R` compare legacy-interval counts and GC,
+  exact-N windows, and the full segment summary with the legacy
+  directory-layout pipeline. The known tiling difference (exact-N windows vs
+  fixed-width BED windows, at most 999 bp) is documented rather than hidden.
+
 ## Dashboard
 
 * The BioCircos-based circos view is temporarily disabled and the BioCircos
