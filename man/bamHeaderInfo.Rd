@@ -21,3 +21,10 @@ any alignments or requiring an index. The sample name follows D2: the single
 distinct non-empty \verb{@RG SM} value, otherwise \code{basename(path)} without the
 \code{.bam} suffix. Several distinct \code{SM} values are an error.
 }
+\examples{
+demo <- system.file("extdata", "bam-demo", package = "MaMaMIA")
+header <- bamHeaderInfo(file.path(demo, "demo.bam"))
+header$samples
+header$targets
+
+}

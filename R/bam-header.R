@@ -220,6 +220,13 @@
 #'   and `length`), `samples`, `read_groups` (`id`, `sample`), `programs`
 #'   (`id`, `name`, `version`, `command`), `header_text`, `sample`,
 #'   `sample_source` (`"rg"` or `"basename"`), `sort_order` and `n_targets`.
+#'
+#' @examples
+#' demo <- system.file("extdata", "bam-demo", package = "MaMaMIA")
+#' header <- bamHeaderInfo(file.path(demo, "demo.bam"))
+#' header$samples
+#' header$targets
+#'
 #' @export
 bamHeaderInfo <- function(path) {
     path <- .validate_bam_path(path)

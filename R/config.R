@@ -979,6 +979,12 @@
 #' @return A normalized `MaMaMIAConfig` list with `version`, `defaults`,
 #'   `species`, `assemblies` and `server` elements.
 #'
+#' @examples
+#' demo <- system.file("extdata", "bam-demo", package = "MaMaMIA")
+#' config <- readMaMaMIAConfig(file.path(demo, "assemblies.yml"))
+#' names(config$species)
+#' config$defaults$windows_per_chromosome
+#'
 #' @export
 readMaMaMIAConfig <- function(path) {
     if (length(path) != 1L || is.na(path) || !is.character(path) ||

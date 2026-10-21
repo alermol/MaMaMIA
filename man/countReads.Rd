@@ -45,3 +45,14 @@ For very large window sets, the option \code{MaMaMIA.count_chunk_size} splits th
 GRanges into chunks before counting. It is disabled (\code{0}) by default; each
 chunk repeats the bamsignals passes, so enable it only to bound memory.
 }
+\examples{
+demo <- system.file("extdata", "bam-demo", package = "MaMaMIA")
+bam <- file.path(tempdir(), "demo.bam")
+file.copy(file.path(demo, "demo.bam"), bam, overwrite = TRUE)
+gr <- GenomicRanges::GRanges(
+    c("d1", "r1"), IRanges::IRanges(1L, 20000L),
+    seqlengths = c(d1 = 20000L, r1 = 20000L)
+)
+countReads(bam, gr)
+
+}

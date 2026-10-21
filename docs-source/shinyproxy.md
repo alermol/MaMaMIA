@@ -19,6 +19,29 @@ Artifacts:
 ShinyProxy itself is **not** required to build the image or run the local smoke
 test. It is only needed for the final proxied deployment.
 
+## 0. Runbook checklist
+
+1. Build or copy the `gcrank` indexes under `/srv/mamamia/gcidx/` and write the
+   species registry to `/srv/mamamia/config/assemblies.yml` (sections 1 and
+   1.1). Record the index checksums in `deployment/gcidx-checksums.txt`.
+2. Validate the mounted registry: `Rscript tools/validate-config.R
+   /srv/mamamia/config/assemblies.yml`. Do not continue on a non-zero exit.
+3. Build the image from the repository root (section 2) and run
+   `uvr doctor --unattended` inside it.
+4. Run the local smoke test with the real indexes and BAMs (section 3). The
+   script must print a result with at least one segment.
+5. Start the image through the ShinyProxy command
+   `uvr run /app/deployment/start.R`; `MAMAMIA_CONFIG` must point at the
+   mounted registry (section 4).
+6. Put the reverse proxy in front, with the upload and timeout limits raised
+   together (section 5), and confirm the resource limits (section 6).
+7. Check session cleanup and authentication before exposing the app (section
+   7), and use section 8 when a run fails.
+
+A registry change is a new deployment: replace the file atomically and start a
+fresh app container, because the config is read once per process (section 1.1).
+New index directories alone are visible without a restart.
+
 ## 1. Data prerequisites
 
 The application reads a YAML registry (see
@@ -135,7 +158,7 @@ limits, resource limits and registry-growth caveats are unchanged.
 From the repository root:
 
 ```sh
-docker build -f deployment/Dockerfile -t mamamia:0.99.0 .
+docker build -f deployment/Dockerfile -t mamamia:0.99.1 .
 ```
 
 If the build host cannot reach `bioconductor.org`, pass a mirror (the package
@@ -144,7 +167,7 @@ checksums still come from the committed lockfile):
 ```sh
 docker build --network=host \
   --build-arg BIOC_MIRROR=https://bioconductor.statistik.tu-dortmund.de/packages \
-  -f deployment/Dockerfile -t mamamia:0.99.0 .
+  -f deployment/Dockerfile -t mamamia:0.99.1 .
 ```
 
 The validation sandbox needed `--network=host` and
@@ -176,7 +199,7 @@ docker run --rm -p 3838:3838 \
   -v "$PWD/inst/config/assemblies.example.yml:/srv/mamamia/config/assemblies.yml:ro" \
   -v "$PWD/test_data/gcidx:/srv/mamamia/gcidx:ro" \
   -v "$PWD/test_data/bam_files:/srv/mamamia/bams:ro" \
-  mamamia:0.99.0
+  mamamia:0.99.1
 ```
 
 Open `http://127.0.0.1:3838/`, confirm that the configuration summary shows
@@ -197,7 +220,7 @@ docker run --rm \
   -v "$PWD/inst/config/assemblies.example.yml:/srv/mamamia/config/assemblies.yml:ro" \
   -v "$PWD/test_data/gcidx:/srv/mamamia/gcidx:ro" \
   -v "$PWD/test_data/bam_files:/srv/mamamia/bams:ro" \
-  mamamia:0.99.0 uvr run /app/deployment/smoke-test.R
+  mamamia:0.99.1 uvr run /app/deployment/smoke-test.R
 ```
 
 The script resolves the first two species in the registry. Override the pair
@@ -210,7 +233,7 @@ and fails if the result is not a `BamAnalysisResult` with at least one segment.
 Check the image without starting the app:
 
 ```sh
-docker run --rm mamamia:0.99.0 uvr doctor --unattended
+docker run --rm mamamia:0.99.1 uvr doctor --unattended
 ```
 
 For a startup-only check with the real mounts, run the full command above and

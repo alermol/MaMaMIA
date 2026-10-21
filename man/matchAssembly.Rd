@@ -31,3 +31,14 @@ auto-selected. Without it, exactly one exact match is selected; when several
 assemblies match exactly, the one with the largest target set (the most
 specific) wins, and a remaining tie raises an ambiguity error.
 }
+\examples{
+demo <- system.file("extdata", "bam-demo", package = "MaMaMIA")
+config <- readMaMaMIAConfig(file.path(demo, "assemblies.yml"))
+pair <- resolveSpeciesAssembly(
+    config, donor = "secale_like", recipient = "triticum_like"
+)
+header <- bamHeaderInfo(file.path(demo, "demo.bam"))
+match <- matchAssembly(header, pair$config)
+match$assembly
+
+}

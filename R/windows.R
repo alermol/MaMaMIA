@@ -260,6 +260,18 @@ readContigsTsv <- function(path) {
 #' @return A list with `gr` (1-based inclusive `GRanges`), `table` (0-based
 #'   half-open data frame with `chr_id`, `start`, `stop`, `role`, `chr_name`,
 #'   `subgenome`) and `n_per_chromosome`.
+#'
+#' @examples
+#' demo <- system.file("extdata", "bam-demo", package = "MaMaMIA")
+#' config <- readMaMaMIAConfig(file.path(demo, "assemblies.yml"))
+#' pair <- resolveSpeciesAssembly(
+#'     config, donor = "secale_like", recipient = "triticum_like"
+#' )
+#' contigs <- readContigsTsv(file.path(demo, "demo.gcrank", "contigs.tsv"))
+#' windows <- makeAnalysisWindows(pair$assembly, contigs, n_per_chromosome = 100L)
+#' nrow(windows$table)
+#' table(windows$table$role)
+#'
 #' @export
 makeAnalysisWindows <- function(assembly, contigs, n_per_chromosome = 1000L) {
     n <- .window_integer(n_per_chromosome, "n_per_chromosome")

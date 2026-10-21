@@ -124,6 +124,14 @@ gcrankContigs <- function(index_dir) {
 #' @param validate_crc Re-read and verify every data file against the manifest.
 #'
 #' @return A numeric vector of GC fractions.
+#'
+#' @examples
+#' demo <- system.file("extdata", "bam-demo", package = "MaMaMIA")
+#' gcrankGc(
+#'     file.path(demo, "demo.gcrank"), "d1",
+#'     start = c(0, 1000), end = c(1000, 2000)
+#' )
+#'
 #' @export
 gcrankGc <- function(index_dir, contig, start, end,
                      remove_ambiguous = FALSE, mmap = TRUE,

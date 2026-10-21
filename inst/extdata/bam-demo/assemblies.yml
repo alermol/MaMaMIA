@@ -1,0 +1,38 @@
+version: 1
+defaults:
+  windows_per_chromosome: 100
+  allowed_windows:
+  - 100
+  - 1000
+  - 10000
+  mapq: 20
+  exclude_flags: 2308
+  max_fit_windows: 1000
+  gc_mmap: true
+  gc_validate_crc: false
+  normalization_by_side: true
+server:
+  bam_root: '.'
+  max_bams: 4
+  max_total_bytes: 2.097152e+07
+species:
+  triticum_like:
+    label: Triticum-like (A)
+    description: Synthetic 20 kb contig with variable GC
+    default_subgenome: A
+    gc_indexes:
+    - demo.gcrank
+    contigs:
+    - id: r1
+      name: 1A
+      subgenome: A
+  secale_like:
+    label: Secale-like (R)
+    description: Synthetic 20 kb contig with variable GC
+    default_subgenome: R
+    gc_indexes:
+    - demo.gcrank
+    contigs:
+    - id: d1
+      name: 1R
+      subgenome: R

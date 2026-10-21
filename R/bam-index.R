@@ -65,6 +65,14 @@
 #' @param threads Number of htslib indexing threads.
 #'
 #' @return The path to the CSI index.
+#'
+#' @examples
+#' demo <- system.file("extdata", "bam-demo", package = "MaMaMIA")
+#' bam <- file.path(tempdir(), "demo.bam")
+#' file.copy(file.path(demo, "demo.bam"), bam, overwrite = TRUE)
+#' index <- ensureBamIndex(bam)
+#' file.exists(index)
+#'
 #' @export
 ensureBamIndex <- function(path, min_shift = 14L, threads = 1L) {
     path <- .validate_bam_path(path, class = "MaMaMIAIndexError")

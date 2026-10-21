@@ -120,18 +120,19 @@ writeToBedpe <- function(ISA, file, sample = NULL) {
 #'   `NULL`. Prints a message with the output path when finished.
 #' @seealso [writeToBedpe()]
 #' @examples
-#' \dontrun{
+#' demo <- system.file("extdata", "bam-demo", package = "MaMaMIA")
+#' config <- readMaMaMIAConfig(file.path(demo, "assemblies.yml"))
+#' pair <- resolveSpeciesAssembly(
+#'     config, donor = "secale_like", recipient = "triticum_like"
+#' )
 #' result <- analyzeBamInput(
-#'     c("sample1.bam", "sample2.bam"),
-#'     config,
-#'     normalization = "median"
+#'     file.path(demo, "demo.bam"), pair$config,
+#'     assembly = pair$key, windows_per_chromosome = 100L,
+#'     normalization = "none", cores = 1L
 #' )
-#' writeCohortToBedpe(result, "cohort.bedpe")
-#' writeCohortToBedpe(
-#'     result, "selected.bedpe",
-#'     selected = list(sample1 = c(1L, 4L), sample2 = 2L)
-#' )
-#' }
+#' out <- tempfile(fileext = ".bedpe")
+#' writeCohortToBedpe(result, out)
+#' readLines(out, n = 2L)
 #' @export
 writeCohortToBedpe <- function(result, file, samples = NULL, selected = NULL) {
     isas <- cohort_isa_list(result)

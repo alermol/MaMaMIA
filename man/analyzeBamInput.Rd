@@ -95,6 +95,22 @@ per sample by \code{\link[=correctReadCounts]{correctReadCounts()}} and recorded
 BAMs whose directory is not writable are staged in session temp before
 indexing; the result records the staging decision in \code{provenance$staged}.
 }
+\examples{
+demo <- system.file("extdata", "bam-demo", package = "MaMaMIA")
+config <- readMaMaMIAConfig(file.path(demo, "assemblies.yml"))
+pair <- resolveSpeciesAssembly(
+    config, donor = "secale_like", recipient = "triticum_like"
+)
+result <- analyzeBamInput(
+    file.path(demo, "demo.bam"), pair$config,
+    assembly = pair$key,
+    windows_per_chromosome = 100L,
+    normalization = "none",
+    cores = 1L
+)
+result$samples[, c("sample", "n_windows", "n_segments")]
+
+}
 \seealso{
 \code{\link[=preflightBams]{preflightBams()}}, \code{\link[=countReads]{countReads()}}, \code{\link[=buildSampleTables]{buildSampleTables()}}
 }

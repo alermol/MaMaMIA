@@ -18,3 +18,10 @@ Reads the YAML configuration, resolves relative paths against the directory
 containing the YAML file, and validates the species registry, assemblies, GC
 indexes, contigs and pairs before returning a normalized configuration list.
 }
+\examples{
+demo <- system.file("extdata", "bam-demo", package = "MaMaMIA")
+config <- readMaMaMIAConfig(file.path(demo, "assemblies.yml"))
+names(config$species)
+config$defaults$windows_per_chromosome
+
+}

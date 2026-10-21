@@ -26,25 +26,240 @@ knitr::opts_chunk$set(
 
 **MaMaMIA** (Max Mapping for Meticulous Introgression Analysis) detects
 introgressed segments from Genotyping-by-Sequencing (GBS) coverage data.
-The workflow has five main steps:
 
-1.  Prepare windowed donor and recipient coverage and GC-content tables.
-2.  Build an RCA (Read Count Array) from those tables.
-3.  Correct coverage for GC-content bias.
-4.  Segment pairwise donor-recipient coverage differences with circular
-    binary segmentation (CBS).
-5.  Inspect putative introgressions in the interactive dashboard and
-    optionally export them as BEDPE.
+The recommended **BAM-first workflow** starts from BAM files and a role-free
+species registry:
 
-This vignette walks through that pipeline using the packaged `triticum`
-example dataset (*Triticum timopheevii* donor versus *Triticum aestivum*
-Chinese Spring T2T recipient).
+1.  Read BAM headers and create CSI indexes.
+2.  Tile the reference into windows and read GC content from `gcrank`.
+3.  Count reads and build a Read Count Array (RCA).
+4.  Correct GC bias with a zero-inflated negative binomial model.
+5.  Optionally normalize a cohort to dosage, then segment pairwise
+    donor-recipient differences with circular binary segmentation (CBS).
+6.  Inspect putative introgressions in the dashboard and export BEDPE.
+
+This vignette starts with that workflow on a small dataset bundled with the
+package. The following sections explain the `RCA` and `ISA` objects in detail
+using the packaged `triticum` tables; the BAM pipeline produces the same
+objects. The last section documents the deprecated directory-layout input.
 
 ```{r setup}
 library(MaMaMIA)
 ```
 
-# Preparing input data
+# BAM-first workflow
+
+`analyzeBamInput()` is the single pipeline entrypoint. It accepts one or more
+coordinate-sorted BAMs and a validated registry, and returns a
+`BamAnalysisResult` with the per-sample RCA and ISA objects.
+
+## The species registry
+
+A registry declares **species**, not donor/recipient pairs. A species provides
+a label, one or more `gcrank` indexes, and its contigs. Contig lengths are read
+from the index, and relative paths are resolved against the directory that
+contains the YAML file.
+
+```yaml
+version: 1
+defaults:
+  windows_per_chromosome: 1000
+  allowed_windows: [100, 1000, 10000]
+  max_fit_windows: 50000
+species:
+  triticum_aestivum_cs_t2t:
+    label: "Triticum aestivum CS T2T"
+    default_subgenome: A
+    gc_indexes: [/srv/mamamia/gcidx/triticum-aestivum/index.gcrank]
+    contigs:
+      - {id: CP155614.1, name: 1A, subgenome: A}
+      - {id: CP155611.1, name: 2A, subgenome: A}
+  secale_cereale:
+    label: "Secale cereale (rye)"
+    default_subgenome: R
+    gc_indexes: [/srv/mamamia/gcidx/secale-cereale/index.gcrank]
+    contigs:
+      - {id: OZ284382.1, name: 1R, subgenome: R}
+      - {id: OZ284383.1, name: 2R, subgenome: R}
+```
+
+`readMaMaMIAConfig()` validates the registry, the index payloads and the
+contig metadata before any BAM work starts. Named `assemblies:` presets are
+optional and exist for scripted runs; the application does not expose a preset
+list.
+
+## Roles are assigned at run time
+
+A species has no donor or recipient role. `resolveSpeciesAssembly()` (and the
+app's two species selectors) assign the roles for one comparison:
+
+```{r bam-config}
+demo <- system.file("extdata", "bam-demo", package = "MaMaMIA")
+config <- readMaMaMIAConfig(file.path(demo, "assemblies.yml"))
+listMaMaMIASpecies(config)[, c("key", "label", "subgenomes", "n_contigs")]
+
+pair <- resolveSpeciesAssembly(
+    config, donor = "secale_like", recipient = "triticum_like"
+)
+pair$key
+pair$assembly$pairs
+pair$unpaired
+```
+
+`pair$key` names the derived assembly, `pair$assembly` contains only the paired
+contigs and `pair$unpaired` explains every excluded contig. The same species
+can be used on either side of different runs, but one run needs two different
+species. In the app, the **Swap donor and recipient** button reverses the
+comparison while carrying each species' subgenome choice; auto-detection from
+the BAM header is an optional checkbox when the registry declares named
+assemblies.
+
+Contigs are paired by chromosome group: the optional `group` field, otherwise
+the first number in `name`. Rye `1R` therefore pairs with wheat `1A`, `2R` with
+`2A`, and so on. An explicit `pairs` argument remains available when the group
+rule is not the intended comparison.
+
+## Run the pipeline
+
+The bundled demo has two species sharing one variable-GC index and a small BAM
+with a donor excess in the first half of chromosome 1:
+
+```{r bam-run}
+result <- analyzeBamInput(
+    file.path(demo, "demo.bam"), pair$config,
+    assembly = pair$key,
+    windows_per_chromosome = 100L,
+    normalization = "none",
+    cores = 1L
+)
+result$samples[, c(
+    "sample", "n_windows", "n_segments", "n_putative_introgressions"
+)]
+```
+
+The result contains the inputs and every intermediate object:
+
+```{r bam-result}
+names(result)
+result$rca[[1]]
+result$isa[[1]]
+```
+
+With several BAMs, pass a vector of paths and choose `"median"` or
+`"reference"` normalization. The per-sample RCAs are corrected first and then
+normalized together, so the dosage is comparable across the cohort:
+
+```{r bam-cohort, eval = FALSE}
+result <- analyzeBamInput(
+    c("sample1.bam", "sample2.bam", "sample3.bam"), pair$config,
+    assembly = pair$key,
+    normalization = "median"
+)
+
+reference_run <- analyzeBamInput(
+    c("sample1.bam", "sample2.bam"), pair$config,
+    assembly = pair$key,
+    normalization = "reference",
+    reference_sample = "sample1"
+)
+```
+
+## Export
+
+`writeCohortToBedpe()` writes every putative introgression with a `sample`
+column last; pass `selected` to export specific dashboard rows instead.
+
+```{r bam-bedpe}
+bedpe_demo <- tempfile(fileext = ".bedpe")
+writeCohortToBedpe(result, bedpe_demo)
+read.table(bedpe_demo, header = TRUE, sep = "\t")
+```
+
+## Resolution and normalization
+
+`windows_per_chromosome` tiles every target contig into exactly that many
+contiguous half-open windows, and donor and recipient windows are matched by
+position index rather than by coordinates. Every contig must be at least as
+long as the resolution. The app offers 100, 1,000 and 10,000 windows per
+chromosome by default and disables Run with an explanation when a contig is
+too short.
+
+Normalization runs after GC correction and before segmentation:
+
+- `"none"`: segment `cor.gc.don - cor.gc.rec` (always used for a single BAM).
+- `"median"`: `dose = (C + eps) / (median(C) + eps)` across samples per window.
+- `"reference"`: `dose = (C + eps) / (C_ref + eps)` for a chosen sample.
+
+`eps` is `pseudocount` (default `0.5`), so a zero side stays finite and an
+all-zero window gets dose `1`. Donor and recipient windows are normalized
+independently by default (`normalization_by_side = true`), because they come
+from different genomes and mappability regimes. The high-resolution memory
+cap is `max_fit_windows`: larger ideal sets are subsampled deterministically by
+subgenome and GC decile, while prediction covers every window. See
+`?normalizeReadCounts` and `?analyzeBamInput` for the exact contracts.
+
+## Counts, flags and boundary semantics
+
+Reads are counted at their 5' end: a forward-strand read belongs to the window
+containing its `POS`, a reverse-strand read to the window containing the
+alignment end. `mapq` defaults to 20 and `exclude_flags` to
+`2308 = 0x904` (unmapped, secondary, supplementary). As with `samtools view
+-F`, a read is excluded when **any** bit in the mask is set; `bamsignals`
+excludes only when all bits are set, so the mask is decomposed internally.
+
+`bedtools coverage -counts`, used by the legacy workflow, counts a read in
+every window it overlaps. The two counts therefore differ by the few reads
+whose 5' end lies outside a window while the alignment span crosses its
+boundary. This is expected and confined to boundary-crossing reads.
+
+Verify a count against `samtools` with the same MAPQ and flag filter:
+
+```sh
+samtools view -c -F 2308 -q 20 sample.bam d1:1-200
+```
+
+That command counts reads overlapping the region. To reproduce a window count,
+keep the reads whose 5' end is inside the window (forward: `POS`; reverse: the
+alignment end). The GC values come from `gcrank` and match `bedtools nuc` at
+the six-decimal precision stored in the legacy BED files.
+
+## Interactive dashboard
+
+Start the BAM-first app with a registry. With `config` (or `bam_paths`),
+`runMaMaMIA()` selects the BAM-first app automatically:
+
+```{r run-ma-ma-mia, eval = FALSE}
+runMaMaMIA(config = "assemblies.yml")
+```
+
+Choose a recipient and a donor species, optionally swap them, select one or
+more BAMs (upload or server-side), choose a resolution and normalization, and
+run. The cohort summary reports windows, segments and putative calls per
+sample; the explorer keeps selections per sample and exports a per-sample BEDPE
+or a combined BEDPE with a `sample` column. The app runs on ShinyProxy with the
+image and registry described in `docs-source/shinyproxy.md`; the container
+entrypoint is `uvr run /app/deployment/start.R`.
+
+The bundled demo can be opened directly:
+
+```{r run-demo, eval = FALSE}
+runMaMaMIA(config = file.path(demo, "assemblies.yml"))
+```
+
+If the pipeline has already been run, `exploreIntrogressions()` opens the same
+explorer for an existing `ISA` object:
+
+```{r explore-isa, eval = FALSE}
+exploreIntrogressions(result$isa[[1]])
+```
+
+# Preparing input data (deprecated)
+
+> **Deprecated.** This section describes the directory-layout workflow:
+> precomputed coverage/GC tables read from `analysis_dir` and `assemblies_dir`.
+> Its readers and launcher arguments will be removed in the next release. Use
+> the BAM-first workflow above for new analyses, or call `RCA()` directly with
+> your own tables. The `RCA`/`ISA` API described below remains supported.
 
 MaMaMIA expects windowed coverage (mapped read counts) and GC-content
 tables for both the **donor** and **recipient** genomes. The same
@@ -481,21 +696,21 @@ read.table(bedpe_file, header = TRUE, sep = "\t")
 If no putative introgressions remain after filtering, a header-only file
 is written and a warning is issued.
 
-# Interactive dashboard
+# Legacy directory-layout dashboard (deprecated)
 
-`MaMaMIA` ships with a locally running Shiny dashboard. Its main entry point,
-`runMaMaMIA()`, reads windowed tables from disk, runs the whole pipeline with
-the sample and parameters chosen in the app, and then opens the explorer:
+> **Deprecated.** The `analysis_dir` / `assemblies_dir` launcher and the
+> directory readers will be removed in the next release. The BAM-first app in
+> the first section is the supported dashboard.
 
-```{r run-ma-ma-mia, eval = FALSE}
+The old launcher read precomputed tables from disk and paired chromosomes with
+`defaultTargetPairs()`:
+
+```{r legacy-run-ma-ma-mia, eval = FALSE}
 runMaMaMIA(
   analysis_dir = "mamamia_analysis",
   assemblies_dir = "assemblies"
 )
 ```
-
-The app expects an analysis directory with one subdirectory per sample and an
-assemblies directory with one subdirectory per donor reference:
 
 ```
 analysis_dir/<sample>/<reference>.w<N>.dcov.bed   # donor coverage windows
@@ -507,25 +722,19 @@ assemblies_dir/<reference>/chromosomes.tsv        # chr_id, chr_name, subgenome
 
 All measurement tables have four columns (chromosome ID, start, end, value)
 and may carry the `bedtools nuc` header, which starts with `#`. See
-`?readMaMaMIAInput` for the details. Called without arguments, the app starts
-on the packaged `triticum` example.
+`?readMaMaMIAInput` for the format. Called without arguments, the legacy app
+started on the packaged `triticum` example.
 
-Donor and recipient chromosomes are paired by chromosome number within the
-selected subgenomes with `defaultTargetPairs()`; the analysis runs RCA
-construction, GC-bias correction and segmentation in the app.
+The explorer itself is unchanged and remains available for an `ISA` object:
 
-If the pipeline has already been run, `exploreIntrogressions()` opens the same
-explorer for an existing `ISA` object:
-
-```{r explore-isa, eval = FALSE}
+```{r explore-isa-legacy, eval = FALSE}
 exploreIntrogressions(aat_segments)
 ```
 
-The explorer draws a searchable segment table and exports the selected table
-rows as BEDPE. The call threshold (the `threshold_type` metric and its minimum
-value) and the minimum segment width re-flag the segments through
-`subset.ISA()` without re-running segmentation, and the chromosome and
-chromosome-pair pickers restrict the view. The BioCircos circos plot is
+It draws a searchable segment table and exports selected rows as BEDPE. The
+call threshold (`threshold_type` and its minimum) and the minimum segment width
+re-flag segments through `subset.ISA()` without re-running segmentation, and
+the chromosome pair pickers restrict the view. The BioCircos circos plot is
 temporarily unavailable while the BioCircos dependency is removed.
 
 # Session info

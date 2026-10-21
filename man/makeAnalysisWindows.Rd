@@ -24,3 +24,15 @@ Tiles every target contig into exactly \code{n_per_chromosome} contiguous
 half-open windows. Windows are returned in assembly target order (recipient
 contigs first, then donor), never in lexical chromosome order.
 }
+\examples{
+demo <- system.file("extdata", "bam-demo", package = "MaMaMIA")
+config <- readMaMaMIAConfig(file.path(demo, "assemblies.yml"))
+pair <- resolveSpeciesAssembly(
+    config, donor = "secale_like", recipient = "triticum_like"
+)
+contigs <- readContigsTsv(file.path(demo, "demo.gcrank", "contigs.tsv"))
+windows <- makeAnalysisWindows(pair$assembly, contigs, n_per_chromosome = 100L)
+nrow(windows$table)
+table(windows$table$role)
+
+}

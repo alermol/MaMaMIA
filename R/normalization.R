@@ -283,6 +283,19 @@
 #'   `normalization` list (`mode`, `reference`, `by_side`, `pseudocount`)
 #'   stored in every `RCA`.
 #' @seealso [correctReadCounts()], [segments()], [analyzeBamInput()]
+#' @examples
+#' \dontrun{
+#' config <- readMaMaMIAConfig("assemblies.yml")
+#' pair <- resolveSpeciesAssembly(
+#'     config, donor = "secale_cereale", recipient = "triticum_aestivum"
+#' )
+#' result <- analyzeBamInput(
+#'     c("sample1.bam", "sample2.bam"), pair$config,
+#'     assembly = pair$key, normalization = "none"
+#' )
+#' normalized <- normalizeReadCounts(result$rca, reference = "sample1")
+#' normalized$sample2$data$dose[1:5]
+#' }
 #' @export
 normalizeReadCounts <- function(rcas, reference = NULL, by_side = TRUE,
                                 pseudocount = 0.5) {

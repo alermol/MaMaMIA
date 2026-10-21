@@ -394,6 +394,21 @@
 #'   `path`, `assembly`, `index_path`, `reference`, `normalization`, `n_windows`,
 #'   `n_segments`, `n_putative_introgressions`).
 #' @seealso [preflightBams()], [countReads()], [buildSampleTables()]
+#' @examples
+#' demo <- system.file("extdata", "bam-demo", package = "MaMaMIA")
+#' config <- readMaMaMIAConfig(file.path(demo, "assemblies.yml"))
+#' pair <- resolveSpeciesAssembly(
+#'     config, donor = "secale_like", recipient = "triticum_like"
+#' )
+#' result <- analyzeBamInput(
+#'     file.path(demo, "demo.bam"), pair$config,
+#'     assembly = pair$key,
+#'     windows_per_chromosome = 100L,
+#'     normalization = "none",
+#'     cores = 1L
+#' )
+#' result$samples[, c("sample", "n_windows", "n_segments")]
+#'
 #' @export
 analyzeBamInput <- function(bam_paths,
                             config,

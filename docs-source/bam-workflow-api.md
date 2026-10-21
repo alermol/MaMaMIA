@@ -1,8 +1,8 @@
 # MaMaMIA BAM-first API contract
 
-**Status:** frozen for implementation; amended 2026-10-21 for the species registry
+**Status:** final for 0.99.1
 **Frozen on:** 2026-10-20
-**Amended:** 2026-10-21 (section 16)
+**Amended:** 2026-10-21 (sections 16-17)
 **Source of truth:** `AGENTIC_PLAN.md` sections 3.3-4 and 14
 **Applies from:** Wave 0 onward
 
@@ -190,7 +190,7 @@ BamAnalysisResult <- list(
     mode = "none", reference = NULL, by_side = TRUE, pseudocount = 0.5
   ),
   provenance = list(
-    package_version = "0.99.0",
+    package_version = "0.99.1",
     htslib_version = "1.24",
     gcrank_format_version = "0.1.0",
     sample_source = c(`tiny-sample` = "rg"),
@@ -270,7 +270,8 @@ and the selected subgenomes; pass `resolved$config` and `resolved$key` to
 `runMaMaMIA()` is the only application entrypoint. The legacy directory app is
 still reachable through `input = "files"`/`"example"` until T7.5, but the BAM
 workflow is selected whenever `config` or `bam_paths` is supplied (or when
-`input = "bam"`). `bam_launcher_app()` and `mamamia_app()` are internal.
+`input = "bam"`). `bam_launcher_app()` and `mamamia_app()` are internal. The
+legacy arguments and modes are deprecated in 0.99.1 (section 17.4).
 
 ---
 
@@ -352,6 +353,11 @@ Assembly '<key>': contig '<id>' is <bp> bp; 32-bit positions require lengths bel
 Assembly '<key>': donor and recipient subgenome labels must be disjoint; shared: <labels>
 Assembly '<key>': pairs refers to unknown donor contig(s): <ids>
 Assembly '<key>': pairs is not one-to-one; a recipient is used more than once
+Species '<key>' must have at least one contig
+Species pair '<recipient>' (recipient) + '<donor>' (donor): no contig pairs could be derived by chromosome group; add `group` values or configure explicit `pairs`
+Unknown donor species '<key>'; configured species: <keys>
+Unknown recipient species '<key>'; configured species: <keys>
+A species pair needs two different species; both sides are '<key>'
 ```
 
 ---
@@ -1191,3 +1197,79 @@ species' subgenome choice. The predefined-assembly selector has been removed;
 when the registry also declares named assemblies, a checkbox enables
 BAM-header auto-detection instead. The selected pair invalidates any previous
 result, exactly like a change of BAM or resolution.
+
+---
+
+## 17. Wave 9 documentation and final signatures
+
+### 17.1 Public API status
+
+The signatures in section 2 are final for 0.99.1. `RCA()`,
+`correctReadCounts()`, `segments()`, `writeToBedpe()` and
+`exploreIntrogressions()` remain the supported table-level API. The BAM-first
+entrypoint is `analyzeBamInput()`; the Shiny entrypoint is `runMaMaMIA()` with
+`config` and/or `bam_paths`.
+
+`readMaMaMIAConfig()` and `validateMaMaMIAConfig()` return the normalized
+configuration. `resolveSpeciesAssembly()` does not modify its input: it
+returns the derived `assembly`, a copy of the `config` with that assembly
+registered, the `unpaired` table and the selected subgenomes. A species-only
+registry is valid when it contains at least two species; `assemblies:` may be
+omitted entirely. Named assemblies remain optional presets and are never
+listed in the app.
+
+### 17.2 Documentation fixture
+
+`inst/extdata/bam-demo` is a self-contained documentation dataset, generated
+by `tools/make-docs-fixture.R`:
+
+| File | Content |
+|---|---|
+| `assemblies.yml` | Two role-free species (`triticum_like`, `secale_like`) sharing one index; `bam_root: .` |
+| `demo.gcrank/` | Two 20 kb contigs with variable GC (format `0.1.0`) |
+| `demo.bam`, `demo.bam.csi` | One sample with a donor excess in the first half of `d1` |
+| `demo.fa` | Source sequence for the index |
+
+The README quick start, the vignette's BAM-first section and the roxygen
+examples use this fixture. A full run at `windows_per_chromosome = 100` yields
+200 windows, two segments and a non-empty BEDPE. The fixture is documentation
+only; tests keep their own `tests/testthat/fixtures` data.
+
+### 17.3 Error and message contract additions
+
+The species builder raises `MaMaMIAConfigError` before any BAM work:
+
+```text
+`config` has no `species` registry
+Unknown donor species '<key>'; configured species: <keys>
+Unknown recipient species '<key>'; configured species: <keys>
+A species pair needs two different species; both sides are '<key>'
+Species pair '<r>' (recipient) + '<d>' (donor): no contigs in the selected subgenomes (<r_sub>/<d_sub>)
+Species pair '<r>' (recipient) + '<d>' (donor): no contig pairs could be derived by chromosome group; add `group` values or configure explicit `pairs`
+Species pair '<r>' (recipient) + '<d>' (donor): chromosome group '<g>' matches more than one recipient contig: <ids>
+Species pair '<r>' (recipient) + '<d>' (donor): contig '<id>' is present on both sides
+Species pair '<r>' (recipient) + '<d>' (donor): donor and recipient subgenome labels must be disjoint; shared: <labels>
+```
+
+The application turns every error into the stage/file/suggestion presentation
+described in section 4. Run-control validation (resolution, MAPQ, exclude
+flags, cores, fit cap, reference sample) uses the same condition classes, so a
+bad control and a failed run look alike in the Problems card.
+
+### 17.4 Deprecation of the directory-layout workflow
+
+The legacy `analysis_dir` / `assemblies_dir` arguments, `input = "files"` /
+`"example"`, the directory-layout readers and the packaged-example launcher
+are deprecated in 0.99.1 and are removed in T7.5. `runMaMaMIA()` remains the
+single Shiny entrypoint. The table-level `RCA()`/`ISA` API, the golden
+regression and the core utilities are not deprecated. NEWS.md records the
+breaking change and the minimum environment (R 4.6.1, C++23).
+
+### 17.5 Reproducible environment
+
+The project uses `uvr`, not `renv`. `uvr.toml` declares direct dependencies,
+`uvr.lock` pins the complete set, `.r-version` pins R 4.6.1 and `.uvr/library/`
+is the project library. `uvr sync --frozen` reproduces the lockfile and fails
+on drift; `uvr doctor` diagnoses the install. The Docker image runs
+`uvr sync --frozen --unattended`, installs MaMaMIA into `.uvr/library` and
+starts the app through `uvr run /app/deployment/start.R`.

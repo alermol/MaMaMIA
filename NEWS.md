@@ -1,4 +1,44 @@
+# MaMaMIA 0.99.1
+
+## Documentation and release preparation (wave 9)
+
+* The BAM-first workflow is now the documented primary path. The README has a
+  complete quick start (`uvr sync --frozen`, `runMaMaMIA(config = ...)`), the
+  species registry reference, resolution and normalization formulas, counting
+  semantics, resource requirements and the ShinyProxy pointer.
+* Added `inst/extdata/bam-demo`: a self-contained 140 KB synthetic registry with
+  two role-free species, a variable-GC gcrank index and a BAM. The complete
+  pipeline runs on it and writes a BEDPE, so the README, the vignette and the
+  roxygen examples are executable without external data. Regenerate it with
+  `tools/make-docs-fixture.R`.
+* Added roxygen examples for `readMaMaMIAConfig()`, `bamHeaderInfo()`,
+  `ensureBamIndex()`, `matchAssembly()`, `makeAnalysisWindows()`, `gcrankGc()`,
+  `countReads()`, `normalizeReadCounts()`, `analyzeBamInput()` and
+  `writeCohortToBedpe()`, and regenerated `man/`.
+* The vignette starts with a BAM-first walkthrough (species registry, species
+  roles and swapping, resolution and normalization, the demo fixture, cohort
+  BEDPE) and documents the count/flag defaults, 5'-end boundary semantics and
+  how to verify counts with `samtools`. The directory-layout walkthrough is
+  marked deprecated; the `RCA()`/`ISA` sections remain the core API reference.
+* Documented the uvr migration (`uvr.toml`, `uvr.lock`, `.r-version`,
+  `.uvr/library/`, `uvr sync --frozen`, no renv) in the README, and the
+  deployment runbook in `docs-source/shinyproxy.md` now points at the same
+  entrypoint.
+
+## Breaking change in the next release
+
+* The legacy directory-layout workflow is deprecated. `launcher_app()`, the
+  `analysis_dir` / `assemblies_dir` arguments of `runMaMaMIA()`, the
+  `input = "files"` / `"example"` modes, and the directory-layout readers will
+  be removed in T7.5. `runMaMaMIA(config = ..., bam_paths = ...)` remains the
+  single Shiny entrypoint, and `RCA()`, `correctReadCounts()`, `segments()`,
+  `writeToBedpe()` and the BAM-first API remain supported.
+* The reproducible environment pins R 4.6.1 and C++23 through `uvr.lock`
+  (`DESCRIPTION` requires R >= 4.6.0); `renv` is no longer used.
+
 # MaMaMIA 0.99.0
+
+## Initial submission
 
 * Initial submission.
 

@@ -225,6 +225,17 @@
 #' @param verbose Print bamsignals progress messages.
 #'
 #' @return An integer vector aligned to `gr`.
+#'
+#' @examples
+#' demo <- system.file("extdata", "bam-demo", package = "MaMaMIA")
+#' bam <- file.path(tempdir(), "demo.bam")
+#' file.copy(file.path(demo, "demo.bam"), bam, overwrite = TRUE)
+#' gr <- GenomicRanges::GRanges(
+#'     c("d1", "r1"), IRanges::IRanges(1L, 20000L),
+#'     seqlengths = c(d1 = 20000L, r1 = 20000L)
+#' )
+#' countReads(bam, gr)
+#'
 #' @export
 countReads <- function(bam_path, gr, mapq = 20L, exclude_flags = 2308L,
                        verbose = FALSE) {

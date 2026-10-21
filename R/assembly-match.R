@@ -235,6 +235,17 @@
 #' @return A list with `assembly` (the selected key), `assembly_config`,
 #'   `candidates` (one row per evaluated assembly), `matched`, `exact`,
 #'   `missing`, `length_mismatches`, `score` and a human-readable `summary`.
+#'
+#' @examples
+#' demo <- system.file("extdata", "bam-demo", package = "MaMaMIA")
+#' config <- readMaMaMIAConfig(file.path(demo, "assemblies.yml"))
+#' pair <- resolveSpeciesAssembly(
+#'     config, donor = "secale_like", recipient = "triticum_like"
+#' )
+#' header <- bamHeaderInfo(file.path(demo, "demo.bam"))
+#' match <- matchAssembly(header, pair$config)
+#' match$assembly
+#'
 #' @export
 matchAssembly <- function(header, config, assembly = NULL) {
     if (is.character(header)) {

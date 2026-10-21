@@ -23,3 +23,11 @@ the BAM with \code{min_shift = 14}. BAI indexes are never created or returned.
 If the BAM directory is not writable, the function stops with guidance to
 stage the BAM in session temp first (see the internal \code{stageBam()} helper).
 }
+\examples{
+demo <- system.file("extdata", "bam-demo", package = "MaMaMIA")
+bam <- file.path(tempdir(), "demo.bam")
+file.copy(file.path(demo, "demo.bam"), bam, overwrite = TRUE)
+index <- ensureBamIndex(bam)
+file.exists(index)
+
+}

@@ -44,3 +44,11 @@ With \code{mmap = TRUE} (the default) the index is memory-mapped and resident
 memory grows as pages are touched. The index handle is cached per normalized
 directory, with at most two indexes kept open.
 }
+\examples{
+demo <- system.file("extdata", "bam-demo", package = "MaMaMIA")
+gcrankGc(
+    file.path(demo, "demo.gcrank"), "d1",
+    start = c(0, 1000), end = c(1000, 2000)
+)
+
+}
