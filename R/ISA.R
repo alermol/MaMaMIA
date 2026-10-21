@@ -14,6 +14,11 @@ plot.ISA <- function(x,
         stop("No pairwise windows available to plot", call. = FALSE)
     }
 
+    value_col <- isa_value_col(x)
+    don_values <- x$out[[paste0(value_col, ".don")]]
+    rec_values <- x$out[[paste0(value_col, ".rec")]]
+    value_label <- if (identical(value_col, "dose")) "Dosage" else "Coverage"
+
     # Add throughout number of windows
     x$out$iid.e2e <- seq_along(x$out$iid)
 
@@ -74,15 +79,15 @@ plot.ISA <- function(x,
         )
 
     if (plot_type == "mirror") {
-        don_offset <- round(max(x$out$cor.gc.don, na.rm = TRUE) * 0.1)
-        rec_offset <- round(max(x$out$cor.gc.rec, na.rm = TRUE) * 0.1)
-        max_y <- max(c(x$out$cor.gc.don + don_offset,
-                       x$out$cor.gc.rec + rec_offset))
+        don_offset <- round(max(don_values, na.rm = TRUE) * 0.1)
+        rec_offset <- round(max(rec_values, na.rm = TRUE) * 0.1)
+        max_y <- max(c(don_values + don_offset,
+                       rec_values + rec_offset))
 
         plot + ggplot2::geom_point(
             mapping = ggplot2::aes(
                 x = .data$iid.e2e,
-                y = .data$cor.gc.don + don_offset,
+                y = don_values + don_offset,
                 color = factor(.data$color.don)
             ),
             size = 0.5
@@ -92,7 +97,7 @@ plot.ISA <- function(x,
             ggplot2::geom_point(
                 mapping = ggplot2::aes(
                     x = .data$iid.e2e,
-                    y = -.data$cor.gc.rec - rec_offset,
+                    y = -rec_values - rec_offset,
                     color = factor(.data$color.rec)
                 ),
                 size = 0.5
@@ -101,10 +106,13 @@ plot.ISA <- function(x,
             ggplot2::scale_y_continuous(
                 expand = ggplot2::expansion(mult = c(0.03, 0.03)),
                 labels = \(x) gsub("-", "", x),
-                name = "Coverage",
+                name = value_label,
                 limits = c(-max_y, max_y)
             )
     } else {
+        if (is.null(x$out$diff)) {
+            x$out$diff <- don_values - rec_values
+        }
         max_y <- max(abs(x$out$diff))
         plot +
             ggplot2::geom_point(
@@ -136,10 +144,29 @@ plot.ISA <- function(x,
             ggplot2::scale_y_continuous(
                 expand = ggplot2::expansion(mult = c(0.03, 0.03)),
                 labels = \(x) gsub("-", "", x),
-                name = "Coverage",
+                name = paste(value_label, "difference"),
                 limits = c(-max_y, max_y)
             )
     }
+}
+
+## Resolve the per-window value column of an ISA, falling back to `cor.gc`
+## when the recorded column is absent (older ISA objects).
+#' @noRd
+isa_value_col <- function(x) {
+    value_col <- x$meta$value_col
+    if (is.null(value_col) || !is.character(value_col) ||
+        length(value_col) != 1L || is.na(value_col) || !nzchar(value_col)) {
+        value_col <- if (all(c("dose.don", "dose.rec") %in% names(x$out))) {
+            "dose"
+        } else {
+            "cor.gc"
+        }
+    }
+    if (!all(c(paste0(value_col, ".don"), paste0(value_col, ".rec")) %in% names(x$out))) {
+        value_col <- "cor.gc"
+    }
+    value_col
 }
 
 
@@ -160,6 +187,11 @@ print.ISA <- function(x, ...) {
         n_putative,
         " putative introgression(s), metric: ",
         x$meta$metrics,
+        if (!is.null(x$meta$value_col)) {
+            paste0(", value: ", x$meta$value_col)
+        } else {
+            ""
+        },
         "\n",
         sep = ""
     )

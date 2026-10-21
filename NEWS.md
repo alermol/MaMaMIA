@@ -2,6 +2,28 @@
 
 * Initial submission.
 
+## BAM-first workflow (wave 4)
+
+* `normalizeReadCounts()` turns the GC-corrected coverage of a named list of
+  `RCA` objects into dosage. Reference mode uses
+  `(C_s + eps) / (C_ref + eps)`; median mode uses
+  `(C_s + eps) / (median_s(C_s) + eps)`. `cor.gc` is preserved, `dose` is added
+  to the RCA table, and non-finite doses are marked not ideal. Donor and
+  recipient windows are normalized independently by default; `by_side = FALSE`
+  is an explicit sensitivity option that pools both sides per window position.
+* `segments()` gained `value_col`: it consumes `dose` when present and falls
+  back to `cor.gc` otherwise. `ISA$meta$value_col` records the choice,
+  `reverseWindows()` reverses and re-segments dose-aware results, and
+  `plot.ISA()` plots dosage with a `Dosage` axis. Segmentation without a dose
+  column is unchanged.
+* `analyzeBamInput()` now normalizes multi-BAM cohorts after all corrections
+  and before any CBS. `normalization = "median"` (the default for cohorts) and
+  `"reference"` are supported; `"reference"` requires `reference_sample` and
+  gives that sample a dose of exactly 1. A single BAM still uses `"none"`.
+  Results gained a `samples` metadata table, provenance gained `n_samples` and
+  `total_windows`, and a warning guards cohorts whose total window count
+  exceeds `max_fit_windows`.
+
 ## BAM-first workflow (wave 3)
 
 * `buildSampleTables()` joins generated windows, gcrank GC and bamsignals

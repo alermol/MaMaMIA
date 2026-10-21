@@ -5,6 +5,7 @@
 segments(
   RCA,
   target_pairs,
+  value_col = NULL,
   min_segment_median = 0L,
   min_segment_mean = 0L,
   threshold_type = c("median", "mean"),
@@ -22,6 +23,11 @@ segments(
 \item{target_pairs}{Named vector mapping donor chromosome IDs (\code{names})
 to recipient chromosome IDs (\code{values}). Only these pairs are segmented.
 Must be non-empty; there is no default all-pairs expansion.}
+
+\item{value_col}{Per-window value column used for the donor-recipient
+difference. \code{NULL} (default) uses \code{"dose"} when the RCA carries a
+normalized dosage column and \code{"cor.gc"} otherwise (D7). An explicit value
+must be \code{"dose"} or \code{"cor.gc"}.}
 
 \item{min_segment_median}{Minimum segment median difference used to flag
 putative introgressions when \code{threshold_type = "median"}
@@ -60,7 +66,8 @@ An object of class \code{ISA}: a list with components
   \item{\code{data}}{\code{RCA} window data restricted to chromosomes
     involved in \code{target_pairs}.}
   \item{\code{out}}{Per-window pairwise data (donor and recipient columns,
-    plus \code{diff = cor.gc.don - cor.gc.rec}), restricted to ideal windows.}
+    plus \code{diff} = the resolved value column's donor minus recipient
+    value), restricted to ideal windows.}
   \item{\code{segments}}{Segment summary table for all pairs, with a logical
     \code{putative_introgression} column
     (\code{seg.median} or \code{seg.mean} at or above the chosen threshold),
@@ -72,12 +79,14 @@ An object of class \code{ISA}: a list with components
     \code{target_pairs}, plus \code{don_chr_ids}, \code{rec_chr_ids},
     \code{target_pairs} (a data frame with columns \code{chr_id.don} and
     \code{chr_id.rec}), \code{metrics} (\code{"seg.median"} or
-    \code{"seg.mean"}), and \code{metrics_threshold}.}
+    \code{"seg.mean"}), \code{metrics_threshold}, and \code{value_col}
+    (the resolved value column).}
 }
 }
 \description{
 For selected donor-recipient chromosome pairs, computes the difference in
-GC-corrected coverage across aligned ideal windows and runs circular binary
+the selected per-window value (normalized dosage when present, otherwise
+GC-corrected coverage) across aligned ideal windows and runs circular binary
 segmentation to identify putative introgressed segments. Returns an object
 of class \code{ISA} (Introgression Segment Array).
 }

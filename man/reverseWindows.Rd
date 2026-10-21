@@ -31,13 +31,15 @@ such chromosomes run in opposite directions along the genome.
 chromosomes so that windows can be compared position by position. It keeps
 the window indexes (\code{iid}, \code{start}, \code{stop}, and the chromosome identifier)
 unchanged, and instead reverses the value vectors (coverage, GC-corrected
-coverage when present, and the per-window validity flags) within each
-selected chromosome. The (modified) object is returned.
+coverage, normalized dosage when present, and the per-window validity flags)
+within each selected chromosome. The (modified) object is returned.
 
 For an \code{ISA} object, segmentation is \strong{recomputed} for every
 donor-recipient pair that contains a reversed chromosome, because these
-pairs' difference profiles have changed orientation. Segments of unaffected
-pairs are preserved unchanged.
+pairs' difference profiles have changed orientation. The difference is
+recomputed from the column recorded in \code{ISA$meta$value_col} (\code{dose}
+when normalization was applied, otherwise \code{cor.gc}). Segments of
+unaffected pairs are preserved unchanged.
 }
 \examples{
 \dontrun{

@@ -99,5 +99,20 @@ test_that("print() and summary() describe an RCA object", {
     expect_equal(s$n_chromosomes, 4L)
     expect_false(s$corrected)
     expect_null(s$outliers)
+    expect_null(s$normalization)
     expect_output(print(s), "RCA Summary")
+})
+
+test_that("print() and summary() report normalization", {
+    x <- small_rca()
+    x$data$dose <- 1
+    x$normalization <- list(
+        mode = "median", reference = NULL,
+        by_side = TRUE, pseudocount = 0.5
+    )
+
+    expect_output(print(x), "normalized: median")
+    s <- summary(x)
+    expect_identical(s$normalization$mode, "median")
+    expect_output(print(s), "Normalization: median")
 })

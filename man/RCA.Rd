@@ -41,12 +41,16 @@ An object of class \code{RCA}: a list with components
   \item{\code{data}}{Combined coverage, GC-content, and metadata per window,
     including per-chromosome window index \code{iid} (1, 2, \ldots, \eqn{n}
     along each chromosome). Downstream pairwise comparison matches donor and
-    recipient windows by \code{iid}, not by shared genomic coordinates.}
+    recipient windows by \code{iid}, not by shared genomic coordinates. After
+    \code{normalizeReadCounts()}, the table also has a \code{dose} column.}
   \item{\code{meta}}{List with chromosome metadata (\code{meta}) and
     donor/recipient chromosome ID vectors (\code{don_chr_ids},
     \code{rec_chr_ids}).}
   \item{\code{corrected}}{Logical flag; \code{FALSE} until
     \code{correctReadCounts()} is run.}
+  \item{\code{normalization}}{Optional list (\code{mode}, \code{reference},
+    \code{by_side}, \code{pseudocount}) added by
+    \code{normalizeReadCounts()}.}
 }
 }
 \description{

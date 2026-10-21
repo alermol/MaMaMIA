@@ -130,10 +130,11 @@ test_that("a tiny fixture can run the end-to-end BAM pipeline", {
     ))
 
     expect_named(result, c(
-        "assembly", "config", "bams", "windows", "gc", "counts",
+        "assembly", "config", "bams", "samples", "windows", "gc", "counts",
         "rca", "isa", "normalization", "provenance"
     ))
     expect_identical(result$bams$sample, "synthetic")
+    expect_identical(result$samples$sample, "synthetic")
     expect_identical(result$windows$n_per_chromosome, 100L)
     expect_named(result$rca, "synthetic")
     expect_named(result$isa, "synthetic")

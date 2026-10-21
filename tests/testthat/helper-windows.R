@@ -60,6 +60,26 @@ step_rca <- function(n = 60L) {
     x
 }
 
+## Replace the per-window values of one side of an RCA. `donor` and
+## `recipient` are recycled over the windows of their chromosomes.
+set_side_values <- function(x, donor, recipient, column = "cor.gc") {
+    values <- x$data[[column]]
+    if (is.null(values)) {
+        values <- rep(NA_real_, nrow(x$data))
+    }
+    values[x$data$chr_id %in% as.character(x$meta$don_chr_ids)] <- donor
+    values[x$data$chr_id %in% as.character(x$meta$rec_chr_ids)] <- recipient
+    x$data[[column]] <- values
+    x$data$ideal <- TRUE
+    x$corrected <- TRUE
+    x
+}
+
+## A corrected RCA with explicit per-window corrected coverage on each side.
+normalization_rca <- function(donor, recipient, n = length(donor)) {
+    set_side_values(small_rca(n), donor, recipient)
+}
+
 triticum_one_pair <- function() {
     utils::data("triticum", package = "MaMaMIA", envir = environment())
 

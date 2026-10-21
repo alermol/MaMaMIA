@@ -76,3 +76,26 @@ test_that("reverseWindows() validates its arguments", {
     )
     expect_error(reverseWindows(list(), chr_ids = "d1"))
 })
+
+test_that("reverseWindows() reverses dose and re-segments on the dose column", {
+    x <- step_rca()
+    x$data$dose <- x$data$cor.gc
+    x$normalization <- list(
+        mode = "median", reference = NULL,
+        by_side = TRUE, pseudocount = 0.5
+    )
+    isa <- segments(x, target_pairs = tp, verbose = FALSE)
+    expect_identical(isa$meta$value_col, "dose")
+
+    reversed <- reverseWindows(isa, chr_ids = "d1")
+    expect_identical(reversed$meta$value_col, "dose")
+    expect_equal(reversed$out$dose.don, rev(isa$out$dose.don))
+    expect_equal(
+        reversed$out$diff,
+        reversed$out$dose.don - reversed$out$dose.rec
+    )
+
+    d1 <- isa$data$chr_id == "d1"
+    expect_equal(reversed$data$dose[d1], rev(isa$data$dose[d1]))
+    expect_equal(reversed$data$cor.gc[d1], rev(isa$data$cor.gc[d1]))
+})

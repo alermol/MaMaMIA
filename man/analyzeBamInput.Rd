@@ -30,11 +30,13 @@ most specific exact match.}
 
 \item{windows_per_chromosome}{Number of windows per target contig.}
 
-\item{reference_sample}{Reserved for \code{normalization = "reference"} (T4.1).}
+\item{reference_sample}{Sample used as the denominator for
+\code{normalization = "reference"}. Required in that mode and ignored by
+\code{"median"} and \code{"none"}.}
 
-\item{normalization}{Normalization mode. \code{"median"} (the eventual default)
-and \code{"reference"} are implemented after T3.3; use \code{"none"} for now. A
-single BAM is always analyzed with \code{"none"}.}
+\item{normalization}{Normalization mode across samples: \code{"median"}
+(default), \code{"reference"} or \code{"none"}. A single BAM is always analyzed with
+\code{"none"}.}
 
 \item{mapq}{Minimum mapping quality.}
 
@@ -42,7 +44,8 @@ single BAM is always analyzed with \code{"none"}.}
 
 \item{cores}{Number of cores for the GC-bias fit.}
 
-\item{max_fit_windows}{Fit-window cap recorded for T7.1. Not enforced yet.}
+\item{max_fit_windows}{Fit-window cap recorded for T7.1. Not enforced yet; a
+cohort whose total window count exceeds it emits a performance warning.}
 
 \item{cache}{Optional fit-cache \code{.rds} path. \code{NULL} uses a per-process file
 in session temp; \code{FALSE} disables the cache.}
@@ -51,8 +54,10 @@ in session temp; \code{FALSE} disables the cache.}
 }
 \value{
 A \code{BamAnalysisResult} list with \code{assembly}, \code{config}, \code{bams},
-\code{windows}, \code{gc}, \code{counts}, \code{rca}, \code{isa}, \code{normalization} and
-\code{provenance}.
+\code{samples}, \code{windows}, \code{gc}, \code{counts}, \code{rca}, \code{isa}, \code{normalization} and
+\code{provenance}. \code{samples} is a data frame with one row per sample (\code{sample},
+\code{path}, \code{assembly}, \code{index_path}, \code{reference}, \code{normalization}, \code{n_windows},
+\code{n_segments}, \code{n_putative_introgressions}).
 }
 \description{
 Reads BAM headers, matches them to a configured assembly, ensures CSI
@@ -64,15 +69,23 @@ per-sample tables with \code{\link[=buildSampleTables]{buildSampleTables()}}, co
 }
 \details{
 For a single BAM the normalization mode is always \code{"none"}; segmentation
-therefore consumes \code{cor.gc} (D7). Multi-sample normalization is added by
-T4.1/T4.2.
+therefore consumes \code{cor.gc} (D7). For several BAMs, \code{normalization = "median"}
+(the default) or \code{"reference"} calls \code{\link[=normalizeReadCounts]{normalizeReadCounts()}} after every
+sample has been corrected and before any segmentation. \code{"reference"} requires
+\code{reference_sample}; the reference sample's dose is exactly 1.
 
 The optional \code{progress} callback is called as \code{progress(stage, detail)} after
 each completed stage. Stages are \code{"preflight"}, \code{"index"}, \code{"windows"},
-\code{"gc"}, \code{"counts"}, \code{"correction"} and \code{"segmentation"}. \code{detail} is a list
-with stage-specific fields such as \code{sample}, \code{n_windows}, \code{n_ideal} or
-\code{n_segments}. An error raised by the callback aborts the analysis, which
-lets a Shiny session cancel a long run.
+\code{"gc"}, \code{"counts"}, \code{"correction"} and \code{"segmentation"}. When a cohort is
+normalized, one \code{"normalization"} stage is reported between the corrections
+and the segmentations. \code{detail} is a list with stage-specific fields such as
+\code{sample}, \code{n_windows}, \code{n_ideal} or \code{n_segments}. An error raised by the
+callback aborts the analysis, which lets a Shiny session cancel a long run.
+
+A warning is emitted when the total analysis window count across samples
+(\code{length(bam_paths) * nrow(windows$table)}) exceeds \code{max_fit_windows}; this
+is a performance guard, not an error. The fit-window cap itself is recorded
+in provenance and enforced in T7.1.
 
 BAMs whose directory is not writable are staged in session temp before
 indexing; the result records the staging decision in \code{provenance$staged}.

@@ -14,13 +14,14 @@
 #' chromosomes so that windows can be compared position by position. It keeps
 #' the window indexes (`iid`, `start`, `stop`, and the chromosome identifier)
 #' unchanged, and instead reverses the value vectors (coverage, GC-corrected
-#' coverage when present, and the per-window validity flags) within each
-#' selected chromosome. The (modified) object is returned.
+#' coverage, normalized dosage when present, and the per-window validity flags)
+#' within each selected chromosome. The (modified) object is returned.
 #'
 #' For an `ISA` object, segmentation is **recomputed** for every
 #' donor-recipient pair that contains a reversed chromosome, because these
-#' pairs' difference profiles have changed orientation. Segments of unaffected
-#' pairs are preserved unchanged.
+#' pairs' difference profiles have changed orientation. The difference is
+#' recomputed from the column recorded in `ISA$meta$value_col` (`dose` or
+#' `cor.gc`). Segments of unaffected pairs are preserved unchanged.
 #'
 #' @param x An object of class `RCA` or `ISA`.
 #' @param chr_ids Character vector of chromosome IDs in the object's meta table
@@ -60,7 +61,7 @@ reverseWindows.RCA <- function(x, chr_ids, ...) {
 
     value_cols <- intersect(
         names(x$data),
-        c("cov", "gc", "cor.gc", "valid", "ideal")
+        c("cov", "gc", "cor.gc", "dose", "valid", "ideal")
     )
     x$data <- reverse_chr_value_cols(x$data, chr_ids, value_cols)
 
@@ -95,11 +96,11 @@ reverseWindows.ISA <- function(x, chr_ids, ...) {
 
     don_cols <- intersect(
         names(x$out),
-        paste0(c("cov", "gc", "cor.gc", "valid", "ideal"), ".don")
+        paste0(c("cov", "gc", "cor.gc", "dose", "valid", "ideal"), ".don")
     )
     rec_cols <- intersect(
         names(x$out),
-        paste0(c("cov", "gc", "cor.gc", "valid", "ideal"), ".rec")
+        paste0(c("cov", "gc", "cor.gc", "dose", "valid", "ideal"), ".rec")
     )
 
     # Reverse the donor-side value vectors for the requested donor chromosomes,
@@ -122,11 +123,15 @@ reverseWindows.ISA <- function(x, chr_ids, ...) {
     }
 
     # Recompute the derived difference so it stays consistent with the reversed
-    # cor.gc vectors.
+    # value vectors, using the column this ISA was segmented on (D7).
+    value_col <- isa_value_col(x)
+    x$meta$value_col <- value_col
     if (!is.null(x$out) && nrow(x$out) > 0L) {
+        don_col <- paste0(value_col, ".don")
+        rec_col <- paste0(value_col, ".rec")
         x$out <- dplyr::mutate(
             x$out,
-            diff = .data$cor.gc.don - .data$cor.gc.rec
+            diff = .data[[don_col]] - .data[[rec_col]]
         )
     }
 
@@ -153,7 +158,8 @@ reverseWindows.ISA <- function(x, chr_ids, ...) {
                     param = x$param,
                     colname = x$meta$metrics,
                     threshold = x$meta$metrics_threshold,
-                    min_width = x$param$min.width
+                    min_width = x$param$min.width,
+                    value_col = value_col
                 )
             }
         )
@@ -171,7 +177,7 @@ reverseWindows.ISA <- function(x, chr_ids, ...) {
     if (!is.null(x$data) && nrow(x$data) > 0L) {
         value_cols <- intersect(
             names(x$data),
-            c("cov", "gc", "cor.gc", "valid", "ideal")
+            c("cov", "gc", "cor.gc", "dose", "valid", "ideal")
         )
         x$data <- reverse_chr_value_cols(x$data, chr_ids, value_cols)
     }

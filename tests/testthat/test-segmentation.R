@@ -10,6 +10,58 @@ test_that("segments() returns and annotates requested calls", {
     expect_setequal(isa$meta$don_chr_ids, "d1"); expect_setequal(isa$meta$rec_chr_ids, "r1")
 })
 
+test_that("segments() is unchanged when dose is absent", {
+    plain <- seg_step()
+    with_dose <- step_rca()
+    with_dose$data$dose <- with_dose$data$cor.gc
+    normalized <- segments(with_dose, target_pairs = tp, verbose = FALSE)
+
+    expect_identical(plain$meta$value_col, "cor.gc")
+    expect_identical(normalized$meta$value_col, "dose")
+    expect_identical(plain$segments, normalized$segments)
+    expect_equal(
+        normalized$out$diff,
+        normalized$out$dose.don - normalized$out$dose.rec
+    )
+})
+
+test_that("segments(value_col =) selects the difference column", {
+    x <- step_rca()
+    x$data$dose <- x$data$cor.gc * 10
+    dose_isa <- segments(x, target_pairs = tp, verbose = FALSE)
+    cor_isa <- segments(
+        x,
+        target_pairs = tp,
+        value_col = "cor.gc",
+        verbose = FALSE
+    )
+
+    expect_identical(dose_isa$meta$value_col, "dose")
+    expect_identical(cor_isa$meta$value_col, "cor.gc")
+    expect_equal(dose_isa$out$diff, 10 * cor_isa$out$diff)
+    expect_error(
+        segments(x, target_pairs = tp, value_col = "nope", verbose = FALSE),
+        "value_col"
+    )
+    expect_error(
+        segments(x, target_pairs = tp, value_col = 1, verbose = FALSE),
+        "value_col"
+    )
+})
+
+test_that("plot.ISA() uses the normalized value column", {
+    x <- step_rca()
+    x$data$dose <- x$data$cor.gc
+    isa <- segments(x, target_pairs = tp, verbose = FALSE)
+
+    mirror <- plot(isa, plot.type = "mirror")
+    difference <- plot(isa, plot.type = "diff")
+    expect_s3_class(mirror, "ggplot")
+    expect_s3_class(difference, "ggplot")
+    expect_s3_class(ggplot2::ggplot_build(mirror), "ggplot_built")
+    expect_s3_class(ggplot2::ggplot_build(difference), "ggplot_built")
+})
+
 test_that("segments() honours thresholds, widths and input validation", {
     permissive <- seg_step()
     strict <- seg_step(min_segment_median = 1e9)

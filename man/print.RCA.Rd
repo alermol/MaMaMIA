@@ -15,8 +15,9 @@ the generic \code{print()}.}
 }
 \description{
 Prints a one-line overview of an \code{RCA} object: total chromosome count,
-donor and recipient counts, window count, and whether GC-bias correction
-has been applied.
+donor and recipient counts, window count, whether GC-bias correction has been
+applied, and the normalization mode when \code{normalizeReadCounts()} has
+run.
 }
 \examples{
 data(triticum)

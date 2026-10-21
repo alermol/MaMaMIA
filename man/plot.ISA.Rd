@@ -22,10 +22,11 @@ the generic \code{plot()}.}
 A \code{ggplot2::ggplot()} object.
 }
 \description{
-Draws pairwise donor-recipient coverage profiles from an \code{ISA} object,
-either as a mirrored plot of GC-corrected coverages or as a difference
-profile with segment summaries (mean or median, per \code{x$meta$metrics})
-overlaid.
+Draws pairwise donor-recipient profiles from an \code{ISA} object, either as a
+mirrored plot of the selected per-window values (normalized dosage when the
+ISA was segmented on \code{dose}, otherwise GC-corrected coverage) or as a
+difference profile with segment summaries (mean or median, per
+\code{x$meta$metrics}) overlaid.
 }
 \examples{
 data(triticum)

@@ -15,7 +15,8 @@ the generic \code{print()}.}
 }
 \description{
 Prints a one-line overview of an \code{ISA} object (pair count, segment
-count, putative introgression count, and active metric).
+count, putative introgression count, active metric, and the value column used
+for segmentation).
 }
 \examples{
 data(triticum)

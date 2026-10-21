@@ -152,6 +152,17 @@ BamAnalysisResult <- list(
     index_path = "/abs/tiny.bam.csi",
     n_targets = 2L
   ),
+  samples = data.frame(
+    sample = "tiny-sample",
+    path = "/abs/tiny.bam",
+    assembly = "tiny",
+    index_path = "/abs/tiny.bam.csi",
+    reference = FALSE,
+    normalization = "none",
+    n_windows = 200L,
+    n_segments = 1L,
+    n_putative_introgressions = 0L
+  ),
   windows = list(
     gr = GenomicRanges::GRanges(...),
     table = data.frame(chr_id, start, stop, role, chr_name, subgenome),
@@ -162,7 +173,7 @@ BamAnalysisResult <- list(
   rca = list(`tiny-sample` = rca),
   isa = list(`tiny-sample` = isa),
   normalization = list(
-    mode = "median", reference = NULL, by_side = TRUE, pseudocount = 0.5
+    mode = "none", reference = NULL, by_side = TRUE, pseudocount = 0.5
   ),
   provenance = list(
     package_version = "0.99.0",
@@ -215,6 +226,7 @@ analyzeBamInput(bam_paths, config,
 
 # Normalization and export
 normalizeReadCounts(rcas, reference = NULL, by_side = TRUE, pseudocount = 0.5)
+segments(RCA, target_pairs, value_col = NULL, ...)
 writeCohortToBedpe(result, file, samples = NULL, selected = NULL)
 ```
 
@@ -284,6 +296,7 @@ assembly, contig, file). Functions must stop before expensive work starts.
 | `MaMaMIAPreflightError` | preflight | malformed `paths` argument |
 | `MaMaMIACountError` | `countReads()` | `Could not count reads in BAM '<path>': <reason>` |
 | `MaMaMIAAnalysisError` | `analyzeBamInput()` | invalid pipeline argument or unsupported normalization mode |
+| `MaMaMIAAnalysisError` | `normalizeReadCounts()` | invalid sample list, incompatible windows, unknown reference or non-positive pseudocount |
 
 Config validation messages implemented in Wave 0 include, among others:
 
@@ -594,14 +607,19 @@ completed stage: `preflight`, `index`, `windows`, `gc`, `counts`,
 per sample. A callback error aborts the run (used for cancellation).
 
 For one BAM the normalization mode is forced to `"none"` and CBS consumes
-`cor.gc` (D7). Multi-sample runs with `normalization = "none"` are supported;
-`"median"` and `"reference"` stop with `MaMaMIAAnalysisError` until T4.1/T4.2.
-A sample with zero reads in every analysis window stops before the fit with
-`MaMaMIASampleError`.
+`cor.gc` (D7). For several BAMs, `"median"` (the default), `"reference"` and
+`"none"` are supported. `"reference"` requires `reference_sample`; the
+reference sample's dose is exactly 1. A sample with zero reads in every
+analysis window stops before the fit with `MaMaMIASampleError`; a nearly empty
+sample surfaces the correction-stage error with the sample name, never a raw
+model failure.
 
 `counts$donor` and `counts$recipient` are integer matrices with one column per
 sample (columns named by sample). `rca` and `isa` are named lists keyed by
-sample. The result is classed `BamAnalysisResult`.
+sample. `samples` is a data frame with one row per sample (`sample`, `path`,
+`assembly`, `index_path`, `reference`, `normalization`, `n_windows`,
+`n_segments`, `n_putative_introgressions`). The result is classed
+`BamAnalysisResult`.
 
 ### 10.3 Golden regression
 
@@ -628,3 +646,75 @@ intervals are identical, so per-window golden comparisons are made on the
 legacy intervals and the generated windows are validated by exact-N tiling plus
 per-contig totals. No production or test-only GC fallback is used; the golden
 test skips cleanly when `test_data` is absent.
+
+---
+
+## 11. Wave 4 implementation notes
+
+### 11.1 Normalization core
+
+`normalizeReadCounts(rcas, reference = NULL, by_side = TRUE, pseudocount = 0.5)`
+takes a named list of corrected `RCA` objects. Every sample must describe the
+same `(chr_id, iid)` windows with the same `start`/`stop` coordinates and the
+same chromosome sets; rows may be in any order because they are aligned by
+`(chr_id, iid)`. Missing `cor.gc` values are allowed; infinite values are
+treated as missing.
+
+- Reference mode (`reference` is a sample name):
+  `dose_s = (C_s + eps) / (C_ref + eps)`. The reference sample's dose is exactly
+  1. A zero reference window with all-zero samples also gives 1; a zero
+  reference window with positive samples uses the pseudocount ratio.
+- Median mode (`reference = NULL`):
+  `dose_s = (C_s + eps) / (median_s(C_s) + eps)`, with the median taken over all
+  finite sample values of that window, not restricted to `ideal` windows.
+- `by_side = TRUE` (default) computes the denominator separately for donor and
+  recipient windows. `by_side = FALSE` is a sensitivity option: donor and
+  recipient windows with the same position index (`iid`) are pooled into one
+  per-position baseline. Joint mode is only available for median normalization;
+  reference mode must keep the sides separate so that the reference dose stays
+  exactly 1.
+
+`cor.gc` is never modified. `dose` is added to `RCA$data`, `RCA$normalization`
+records `mode`, `reference`, `by_side` and `pseudocount`, and
+`ideal <- ideal & is.finite(dose)` so CBS and plots skip non-finite windows.
+`pseudocount` must be positive; this guarantees finite ratios whenever the
+input is finite.
+
+### 11.2 Dose-aware segmentation and reversal
+
+`segments(RCA, target_pairs, value_col = NULL, ...)` resolves `value_col` to
+`"dose"` when the RCA has a dose column and to `"cor.gc"` otherwise (D7). The
+`ISA` records the choice in `meta$value_col`; `out$diff` is the donor minus
+recipient difference of that column. `segments()` output is identical to the
+pre-wave behavior when `dose` is absent. `reverseWindows()` reverses `dose`
+together with the other value columns and recomputes `diff` and the affected
+pairs with the recorded value column. `plot.ISA()` plots `dose` when the ISA was
+segmented on it (axis label `Dosage`), otherwise `cor.gc`. `print.RCA()` and
+`summary.RCA()` report the normalization mode and settings.
+
+### 11.3 Cohort orchestration
+
+For more than one BAM, `analyzeBamInput()` counts and corrects every sample
+first, then calls `normalizeReadCounts()` once, then segments every sample with
+the same target pairs. `normalization = "reference"` requires
+`reference_sample`; an unknown name fails with `MaMaMIAAnalysisError`. A single
+BAM is still forced to `"none"`. The result gains a `samples` data frame with
+`sample`, `path`, `assembly`, `index_path`, `reference`, `normalization`,
+`n_windows`, `n_segments` and `n_putative_introgressions`. Provenance adds
+`n_samples` and `total_windows`. A `"normalization"` progress stage is reported
+between the correction and segmentation stages.
+
+The performance guard warns when `n_samples * n_windows` exceeds
+`max_fit_windows`. The existing `max_fit_windows` setting is used because the
+configuration schema defines no separate cohort-window limit; the fit cap
+itself remains a T7.1 task.
+
+### 11.4 Validation
+
+The synthetic variable-GC fixture builds three samples with different read
+densities (`step` 4, 6 and 8). Tests cover the hand-computed three-sample
+dosage table, reference dose = 1, all-zero windows, missing values, one sample,
+shuffled window orders, approximate scale invariance, by-side vs joint mode,
+invalid inputs, a 3-BAM median cohort, a 3-BAM reference cohort, duplicate
+sample names, a nearly empty sample and the performance warning. The gated
+golden regression confirms that segmentation without dose is unchanged.

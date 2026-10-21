@@ -107,10 +107,10 @@ variable_gc_sequence <- function(length_bp, offset) {
 }
 
 variable_gc_sam <- function(sample, contig_length = 20000L,
-                            read_length = 50L) {
+                            read_length = 50L, step = 4L) {
     sequence <- strrep("A", read_length)
     quality <- strrep("I", read_length)
-    positions <- seq(1L, contig_length - read_length + 1L, by = 4L)
+    positions <- seq(1L, contig_length - read_length + 1L, by = step)
     make_read <- function(contig, position) {
         sprintf(
             "r_%s_%d\t0\t%s\t%d\t60\t%dM\t*\t0\t0\t%s\t%s",
@@ -128,12 +128,12 @@ variable_gc_sam <- function(sample, contig_length = 20000L,
     )
 }
 
-add_variable_gc_bam <- function(fixture, sample, filename = NULL) {
+add_variable_gc_bam <- function(fixture, sample, filename = NULL, step = 4L) {
     if (is.null(filename)) {
         filename <- paste0(sample, ".bam")
     }
     path <- file.path(fixture$directory, filename)
-    write_test_bam(variable_gc_sam(sample), path, index = FALSE)
+    write_test_bam(variable_gc_sam(sample, step = step), path, index = FALSE)
     path
 }
 

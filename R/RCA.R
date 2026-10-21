@@ -251,6 +251,11 @@ resolve_chr_targets <- function(meta,
 #' @exportS3Method base::print
 print.RCA <- function(x, ...) {
     n_chr <- length(unique(x$data$chr_id))
+    normalization <- if (is.null(x$normalization)) {
+        ""
+    } else {
+        paste0(", normalized: ", x$normalization$mode)
+    }
     cat(
         "RCA object: ",
         n_chr,
@@ -262,6 +267,7 @@ print.RCA <- function(x, ...) {
         nrow(x$data),
         " windows, GC-corrected: ",
         x$corrected,
+        normalization,
         "\n",
         sep = ""
     )
@@ -280,6 +286,7 @@ summary.RCA <- function(object, ...) {
         n_subgenomes = length(subgenomes),
         chromosomes_per_subgenome = chromosomes_per_subgenome,
         corrected = object$corrected,
+        normalization = object$normalization,
         outliers = if (isTRUE(object$corrected)) {
             object$outliers
         } else {
@@ -313,6 +320,16 @@ print.summary.RCA <- function(x, ...) {
     } else {
         "No"
     }, "\n")
+    if (!is.null(x$normalization)) {
+        cat(
+            sprintf(
+                "Normalization: %s (by side: %s, pseudocount: %.3g)\n",
+                x$normalization$mode,
+                if (isTRUE(x$normalization$by_side)) "yes" else "no",
+                x$normalization$pseudocount
+            )
+        )
+    }
     if (isTRUE(x$corrected) && !is.null(x$outliers)) {
         cat(
             sprintf(

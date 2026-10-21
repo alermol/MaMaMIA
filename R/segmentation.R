@@ -1,5 +1,6 @@
 ## Pairwise segmentation: join each donor chromosome with its recipient
-## counterpart on the corrected coverage difference, cut the difference profile
+## counterpart on the selected per-window value difference (normalized dose
+## when present, otherwise GC-corrected coverage), cut the difference profile
 ## into segments with circular binary segmentation (CBS), and flag the segments
 ## whose summary metric passes the call threshold.
 
@@ -7,6 +8,7 @@
 #' @importFrom rlang .data
 segments <- function(RCA,
                      target_pairs,
+                     value_col = NULL,
                      min_segment_median = 0L,
                      min_segment_mean = 0L,
                      threshold_type = c("median", "mean"),
@@ -17,6 +19,8 @@ segments <- function(RCA,
                      verbose = TRUE) {
     stopifnot("Input is not RCA object" = inherits(RCA, "RCA"))
     stopifnot("Coverage must be corrected before segmentation" = RCA$corrected)
+
+    value_col <- resolve_segmentation_value_col(RCA, value_col)
 
     thr_type <- match.arg(threshold_type)
     threshold <- switch(thr_type,
@@ -39,7 +43,11 @@ segments <- function(RCA,
     }
 
     ## Windows of one donor-recipient pair, matched by window index (`iid`),
-    ## restricted to the windows that are ideal on both sides.
+    ## restricted to the windows that are ideal on both sides. `diff` uses the
+    ## resolved value column: `dose` when normalization is present, otherwise
+    ## `cor.gc` (D1/D7).
+    don_value <- paste0(value_col, ".don")
+    rec_value <- paste0(value_col, ".rec")
     pair_data <- function(don_chr, rec_chr) {
         dplyr::inner_join(
             by_chr_split[[as.character(don_chr)]],
@@ -48,7 +56,7 @@ segments <- function(RCA,
             suffix = c(".don", ".rec")
         ) |>
             dplyr::filter(.data$ideal.don & .data$ideal.rec) |>
-            dplyr::mutate(diff = .data$cor.gc.don - .data$cor.gc.rec)
+            dplyr::mutate(diff = .data[[don_value]] - .data[[rec_value]])
     }
 
     prepared_data <- target_pairs_df |>
@@ -61,7 +69,8 @@ segments <- function(RCA,
                 param = param,
                 colname = colname,
                 threshold = threshold,
-                min_width = min_width
+                min_width = min_width,
+                value_col = value_col
             ),
             .keep = "unused"
         )
@@ -85,7 +94,8 @@ segments <- function(RCA,
                 rec_chr_ids = keep_rec,
                 target_pairs = target_pairs_df,
                 metrics = colname,
-                metrics_threshold = threshold
+                metrics_threshold = threshold,
+                value_col = value_col
             )
         ),
         class = "ISA"
@@ -93,6 +103,42 @@ segments <- function(RCA,
 }
 
 ## Internal segmentation helpers ----------------------------------------------
+
+## Resolve the per-window value column used for the donor-recipient difference.
+## `NULL` means `dose` when it is present, otherwise `cor.gc` (D7).
+#' @noRd
+resolve_segmentation_value_col <- function(RCA, value_col = NULL) {
+    if (is.null(value_col)) {
+        value_col <- if ("dose" %in% names(RCA$data)) "dose" else "cor.gc"
+    }
+    if (!is.character(value_col) || length(value_col) != 1L ||
+        is.na(value_col) || !nzchar(value_col)) {
+        stop("`value_col` must be NULL or a single column name", call. = FALSE)
+    }
+    allowed <- c("cor.gc", "dose")
+    if (!value_col %in% allowed) {
+        stop(
+            sprintf(
+                "`value_col` must be one of: %s",
+                paste(allowed, collapse = ", ")
+            ),
+            call. = FALSE
+        )
+    }
+    if (!value_col %in% names(RCA$data)) {
+        stop(
+            sprintf("`value_col` '%s' is not present in the RCA data", value_col),
+            call. = FALSE
+        )
+    }
+    if (!is.numeric(RCA$data[[value_col]])) {
+        stop(
+            sprintf("`value_col` '%s' must be numeric", value_col),
+            call. = FALSE
+        )
+    }
+    value_col
+}
 
 #' @noRd
 validate_segmentation_params <- function(alpha, min_width, undo_SD, seed = 1L) {
@@ -192,7 +238,8 @@ getSegments <- function(counts, chrom, maploc, alpha, undo.SD, seed = 1L) {
 }
 
 #' @noRd
-segment_pair_data <- function(pair_data, don, rec, meta, param, colname, threshold, min_width) {
+segment_pair_data <- function(pair_data, don, rec, meta, param, colname,
+                              threshold, min_width, value_col = "cor.gc") {
     if (nrow(pair_data) < 2L) {
         warning(
             sprintf(
@@ -205,8 +252,11 @@ segment_pair_data <- function(pair_data, don, rec, meta, param, colname, thresho
         )
         return(NULL)
     }
+    don_value <- paste0(value_col, ".don")
+    rec_value <- paste0(value_col, ".rec")
+    diff <- pair_data[[don_value]] - pair_data[[rec_value]]
     getSegments(
-        counts = pair_data$diff,
+        counts = diff,
         chrom = rep_len("1", nrow(pair_data)),
         maploc = pair_data$iid,
         alpha = param$alpha,
