@@ -93,6 +93,18 @@ RUN if [ -n "${BIOC_MIRROR}" ]; then \
     && uvr sync --frozen --unattended --jobs 4 \
     && uvr doctor --unattended
 
+# uvr's R bundles cairo and fontconfig libraries, but not the system
+# fontconfig configuration or any fonts. Without /etc/fonts/fonts.conf, the
+# first grid string metric (for example an axis label in renderPlot()) aborts R
+# with "Fontconfig error: Cannot load default config file" and a segfault.
+USER root
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends \
+        fontconfig \
+        fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
+USER mamamia
+
 COPY --chown=mamamia:mamamia DESCRIPTION NAMESPACE LICENSE.md README.md ./
 COPY --chown=mamamia:mamamia R ./R
 COPY --chown=mamamia:mamamia src ./src
@@ -106,7 +118,8 @@ COPY --chown=mamamia:mamamia deployment ./deployment
 RUN uvr activate --write-shim \
     && . .uvr/activate \
     && R CMD INSTALL --no-multiarch --with-keep.source . \
-    && Rscript -e 'library(MaMaMIA); cat("MaMaMIA", as.character(packageVersion("MaMaMIA")), "installed\n")'
+    && Rscript -e 'library(MaMaMIA); cat("MaMaMIA", as.character(packageVersion("MaMaMIA")), "installed\n")' \
+    && Rscript -e 'library(ggplot2); f <- tempfile(fileext = ".png"); png(f, width = 400, height = 300, type = "cairo"); print(ggplot(data.frame(x = 1:3, y = 1:3), aes(x, y)) + geom_point()); dev.off(); stopifnot(file.exists(f), file.info(f)$size > 0); cat("cairo text metrics OK\n")'
 
 EXPOSE 3838
 

@@ -26,6 +26,25 @@ message("Assembly registry: ", config)
 message("R: ", R.version.string)
 message("Library: ", paste(.libPaths(), collapse = ", "))
 
+## The uvr-managed R bundles cairo and fontconfig but not the system font
+## configuration or fonts. Without them the first renderPlot() aborts the whole
+## process inside grid's string metrics, so warn while startup can still report
+## it. /etc/fonts/fonts.conf is the fontconfig default when no override is set.
+fontconfig <- Sys.getenv("FONTCONFIG_FILE", unset = "")
+if (!nzchar(fontconfig)) {
+    fontconfig <- file.path(
+        Sys.getenv("FONTCONFIG_PATH", unset = "/etc/fonts"),
+        "fonts.conf"
+    )
+}
+if (capabilities("cairo") && !file.exists(fontconfig)) {
+    warning(
+        "fontconfig has no configuration (", fontconfig, "); install ",
+        "fontconfig and fonts-dejavu-core or the first plot will crash",
+        call. = FALSE
+    )
+}
+
 ## 5 GiB matches the default server.max_total_bytes; raise both together when
 ## the registry allows larger cohorts. Uploads are also bounded by ShinyProxy
 ## and the reverse proxy (deployment/nginx.conf).

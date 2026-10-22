@@ -595,6 +595,19 @@ test_that("the app shows preflight, assembly and a disabled run button", {
     })
 })
 
+test_that("the launcher page scrolls instead of shrinking the result cards", {
+    skip_if_no_dashboard()
+    skip_if_no_samtools()
+    fixture <- variable_gc_fixture()
+    on.exit(unlink(fixture$directory, recursive = TRUE), add = TRUE)
+    state <- app_state(fixture)
+
+    html <- paste(as.character(bam_launcher_ui(state)), collapse = "")
+    main <- regmatches(html, regexpr("<main[^>]*>", html))
+    expect_false(grepl("html-fill-container", main, fixed = TRUE))
+    expect_match(html, 'id="explorer-isa_plot"[^>]*height:420px', perl = TRUE)
+})
+
 test_that("the swap button exchanges donor and recipient species", {
     skip_if_no_dashboard()
     skip_if_no_samtools()

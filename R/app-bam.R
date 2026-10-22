@@ -1363,6 +1363,11 @@ bam_launcher_ui <- function(state, bam_paths = NULL) {
 
     bslib::page_sidebar(
         title = "MaMaMIA",
+        ## The results are a long stack of cards. With the default fillable
+        ## page they become flex items and the 420 px plot output is shrunk to
+        ## a few pixels (or zero) before its first render, which makes png()
+        ## fail with "invalid 'height' argument".
+        fillable = FALSE,
         sidebar = bslib::sidebar(
             width = 400,
             shiny::h6("Configuration"),

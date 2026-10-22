@@ -1,4 +1,4 @@
-manifest_fingerprint = "sha256:1b96f2a4fc87429537d666f106a33564260fc65b56f1209d32e8bd1a472cdc5c"
+manifest_fingerprint = "sha256:19cdaf0e2693d5eea4a52ceac72f6d7d3f079aa1230485529e4ffb3408e69e2d"
 
 [r]
 version = "4.6.1"
@@ -41,11 +41,11 @@ dev = true
 
 [[package]]
 name = "Deriv"
-version = "4.3.5"
+version = "4.3.6"
 source = "cran"
-raw_version = "4.3.5"
-url = "https://cran.r-project.org/src/contrib/Deriv_4.3.5.tar.gz"
-checksum = "md5:c4ab30c4b69b3f42122d6eeb2b3e3469"
+raw_version = "4.3.6"
+url = "https://cran.r-project.org/src/contrib/Deriv_4.3.6.tar.gz"
+checksum = "md5:4d4387a4a89e9a938d663ff305042a59"
 requires = [
     "Rcpp",
     "Rcpp",
@@ -634,6 +634,19 @@ source = "cran"
 raw_version = "1.8.1"
 url = "https://cran.r-project.org/src/contrib/glue_1.8.1.tar.gz"
 checksum = "md5:24e3cd382f52015c929538a5208d11aa"
+
+[[package]]
+name = "gridlayout"
+version = "0.2.1"
+source = "github"
+url = "https://api.github.com/repos/rstudio/gridlayout/tarball/dc7d8912ae27e5393561dcc2b9bd637f3653ca09"
+checksum = "git:dc7d8912ae27e5393561dcc2b9bd637f3653ca09"
+requires = [
+    "magrittr",
+    "htmltools",
+    "rlang",
+    "lifecycle",
+]
 
 [[package]]
 name = "gtable"

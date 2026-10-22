@@ -1,5 +1,28 @@
 # MaMaMIA 0.99.1
 
+## Deployment fix: fontconfig and cairo text metrics
+
+* The production image now installs `fontconfig` and `fonts-dejavu-core`. uvr's
+  R bundles the cairo and fontconfig shared libraries but no system
+  configuration or fonts, so the first `renderPlot()` in a container aborted the
+  whole R process with `Fontconfig error: Cannot load default config file`
+  followed by a segfault in `grid.Call(C_stringMetric, ...)`.
+* `deployment/Dockerfile` renders a cairo/ggplot PNG during the build, and
+  `deployment/smoke-test.R` renders a text probe and the real ISA plot. A
+  missing font setup now fails the build or the smoke test instead of the
+  dashboard. `deployment/start.R` warns at startup when cairo is enabled but no
+  fontconfig configuration is visible.
+
+## Dashboard layout fix: fillable pages
+
+* The launcher and the standalone explorer now use
+  `bslib::page_sidebar(fillable = FALSE)`. The default fillable page makes the
+  growing stack of result cards flex items, which shrank the 420 px plot output
+  to a few pixels (or zero); Shiny's PNG device then failed with
+  `invalid 'height' argument` before the first plot could render. The pages
+  scroll normally, and `test-dashboard-bam.R` asserts that the launcher main
+  area is not a fill container.
+
 ## Documentation and release preparation (wave 9)
 
 * The BAM-first workflow is now the documented primary path. The README has a

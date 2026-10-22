@@ -69,3 +69,4 @@ AGENTS.md
 /.uvr/library/
 /.uvr/activate*
 report/
+.zed/

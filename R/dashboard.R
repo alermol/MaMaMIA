@@ -510,6 +510,9 @@ exploreIntrogressions <- function(ISA,
 
     ui <- bslib::page_sidebar(
         title = "MaMaMIA introgression explorer",
+        ## See bam_launcher_ui(): a fillable page turns the result cards into
+        ## flex items and collapses the plot output to zero height.
+        fillable = FALSE,
         sidebar = bslib::sidebar(explorer_controls_ui("explorer")),
         explorer_results_ui("explorer")
     )

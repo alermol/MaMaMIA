@@ -24,6 +24,7 @@ tools = "*"
 utils = "*"
 yaml = ">=2.3.12"
 interacCircos = { bioc = true }
+gridlayout = { git = "rstudio/gridlayout" }
 
 [dev-dependencies]
 DT = "*"

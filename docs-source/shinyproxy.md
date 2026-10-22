@@ -183,7 +183,13 @@ The build:
 3. creates the unprivileged `mamamia` user and installs R 4.6.1 under its home;
 4. runs `uvr sync --frozen --unattended` from the committed lockfile and
    `uvr doctor`;
-5. installs MaMaMIA into `.uvr/library` with the uvr-managed R.
+5. installs `fontconfig` and `fonts-dejavu-core`. uvr's R bundles the cairo and
+   fontconfig shared libraries but not `/etc/fonts/fonts.conf` or fonts; without
+   them the first `renderPlot()` dies with `Fontconfig error: Cannot load
+   default config file` followed by a segfault in `grid.Call(C_stringMetric, ...)`;
+6. installs MaMaMIA into `.uvr/library` with the uvr-managed R and renders a
+   cairo/ggplot PNG, so a missing font setup fails the build before the image is
+   tagged.
 
 The image is not based on a preinstalled R and does not use the local conda
 environment. `OMP_NUM_THREADS=1` is set at build and runtime so a sample's
@@ -227,8 +233,11 @@ The script resolves the first two species in the registry. Override the pair
 with `MAMAMIA_SMOKE_RECIPIENT` and `MAMAMIA_SMOKE_DONOR` when the registry order
 is not the intended comparison. Expected output on `Sq54` at resolution 1000
 with the example pair: 14,000 windows (7 recipient + 7 donor contigs), a
-non-zero segment count, and `putative:` calls. The script prints every pipeline stage
-and fails if the result is not a `BamAnalysisResult` with at least one segment.
+non-zero segment count, `putative:` calls, and a `plot:` line with a non-zero
+PNG size. The script prints every pipeline stage and fails if the result is not
+a `BamAnalysisResult` with at least one segment. It renders a cairo text probe
+before the pipeline and the real ISA plot at the end, so an image without
+fontconfig or fonts fails in the smoke test rather than in the dashboard.
 
 Check the image without starting the app:
 
@@ -330,3 +339,4 @@ in-app cancellation.
 | Container killed during a run | `container-memory-limit`; lower the resolution or `max_fit_windows` |
 | App stopped while running | `heartbeat-timeout`/session timeout; raise them for long runs |
 | `permission denied` reading indexes | the host mounts must be readable by the container's `mamamia` user (UID 1000) |
+| `Fontconfig error: Cannot load default config file` followed by a segfault in `grid.Call(C_stringMetric, ...)` | the image has no fontconfig configuration or fonts. Install `fontconfig` and `fonts-dejavu-core` (both are in `deployment/Dockerfile`) and rebuild; the build-time cairo render and `deployment/smoke-test.R` now fail before a user hits it |
