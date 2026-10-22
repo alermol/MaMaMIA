@@ -1,13 +1,8 @@
 ## The introgression explorer: the Shiny module with the chromosome and pair
 ## filters, the segment table and the BEDPE export, plus the
-## `exploreIntrogressions()` launcher around it. The disabled BioCircos circos
-## view lives in circos.R.
+## `exploreIntrogressions()` launcher around it.
 
-dashboard_packages <- c(
-    ## "BioCircos" is temporarily removed together with the circos view; add it
-    ## back here and in DESCRIPTION when the circos code is reinstated.
-    "bslib", "DT", "shiny", "shinyWidgets"
-)
+dashboard_packages <- c("bslib", "DT", "shiny", "shinyWidgets")
 
 ## The mirror plot draws two points per window, so a high-resolution run has
 ## hundreds of thousands of them. The dashboard thins the drawn points to this
@@ -36,8 +31,8 @@ isa_dashboard_segments <- function(ISA) {
     annotate_segment_coords(segments, ISA$out)
 }
 
-## Recipients first, then donors in reverse order: the layout the circos view
-## expects, with every donor across the 12 o'clock line from its recipient.
+## Recipients first, then donors in reverse order; this is the order the
+## explorer uses for its chromosome pickers.
 isa_dashboard_genome <- function(ISA, chr_ids = NULL) {
     lengths <- stats::setNames(ISA$data$stop, ISA$data$chr_id)
     lengths <- tapply(lengths, names(lengths), max, na.rm = TRUE)
@@ -109,14 +104,6 @@ filter_dashboard_isa <- function(ISA, chr_ids = NULL, pair_ids = NULL,
     ISA
 }
 
-## Add a clicked call to the selection, or remove it when it was already picked.
-## Shared by the explorer table and the parked circos view.
-isa_dashboard_toggle_selection <- function(picked, target) {
-    if (length(target) != 1L || is.na(target)) {
-        return(picked)
-    }
-    if (target %in% picked) setdiff(picked, target) else c(picked, target)
-}
 
 isa_dashboard_table <- function(segments) {
     cols <- c(
@@ -169,11 +156,10 @@ explorer_controls_ui <- function(id) {
 explorer_results_ui <- function(id) {
     ns <- shiny::NS(id)
     shiny::tagList(
-        ## The circos card is temporarily disabled with the BioCircos dependency:
-        # bslib::card(
-        #     bslib::card_header("Introgression circos"),
-        #     BioCircos::BioCircosOutput(ns("circos"), height = "650px")
-        # ),
+        bslib::card(
+            bslib::card_header("Introgression circos"),
+            isa_dashboard_circos_output(ns("circos"), height = "650px")
+        ),
         bslib::card(
             bslib::card_header("Introgression plot"),
             shiny::radioButtons(
@@ -185,12 +171,6 @@ explorer_results_ui <- function(id) {
         ),
         bslib::card(
             bslib::card_header("Segments"),
-            shiny::p(
-                class = "text-muted",
-                "The circos view is temporarily unavailable while the BioCircos",
-                "dependency is removed. Use the table below to filter calls and",
-                "export the selected rows as BEDPE."
-            ),
             DT::DTOutput(ns("segments"))
         )
     )
@@ -366,21 +346,6 @@ explorer_server <- function(id, ISA, chr_ids = NULL, sample = NULL,
 
         segments_proxy <- DT::dataTableProxy("segments", session = session)
 
-        ## Clicking a circos band toggles the same selection the table drives,
-        ## so the plot and the export agree on what is selected. Temporarily
-        ## disabled with the BioCircos dependency:
-        # shiny::observeEvent(input$circos_clicked_row, {
-        #     visible <- visible_segments()
-        #     target <- input$circos_clicked_row
-        #     if (is.null(visible) || is.null(target) || nrow(visible) == 0L) {
-        #         return()
-        #     }
-        #     picked <- visible$.row_id[input$segments_rows_selected]
-        #     keep <- isa_dashboard_toggle_selection(picked, target)
-        #     rows <- which(visible$.row_id %in% keep)
-        #     DT::selectRows(segments_proxy, if (length(rows) > 0L) rows else NULL)
-        # }, ignoreNULL = TRUE)
-
         shiny::observeEvent(input$select_all, {
             visible <- visible_segments()
             if (is.null(visible) || nrow(visible) == 0L) {
@@ -393,26 +358,17 @@ explorer_server <- function(id, ISA, chr_ids = NULL, sample = NULL,
             DT::selectRows(segments_proxy, NULL)
         })
 
-        ## Highlight changes were pushed to the circos widget instead of
-        ## re-rendering it, because a rebuild costs thousands of arcs. Disabled
-        ## with the BioCircos dependency:
-        # shiny::observeEvent(selected_rows(), {
-        #     session$sendCustomMessage("mamamia-selection", as.list(selected_rows()))
-        # }, ignoreNULL = FALSE)
-
-        ## Rendered with BioCircos::renderBioCircos() once the circos view is
-        ## reinstated; temporarily disabled with the BioCircos dependency:
-        # output$circos <- BioCircos::renderBioCircos({
-        #     isa <- isa_thresholded()
-        #     shiny::validate(
-        #         shiny::need(!is.null(isa), "Run the analysis to draw the circos")
-        #     )
-        #     genome <- isa_dashboard_genome(isa, input$chr_ids)
-        #     shiny::validate(
-        #         shiny::need(length(genome) > 0L, "Select at least one chromosome")
-        #     )
-        #     isa_dashboard_circos(isa, visible_segments(), genome)
-        # })
+        output$circos <- isa_dashboard_render_circos({
+            isa <- plot_isa()
+            if (is.null(isa)) {
+                return(NULL)
+            }
+            genome <- isa_dashboard_genome(isa, input$chr_ids)
+            if (length(genome) == 0L) {
+                return(NULL)
+            }
+            isa_dashboard_circos(isa, visible_segments(), genome)
+        })
 
         output$isa_plot <- shiny::renderPlot({
             isa <- plot_isa()
@@ -495,14 +451,15 @@ explorer_server <- function(id, ISA, chr_ids = NULL, sample = NULL,
 #'
 #' Opens a small Shiny application for interactively inspecting an `ISA` object
 #' returned by [segments()]. The app offers searchable chromosome and
-#' chromosome-pair filters, a mirror or difference plot of the donor-recipient
-#' difference, a sortable `DT` segment table, and exports the currently selected
-#' table rows with [writeToBedpe()].
+#' chromosome-pair filters, a circos overview built with `interacCircos`, a
+#' mirror or difference plot of the donor-recipient difference, a sortable
+#' `DT` segment table, and exports the currently selected table rows with
+#' [writeToBedpe()].
 #'
-#' The BioCircos genomic circos plot is temporarily unavailable: the BioCircos
-#' dependency has been removed and the circos code is commented out. The
-#' explorer shows the mirror/difference plot, the segment table and the BEDPE
-#' export.
+#' The circos view stacks the chromosome ideograms, the per-window
+#' donor-recipient difference, the called segment spans and links between the
+#' paired intervals. It follows the same chromosome, pair, width and putative
+#' filters as the plot and the table.
 #'
 #' Call and threshold filters re-flag the segments on the fly through
 #' [subset.ISA], so the call threshold and the minimum segment width can be

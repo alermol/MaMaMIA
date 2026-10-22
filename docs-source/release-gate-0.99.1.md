@@ -9,8 +9,10 @@ gate. This run validated the BAM-first workflow against the real Sq54, Sq81
 and Sq84 BAMs, the wheat and rye gcrank indexes, the golden legacy tables, the
 benchmark harness and the production ShinyProxy image.
 
-No frozen decision was changed. The legacy directory-layout code is still
-present because D10 keeps it only until the T7.4 gate; T7.5 removes it.
+No frozen decision was changed. The legacy directory-layout code was still
+present during this run because D10 keeps it only until the T7.4 gate; the
+T7.5 follow-up at the end of this document records its removal and the
+re-validation on the decommissioned tree.
 
 ## Environment
 
@@ -229,8 +231,9 @@ directory-layout workflow's purpose:
 
 The only legacy-specific capability not reproduced by BAM-first is reading
 prepared directory-layout tables (`readMaMaMIAInput()` and
-`launcher_app()`), which is superseded by direct BAM ingestion. There is no
-capability loss that blocks decommissioning. **T7.5 may proceed.**
+`launcher_app()`), which is superseded by direct BAM ingestion and was removed
+in T7.5. There is no capability loss that blocks decommissioning. **T7.5 may
+proceed.**
 
 ## Reproduction commands
 
@@ -243,7 +246,7 @@ Rscript -e 'roxygen2::roxygenise()'
 R CMD INSTALL --preclean .
 NOT_CRAN=true Rscript -e 'testthat::test_local(".", reporter="summary")'
 MAMAMIA_SLOW_TESTS=1 MAMAMIA_TEST_DATA=1 \
-  Rscript -e 'testthat::test_file("tests/testthat/test-golden-bam.R")'
+  Rscript -e 'library(MaMaMIA); testthat::test_file("tests/testthat/test-golden-bam.R")'
 MAMAMIA_TEST_DATA=1 Rscript tests/integration/run-bam-e2e.R --cores=8
 Rscript tools/benchmark-bam-pipeline.R \
   --bam=test_data/bam_files/Sq54/cs_t2t_se_cereale.bam \
@@ -252,3 +255,92 @@ R CMD build .
 mkdir -p check-output
 R CMD check --no-manual --output=check-output MaMaMIA_0.99.1.tar.gz
 ```
+
+## T7.5 follow-up: legacy decommissioning
+
+Status: **PASS**
+
+Date: 2026-10-21
+
+Precondition: the D10 readiness note in section 10 ("T7.5 may proceed").
+No frozen decision was changed by this task.
+
+Removed from the package:
+
+* `launcher_app()`, the `analysis_dir` / `assemblies_dir` arguments and the
+  `input = "auto"` / `"bam"` / `"files"` / `"example"` dispatch of
+  `runMaMaMIA()`. The entrypoint is now
+  `runMaMaMIA(cache, config, bam_paths, max_request_size, host, port,
+  launch.browser)` and always opens the BAM-first app.
+* `R/input.R`: `readMaMaMIAInput()`, `listMaMaMIASamples()`,
+  `listMaMaMIAReferences()`, `list_window_labels()`, `read_window_table()`,
+  `read_chromosome_meta()` and the directory discovery helpers.
+* `tests/testthat/test-input.R` (replaced by `test-default-pairs.R` for the
+  retained pairing helper).
+
+Retained: `RCA()`, `correctReadCounts()`, `segments()`, `ISA`, `writeToBedpe()`,
+`writeCohortToBedpe()`, `buildSampleTables()`, `defaultTargetPairs()` and the
+BAM-first API. `chr_number()` moved to `R/config.R`; `defaultTargetPairs()`
+moved to `R/sample-tables.R` with updated documentation.
+
+The gated golden regression and `tools/benchmark-bam-pipeline.R` keep the
+legacy BED oracle by reading the four-column tables locally
+(`read_golden_legacy()` in `tests/testthat/helper-bam.R` and
+`read_legacy_layout()` in the benchmark). No directory-layout reader ships in
+the package.
+
+### Validation on the decommissioned tree
+
+| Gate | Result |
+|---|---|
+| Fast suite (`test_local`) | All pass; only the two expected gated slow-test skips. |
+| Golden (`MAMAMIA_SLOW_TESTS=1 MAMAMIA_TEST_DATA=1`) | All pass: 229 / 28,000 count mismatches (all 5'-end explained, max 14, 0.020 %), GC max 4.9995e-7, 7 pairs, 38 vs 38 segments, identical breakpoints, median max delta 0.3906 (0.1222 %), putative 1 vs 1. |
+| Real-data E2E (`run-bam-e2e.R --cores=8`) | 33 checks, 0 failures; single 38 segments / 1 putative, median 29 segments / 21 putative, reference dose exactly 1, high-resolution 280,000 windows with 50,000 fitted (seed 44170674) and 26 segments; reference 218.7 s / 7,903 MB, high-resolution 136.3 s / 10,505 MB. |
+| Benchmark (`--resolution=1000 --cores=8`) | 20 / 20 checks pass; 38 vs 38 segments, 1 vs 1 putative, breakpoints identical, max median delta 0.1222 %; `analyzeBamInput` 84.5 s, count 45.1 s. |
+| `uvr sync --frozen` / `uvr doctor` | Pass (126 packages in the lockfile; doctor reports no issues). |
+| `R CMD build` / `R CMD check --no-manual` | Build OK; check 0 ERRORs, 1 WARNING and 1 NOTE, both pre-existing (`src/Makevars` GNU extensions; unused `Rhtslib` Import). Tests inside check pass. |
+| Docker image | `mamamia:0.99.1-t7.5`, image `sha256:82263a13d9c641605d6b21794e60d908d10fcf97f9095df2eaf67f6c78c333f7`, 2.66 GB; `uvr doctor` passes. |
+| Container smoke test | Exit 0: species pair `triticum_aestivum__A__secale_cereale__R`, 14,000 windows, 39 segments, 1 putative. |
+
+Definition of done item 12 ("the legacy directory-layout and packaged-example
+workflows are removed in T7.5") is satisfied. README, the overview vignette,
+`docs-source/bam-workflow-api.md` and `NEWS.md` document the breaking change
+and the migration path for users with precomputed tables.
+
+Note on concurrent edits: the `interacCircos` declaration that appeared in
+`uvr.toml` during T7.5 was completed in the follow-up below (`DESCRIPTION`,
+usage and tests). The transient unrelated `report/` directory is excluded from
+the package build via `.Rbuildignore`.
+
+## Circos follow-up (wave 11)
+
+Status: **PASS**
+
+Date: 2026-10-21
+
+* Removed the remaining BioCircos-related code and assets: the disabled
+  `R/circos.R` module, `inst/mamamia/mamamia-circos.*`, the inactive explorer
+  card and server hooks, and their tests.
+* Added an interactive circos overview built with `interacCircos`: chromosome
+  ideograms, a CNV track with the per-window donor - recipient difference, an
+  arc track marking the visible segments on both chromosomes, and links
+  joining each donor and recipient interval. The view follows the explorer's
+  chromosome, pair, width and putative filters.
+* `interacCircos` and `htmlwidgets` are declared in `DESCRIPTION` `Imports` and
+  in `uvr.toml` dependencies; `uvr.lock` was regenerated (126 packages).
+* New `R/circos.R` helpers prepare the data independently of the widget;
+  `isa_dashboard_circos_output()` and `isa_dashboard_render_circos()` provide
+  the Shiny bindings that interacCircos does not ship itself.
+
+### Validation
+
+| Gate | Result |
+|---|---|
+| Fast suite (`test_local`) | All pass, including the new `test-circos.R` and `test-build.R`; only the two expected gated slow-test skips. |
+| `R CMD build` / `R CMD check --no-manual` | Build OK; 0 ERRORs, 1 WARNING and 1 NOTE, both pre-existing (`src/Makevars` GNU extensions; unused `Rhtslib` Import). Tests inside check pass. |
+| Widget serialization | Demo ISA at 100 windows: modules `BACKGROUND_cnv_background`, `CNV_difference`, `ARC_segment_spans`, `LINK_introgressions`; 51,720-byte HTML with the `interacCircos` binding. |
+| Docker image | `mamamia:0.99.1-interac`, `sha256:f5b4d68747883d0d98034bcc64988f4a7b83641a69e6a24b5f1d6403637b0469`, 2.66 GB; `uvr doctor` passes. The first two build attempts hit truncated P3M binary downloads (`minqa`, `RcppEigen`); the third, uncached attempt succeeded. |
+| Container smoke test | Exit 0: species pair `triticum_aestivum__A__secale_cereale__R`, 14,000 windows, 39 segments, 1 putative. |
+
+`interacCircos` is an unused-import-free runtime dependency: the `R CMD check`
+NOTE now lists only `Rhtslib`.

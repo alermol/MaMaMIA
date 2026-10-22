@@ -1,5 +1,5 @@
 ## Validation of the window tables, chromosome metadata and numeric arguments
-## shared by the constructors (`RCA()`, `readMaMaMIAInput()`).
+## shared by the core analysis API (`RCA()`, `segments()`) and the BAM pipeline.
 
 #' @noRd
 as_window_df <- function(x, value_col, arg_name) {

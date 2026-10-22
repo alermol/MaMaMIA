@@ -9,12 +9,14 @@ and segments pairwise coverage differences with circular binary segmentation
 (CBS) into an Introgression Segment Array (`ISA`). Putative introgressions can
 be plotted, filtered, and exported as BEDPE.
 
-The **BAM-first workflow** is the recommended path: `MaMaMIA` reads BAM headers,
-creates CSI indexes, tiles the reference into windows, reads GC content from a
-`gcrank` index, counts reads, and runs the cohort pipeline. The assembly
+The **BAM-first workflow** is the only dashboard workflow: `MaMaMIA` reads BAM
+headers, creates CSI indexes, tiles the reference into windows, reads GC content
+from a `gcrank` index, counts reads, and runs the cohort pipeline. The assembly
 registry lists role-free **species**; the user assigns one species as the donor
-and another as the recipient at run time. The legacy directory-layout workflow
-is deprecated and will be removed in the next release.
+and another as the recipient at run time. The previous directory-layout launcher
+and its readers were removed; see
+[Migration from the directory layout](#migration-from-the-directory-layout) if
+you have precomputed tables.
 
 ## Requirements
 
@@ -120,9 +122,11 @@ section falls back to auto-detection automatically.
 
 Select one or more BAMs (upload or server-side under `server.bam_root`),
 choose a resolution and normalization mode, and run. The app shows a cohort
-summary, keeps table selections per sample, and exports a per-sample BEDPE or a
-combined BEDPE with a `sample` column. Uploaded BAMs are staged into a private
-session directory and removed on session end; server-side BAMs are only read.
+summary with a circos overview of the visible calls (chromosome ideograms, the
+per-window coverage difference, segment spans and donor-recipient links), keeps
+table selections per sample, and exports a per-sample BEDPE or a combined BEDPE
+with a `sample` column. Uploaded BAMs are staged into a private session
+directory and removed on session end; server-side BAMs are only read.
 
 A small synthetic dataset ships with the package. It has two species, a
 variable-GC index and enough coverage for a complete run:
@@ -183,8 +187,9 @@ reverse comparison. The same two calls accept two or more BAMs and
 
 A species-only registry needs at least two species. An optional named assembly
 may reference species (`recipient: wheat`, `donor: rye`) or declare inline
-contigs. `defaultTargetPairs()` style pairing is not required: the species
-builder pairs contigs by chromosome group and only includes the paired contigs.
+contigs. The species builder pairs contigs by chromosome group and only
+includes the paired contigs; `buildSampleTables()` falls back to
+`defaultTargetPairs()` when an assembly declares no `pairs`.
 
 ### Registry growth and long-lived containers
 
@@ -293,38 +298,29 @@ writeToBedpe(isa, "introgressions.bedpe")
 ```
 
 `RCA()`, `correctReadCounts()`, `segments()`, `writeToBedpe()` and
-`exploreIntrogressions()` are the supported table-level API and remain after
-the directory-layout workflow is removed.
+`exploreIntrogressions()` are the supported table-level API; they are unchanged
+by the removal of the directory-layout launcher.
 
-## Legacy directory-layout workflow (deprecated)
+## Migration from the directory layout
 
-> **Deprecated.** The directory-layout readers and the `analysis_dir` /
-> `assemblies_dir` launcher arguments are deprecated and will be removed in the
-> next release. `runMaMaMIA()` stays as the single Shiny entrypoint with
-> `config` / `bam_paths`. The BAM-first app above is the supported workflow.
+The directory-layout launcher and its readers (`readMaMaMIAInput()`,
+`listMaMaMIASamples()`, `listMaMaMIAReferences()`, `launcher_app()` and the
+`analysis_dir` / `assemblies_dir` / `input` arguments of `runMaMaMIA()`) were
+removed. `runMaMaMIA(config = ..., bam_paths = ...)` is the single Shiny
+entrypoint. To migrate:
 
-The old app reads precomputed tables from disk:
+1. Keep the BAMs and the `gcrank` indexes; declare the two genomes as `species:`
+   in a registry (see `inst/config/assemblies.example.yml`).
+2. Remove the precomputed `analysis_dir` / `assemblies_dir` tables; the app now
+   tiles, extracts GC and counts reads itself.
+3. Run `analyzeBamInput()` in scripts, or open the app with
+   `runMaMaMIA(config = "assemblies.yml")`.
 
-```r
-runMaMaMIA(
-  analysis_dir = "mamamia_analysis",
-  assemblies_dir = "assemblies"
-)
-```
-
-```
-analysis_dir/<sample>/<reference>.w<N>.dcov.bed   # donor coverage windows
-analysis_dir/<sample>/<reference>.w<N>.rcov.bed   # recipient coverage windows
-assemblies_dir/<reference>/donor.w<N>.gc.bed      # donor GC content
-assemblies_dir/<reference>/recipient.w<N>.gc.bed  # recipient GC content
-assemblies_dir/<reference>/chromosomes.tsv        # chr_id, chr_name, subgenome
-```
-
-Called without arguments, the legacy app started on the packaged `triticum`
-example; the directories could be entered in the sidebar. See
-`?readMaMaMIAInput` for the table format and `?defaultTargetPairs` for the old
-pairing rule. The BioCircos circos view is disabled while the BioCircos
-dependency is removed; the segment table and BEDPE export remain available.
+If you already have windowed tables and want to keep them, call the core API
+directly: `RCA()`, `correctReadCounts()` and `segments()` accept the same
+four-column tables as before, and `buildSampleTables()` can assemble them into
+the pipeline contract. `defaultTargetPairs()` remains available for
+chromosome-number pairing when an assembly declares no `pairs`.
 
 ## Deployment
 

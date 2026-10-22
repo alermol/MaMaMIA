@@ -387,6 +387,16 @@
     invisible(contigs)
 }
 
+## First number in a contig display name, used as the chromosome group when the
+## registry does not declare one (for example "1A" and "1R" both give "1").
+#' @noRd
+chr_number <- function(chr_name) {
+    has_number <- grepl("[0-9]", chr_name)
+    number <- sub("^[^0-9]*([0-9]+).*$", "\\1", chr_name)
+    number[!has_number] <- NA_character_
+    number
+}
+
 .species_contig_entries <- function(x, species_key) {
     if (is.null(x) || length(x) == 0L) {
         return(data.frame(

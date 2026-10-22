@@ -1,4 +1,4 @@
-manifest_fingerprint = "sha256:cd79396a9393d3159b4cc4647f6b629b2abad0d71ceb575b298d818ccbd7a4a2"
+manifest_fingerprint = "sha256:1b96f2a4fc87429537d666f106a33564260fc65b56f1209d32e8bd1a472cdc5c"
 
 [r]
 version = "4.6.1"
@@ -251,7 +251,6 @@ source = "cran"
 raw_version = "0.1-6"
 url = "https://cran.r-project.org/src/contrib/base64enc_0.1-6.tar.gz"
 checksum = "md5:2c4ecc969451a673ee05eb2e725fcbaf"
-dev = true
 
 [[package]]
 name = "boot"
@@ -320,7 +319,6 @@ requires = [
     "rlang",
     "sass",
 ]
-dev = true
 
 [[package]]
 name = "cachem"
@@ -333,7 +331,6 @@ requires = [
     "rlang",
     "fastmap",
 ]
-dev = true
 
 [[package]]
 name = "callr"
@@ -450,7 +447,6 @@ source = "cran"
 raw_version = "0.6.39"
 url = "https://cran.r-project.org/src/contrib/digest_0.6.39.tar.gz"
 checksum = "md5:2b7268922b0f86dbc8064ff8e3a1ca1b"
-dev = true
 
 [[package]]
 name = "doBy"
@@ -504,7 +500,6 @@ source = "cran"
 raw_version = "1.0.5"
 url = "https://cran.r-project.org/src/contrib/evaluate_1.0.5.tar.gz"
 checksum = "md5:64d96fee3845fd96d1eafaba37adf00e"
-dev = true
 
 [[package]]
 name = "farver"
@@ -521,7 +516,6 @@ source = "cran"
 raw_version = "1.2.0"
 url = "https://cran.r-project.org/src/contrib/fastmap_1.2.0.tar.gz"
 checksum = "md5:f53773acd6ba9a86413e8c2dc6441544"
-dev = true
 
 [[package]]
 name = "fontawesome"
@@ -534,7 +528,6 @@ requires = [
     "rlang",
     "htmltools",
 ]
-dev = true
 
 [[package]]
 name = "forecast"
@@ -575,7 +568,6 @@ source = "cran"
 raw_version = "2.1.0"
 url = "https://cran.r-project.org/src/contrib/fs_2.1.0.tar.gz"
 checksum = "md5:6011a5e758c21acc297ed8bbcf97e7d9"
-dev = true
 
 [[package]]
 name = "generics"
@@ -665,7 +657,6 @@ raw_version = "0.12"
 url = "https://cran.r-project.org/src/contrib/highr_0.12.tar.gz"
 checksum = "md5:006fcfa8e16c72ecd1adffdf0cf87e43"
 requires = ["xfun"]
-dev = true
 
 [[package]]
 name = "htmltools"
@@ -680,7 +671,6 @@ requires = [
     "fastmap",
     "rlang",
 ]
-dev = true
 
 [[package]]
 name = "htmlwidgets"
@@ -696,7 +686,6 @@ requires = [
     "rmarkdown",
     "yaml",
 ]
-dev = true
 
 [[package]]
 name = "httpuv"
@@ -714,6 +703,19 @@ requires = [
     "Rcpp",
 ]
 dev = true
+
+[[package]]
+name = "interacCircos"
+version = "1.22.0"
+source = "bioconductor"
+raw_version = "1.22.0"
+url = "https://bioconductor.org/packages/3.23/bioc/src/contrib/interacCircos_1.22.0.tar.gz"
+checksum = "md5:e8552c8188150775fb251b3822d0a616"
+requires = [
+    "RColorBrewer",
+    "htmlwidgets",
+    "plyr",
+]
 
 [[package]]
 name = "isoband"
@@ -736,7 +738,6 @@ raw_version = "0.1.4"
 url = "https://cran.r-project.org/src/contrib/jquerylib_0.1.4.tar.gz"
 checksum = "md5:3607a34ac45ff420bc325d84eab4b0cb"
 requires = ["htmltools"]
-dev = true
 
 [[package]]
 name = "jsonlite"
@@ -759,7 +760,6 @@ requires = [
     "xfun",
     "yaml",
 ]
-dev = true
 
 [[package]]
 name = "labeling"
@@ -863,7 +863,6 @@ requires = [
     "rlang",
     "cachem",
 ]
-dev = true
 
 [[package]]
 name = "mgcv"
@@ -884,7 +883,6 @@ source = "cran"
 raw_version = "0.13"
 url = "https://cran.r-project.org/src/contrib/mime_0.13.tar.gz"
 checksum = "md5:45c3868fb2f5a7f3817d54d1c75799f9"
-dev = true
 
 [[package]]
 name = "minqa"
@@ -1036,6 +1034,18 @@ requires = [
 dev = true
 
 [[package]]
+name = "plyr"
+version = "1.8.9"
+source = "cran"
+raw_version = "1.8.9"
+url = "https://cran.r-project.org/src/contrib/plyr_1.8.9.tar.gz"
+checksum = "md5:5a8b129534abace172059ecc5c0b5072"
+requires = [
+    "Rcpp",
+    "Rcpp",
+]
+
+[[package]]
 name = "praise"
 version = "1.0.0"
 source = "cran"
@@ -1107,7 +1117,6 @@ source = "cran"
 raw_version = "0.3.4"
 url = "https://cran.r-project.org/src/contrib/rappdirs_0.3.4.tar.gz"
 checksum = "md5:a990a3ddcfa9eb422cd406f78084fbd8"
-dev = true
 
 [[package]]
 name = "rbibutils"
@@ -1165,7 +1174,6 @@ requires = [
     "xfun",
     "yaml",
 ]
-dev = true
 
 [[package]]
 name = "roxygen2"
@@ -1223,7 +1231,6 @@ requires = [
     "R6",
     "rappdirs",
 ]
-dev = true
 
 [[package]]
 name = "scales"
@@ -1424,7 +1431,6 @@ raw_version = "0.61"
 url = "https://cran.r-project.org/src/contrib/tinytex_0.61.tar.gz"
 checksum = "md5:67e114649aa529e1631baed939110e97"
 requires = ["xfun"]
-dev = true
 
 [[package]]
 name = "urca"
@@ -1495,7 +1501,6 @@ source = "cran"
 raw_version = "0.62"
 url = "https://cran.r-project.org/src/contrib/xfun_0.62.tar.gz"
 checksum = "md5:93bc01d797fcdf1e4014998e4c248bd7"
-dev = true
 
 [[package]]
 name = "xml2"

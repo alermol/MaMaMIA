@@ -1735,7 +1735,7 @@ bam_launcher_server <- function(state, bam_paths = NULL, cache = NULL) {
 
         assembly_selection <- shiny::reactive({
             if (auto_detect()) {
-                ## Header-based auto-detection. It is the only mode for a legacy
+                ## Header-based auto-detection. It is the only mode for a
                 ## registry without species, and an explicit option when the
                 ## registry also declares predefined assemblies.
                 return(list(

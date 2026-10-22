@@ -4,7 +4,7 @@
 ## GC table and the read counts are joined into the `SampleTables` contract.
 ## Windows are 0-based half-open; counts and GC values must be aligned to
 ## `windows$table` element by element. The function validates the resulting
-## tables through the same `RCA()` constructor used by the legacy workflow, so
+## tables through the same `RCA()` constructor used by the table-level API, so
 ## a malformed sample fails before the expensive GC-bias fit.
 
 .sample_tables_error <- function(fmt, ...) {
@@ -97,7 +97,7 @@
 
     ## A contig belongs to exactly one role and has one stable display name and
     ## subgenome label. Overlapping windows are left to RCA(), which validates
-    ## the tiling with the same rules as the legacy workflow.
+    ## the tiling with the same contiguous half-open rules.
     per_contig <- split(
         seq_len(nrow(table)),
         factor(table$chr_id, levels = unique(table$chr_id))
@@ -222,8 +222,79 @@
     meta
 }
 
+#' Pair donor and recipient chromosomes by chromosome number
+#'
+#' Builds a named `target_pairs` vector for [segments()] by matching donor and
+#' recipient chromosomes with the same number in their short display names
+#' (`chr_name`, for example `"1At"` with `"1A"`). Donor chromosomes whose
+#' number matches no recipient chromosome, or more than one, are left out.
+#' This is the fallback used by [buildSampleTables()] when an `AssemblyConfig`
+#' does not declare explicit `pairs`; the species registry normally pairs
+#' contigs by chromosome group before this point.
+#'
+#' @param meta Chromosome metadata with columns `chr_id`, `chr_name`, and
+#'   `subgenome`, as found in an `RCA` object or a `SampleTables` list.
+#' @param don_chr_ids Donor chromosome IDs present in the data.
+#' @param rec_chr_ids Recipient chromosome IDs present in the data.
+#' @param don_subgenomes Optional donor subgenome labels to restrict the
+#'   donor side to.
+#' @param rec_subgenomes Optional recipient subgenome labels to restrict the
+#'   recipient side to.
+#'
+#' @return A named character vector: names are donor chromosome IDs, values
+#'   are recipient chromosome IDs.
+#' @seealso [segments()], [buildSampleTables()]
+#' @export
+defaultTargetPairs <- function(meta, don_chr_ids, rec_chr_ids,
+                               don_subgenomes = NULL, rec_subgenomes = NULL) {
+    meta <- as_meta_df(meta)
+    don_chr_ids <- as.character(don_chr_ids)
+    rec_chr_ids <- as.character(rec_chr_ids)
+
+    don_keep <- meta$chr_id %in% don_chr_ids
+    if (!is.null(don_subgenomes)) {
+        don_keep <- don_keep & meta$subgenome %in% as.character(don_subgenomes)
+    }
+    rec_keep <- meta$chr_id %in% rec_chr_ids
+    if (!is.null(rec_subgenomes)) {
+        rec_keep <- rec_keep & meta$subgenome %in% as.character(rec_subgenomes)
+    }
+
+    don <- meta[don_keep, , drop = FALSE]
+    rec <- meta[rec_keep, , drop = FALSE]
+    if (nrow(don) == 0L || nrow(rec) == 0L) {
+        stop("No donor or recipient chromosomes match the requested subgenomes", call. = FALSE)
+    }
+
+    don$number <- chr_number(don$chr_name)
+    rec$number <- chr_number(rec$chr_name)
+
+    pairs <- character()
+    for (i in seq_len(nrow(don))) {
+        if (is.na(don$number[[i]])) {
+            next
+        }
+        matched <- rec$chr_id[!is.na(rec$number) & rec$number == don$number[[i]]]
+        if (length(matched) == 1L) {
+            pairs[[don$chr_id[[i]]]] <- matched
+        }
+    }
+    if (length(pairs) == 0L) {
+        stop(
+            paste0(
+                "No donor->recipient pairs could be matched by chromosome number; ",
+                "check the chr_name values or restrict the search with ",
+                "`don_subgenomes` and `rec_subgenomes`"
+            ),
+            call. = FALSE
+        )
+    }
+
+    pairs
+}
+
 ## Use the explicit assembly pairs when present; otherwise fall back to the
-## chromosome-number rule used by the legacy workflow.
+## chromosome-number rule.
 .sample_target_pairs <- function(assembly, meta, don_ids, rec_ids, sample) {
     pairs <- assembly$pairs
     if (!is.null(pairs) && length(pairs) > 0L) {

@@ -18,23 +18,43 @@
 * The vignette starts with a BAM-first walkthrough (species registry, species
   roles and swapping, resolution and normalization, the demo fixture, cohort
   BEDPE) and documents the count/flag defaults, 5'-end boundary semantics and
-  how to verify counts with `samtools`. The directory-layout walkthrough is
-  marked deprecated; the `RCA()`/`ISA` sections remain the core API reference.
+  how to verify counts with `samtools`. The directory-layout walkthrough was
+  marked deprecated at that point; the `RCA()`/`ISA` sections remain the core
+  API reference.
 * Documented the uvr migration (`uvr.toml`, `uvr.lock`, `.r-version`,
   `.uvr/library/`, `uvr sync --frozen`, no renv) in the README, and the
   deployment runbook in `docs-source/shinyproxy.md` now points at the same
   entrypoint.
 
-## Breaking change in the next release
+## Breaking change: directory-layout workflow removed (wave 11)
 
-* The legacy directory-layout workflow is deprecated. `launcher_app()`, the
+* The legacy directory-layout workflow is removed. `launcher_app()`, the
   `analysis_dir` / `assemblies_dir` arguments of `runMaMaMIA()`, the
-  `input = "files"` / `"example"` modes, and the directory-layout readers will
-  be removed in T7.5. `runMaMaMIA(config = ..., bam_paths = ...)` remains the
-  single Shiny entrypoint, and `RCA()`, `correctReadCounts()`, `segments()`,
-  `writeToBedpe()` and the BAM-first API remain supported.
-* The reproducible environment pins R 4.6.1 and C++23 through `uvr.lock`
-  (`DESCRIPTION` requires R >= 4.6.0); `renv` is no longer used.
+  `input = "files"` / `"example"` modes, `readMaMaMIAInput()`,
+  `listMaMaMIASamples()`, `listMaMaMIAReferences()` and the packaged-example
+  input are gone. `runMaMaMIA(config = ..., bam_paths = ...)` is the single
+  Shiny entrypoint and `analyzeBamInput()` is the scripted pipeline. `RCA()`,
+  `correctReadCounts()`, `segments()`, `buildSampleTables()`,
+  `defaultTargetPairs()`, `writeToBedpe()`, `writeCohortToBedpe()` and the
+  `ISA` explorers remain supported.
+* The minimum supported environment is unchanged: R 4.6.0 or newer (the
+  reproducible `uvr.lock` pins R 4.6.1) and a C++23 compiler. `renv` is not
+  used; `uvr sync --frozen` reproduces the package set.
+* The gated golden regression now reads its legacy BED oracle with a local
+  test helper, and `tools/benchmark-bam-pipeline.R` carries its own oracle
+  reader, so no directory-layout reader ships in the package.
+
+## Dashboard cleanup (wave 11)
+
+* Removed all BioCircos-related code and assets: `R/circos.R`, the
+  `inst/mamamia/mamamia-circos.*` files, the disabled circos card, the server
+  hooks that fed it and their tests. The explorer keeps the mirror/difference
+  plot, the segment table and the BEDPE export.
+* Added an interactive circos overview built with `interacCircos`: chromosome
+  ideograms, the per-window donor-recipient difference, called segment spans and
+  donor-recipient links. It follows the explorer's chromosome, pair, width and
+  putative filters. `interacCircos` is declared in `DESCRIPTION` and
+  `uvr.toml`.
 
 # MaMaMIA 0.99.0
 
@@ -222,11 +242,9 @@
 
 ## Dashboard
 
-* The BioCircos-based circos view is temporarily disabled and the BioCircos
-  dependency removed: the dashboard shows the segment table with filtering and
-  the BEDPE export. The circos code (in `R/circos.R`, its test, and the
-  `inst/mamamia/` assets) is commented out and can be reinstated together with
-  the `BioCircos` entry in `Suggests`.
+* The previous circos view was removed together with its dependency: the
+  dashboard shows the segment table with filtering and the BEDPE export. A new
+  `interacCircos` overview is documented under the 0.99.1 dashboard cleanup.
 * `runMaMaMIA()` is the new main entry point: a locally running Shiny app that
   reads the windowed input layout, runs RCA construction, GC-bias correction
   and segmentation, and hands the result to the interactive explorer. The

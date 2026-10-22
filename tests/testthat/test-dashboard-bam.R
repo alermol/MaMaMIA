@@ -877,6 +877,17 @@ test_that("a single BAM runs end to end and cleans up the session", {
         set_explorer_inputs(session)
         expect_match(output[["explorer-isa_plot"]]$src, "^data:image/png")
 
+        circos <- jsonlite::fromJSON(
+            output[["explorer-circos"]], simplifyVector = FALSE
+        )
+        modules <- vapply(
+            circos$x$moduleList_NGCircos,
+            function(module) module[[1L]], character(1)
+        )
+        expect_true("CNV_difference" %in% modules)
+        expect_true("ARC_segment_spans" %in% modules)
+        expect_true("LINK_introgressions" %in% modules)
+
         session$setInputs(`explorer-segments_rows_selected` = 1L)
         expect_identical(selection_map()[["synthetic"]], 1L)
         expect_true(file.copy(output$download_cohort, target))
@@ -1252,7 +1263,7 @@ test_that("invalid reference selection is reported before the analysis", {
     })
 })
 
-test_that("the entrypoint dispatches the BAM app and validates upload size", {
+test_that("the entrypoint builds the BAM app and validates upload size", {
     skip_if_no_dashboard()
     skip_if_no_samtools()
     fixture <- variable_gc_fixture()
@@ -1262,11 +1273,9 @@ test_that("the entrypoint dispatches the BAM app and validates upload size", {
     expect_s3_class(app, "shiny.appobj")
     expect_identical(attr(app, "mamamia_input"), "bam")
 
-    auto <- mamamia_app(bam_paths = fixture$bam_path, cache = FALSE)
-    expect_identical(attr(auto, "mamamia_input"), "bam")
-
-    legacy <- mamamia_app(input = "files", cache = FALSE)
-    expect_identical(attr(legacy, "mamamia_input"), "files")
+    preselected <- mamamia_app(bam_paths = fixture$bam_path, cache = FALSE)
+    expect_s3_class(preselected, "shiny.appobj")
+    expect_identical(attr(preselected, "mamamia_input"), "bam")
 
     expect_error(runMaMaMIA(max_request_size = 0), "positive")
 })

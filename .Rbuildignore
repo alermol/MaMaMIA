@@ -18,5 +18,6 @@
 ^tools$
 ^AGENTIC_PLAN\.md$
 ^набросок-плана\.md$
+^report$
 ^src/gcrank/src/.*[.]o$
 ^src/gcrank/src/.*[.]so$

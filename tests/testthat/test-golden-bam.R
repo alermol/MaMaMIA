@@ -254,11 +254,8 @@ golden_data <- function() {
     staged_bam <- MaMaMIA:::stageBam(bam_path, session)
     ensureBamIndex(staged_bam)
 
-    legacy <- readMaMaMIAInput(
-        file.path(root, "mamamia_analysis", "arsenal"),
-        file.path(root, "assemblies"),
-        "Sq54", "cs_t2t_se_cereale",
-        window = 1000L
+    legacy <- read_golden_legacy(
+        root, "Sq54", "cs_t2t_se_cereale", 1000L
     )
     legacy_windows <- golden_legacy_windows(legacy, assembly)
     legacy_counts <- countReads(

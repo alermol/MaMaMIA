@@ -246,6 +246,56 @@ variable_gc_fixture <- function(sample = "synthetic", windows = 100L,
     fixture
 }
 
+## Read the legacy directory-layout BED tables used only as the golden oracle.
+## The package no longer ships a directory-layout reader (T7.5); this helper
+## keeps the gated BAM-vs-legacy regression self-contained.
+read_golden_legacy <- function(root, sample = "Sq54",
+                               reference = "cs_t2t_se_cereale",
+                               window = 1000L) {
+    read_bed <- function(path, value_col) {
+        table <- utils::read.delim(
+            path, header = FALSE, comment.char = "#",
+            colClasses = "character", stringsAsFactors = FALSE,
+            check.names = FALSE
+        )
+        table <- table[, 1:4, drop = FALSE]
+        names(table) <- c("chr_id", "start", "stop", value_col)
+        table$chr_id <- trimws(table$chr_id)
+        for (col in c("start", "stop", value_col)) {
+            table[[col]] <- as.numeric(trimws(table[[col]]))
+        }
+        table
+    }
+
+    analysis <- file.path(root, "mamamia_analysis", "arsenal", sample)
+    assembly_dir <- file.path(root, "assemblies", reference)
+    dcov <- read_bed(
+        file.path(analysis, sprintf("%s.w%d.dcov.bed", reference, window)),
+        "cov"
+    )
+    rcov <- read_bed(
+        file.path(analysis, sprintf("%s.w%d.rcov.bed", reference, window)),
+        "cov"
+    )
+    dgc <- read_bed(
+        file.path(assembly_dir, sprintf("donor.w%d.gc.bed", window)), "gc"
+    )
+    rgc <- read_bed(
+        file.path(assembly_dir, sprintf("recipient.w%d.gc.bed", window)), "gc"
+    )
+    meta <- utils::read.delim(
+        file.path(assembly_dir, "chromosomes.tsv"),
+        header = FALSE,
+        col.names = c("chr_id", "chr_name", "subgenome"),
+        colClasses = "character",
+        stringsAsFactors = FALSE
+    )
+    meta <- meta[meta$chr_id %in% c(dcov$chr_id, rcov$chr_id), , drop = FALSE]
+    rownames(meta) <- NULL
+
+    list(dcov = dcov, dgc = dgc, rcov = rcov, rgc = rgc, meta = meta)
+}
+
 mamamia_test_data_dir <- function() {
     configured <- Sys.getenv("MAMAMIA_TEST_DATA_DIR", unset = "")
     if (nzchar(configured)) {

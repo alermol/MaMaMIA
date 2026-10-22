@@ -94,6 +94,53 @@ cigar_ref_length <- function(cigar) {
     }, integer(1))
 }
 
+## The package no longer ships a directory-layout reader (T7.5); the benchmark
+## keeps a minimal oracle reader for the legacy BED tables.
+read_legacy_bed <- function(path, value_col) {
+    table <- utils::read.delim(
+        path, header = FALSE, comment.char = "#",
+        colClasses = "character", stringsAsFactors = FALSE,
+        check.names = FALSE
+    )
+    table <- table[, 1:4, drop = FALSE]
+    names(table) <- c("chr_id", "start", "stop", value_col)
+    table$chr_id <- trimws(table$chr_id)
+    for (col in c("start", "stop", value_col)) {
+        table[[col]] <- as.numeric(trimws(table[[col]]))
+    }
+    table
+}
+
+read_legacy_layout <- function(analysis_dir, assemblies_dir, sample,
+                               reference, window) {
+    sample_dir <- file.path(analysis_dir, sample)
+    reference_dir <- file.path(assemblies_dir, reference)
+    dcov <- read_legacy_bed(
+        file.path(sample_dir, sprintf("%s.w%d.dcov.bed", reference, window)),
+        "cov"
+    )
+    rcov <- read_legacy_bed(
+        file.path(sample_dir, sprintf("%s.w%d.rcov.bed", reference, window)),
+        "cov"
+    )
+    dgc <- read_legacy_bed(
+        file.path(reference_dir, sprintf("donor.w%d.gc.bed", window)), "gc"
+    )
+    rgc <- read_legacy_bed(
+        file.path(reference_dir, sprintf("recipient.w%d.gc.bed", window)), "gc"
+    )
+    meta <- utils::read.delim(
+        file.path(reference_dir, "chromosomes.tsv"),
+        header = FALSE,
+        col.names = c("chr_id", "chr_name", "subgenome"),
+        colClasses = "character",
+        stringsAsFactors = FALSE
+    )
+    meta <- meta[meta$chr_id %in% c(dcov$chr_id, rcov$chr_id), , drop = FALSE]
+    rownames(meta) <- NULL
+    list(dcov = dcov, dgc = dgc, rcov = rcov, rgc = rgc, meta = meta)
+}
+
 root <- normalizePath(opts$test_data, winslash = "/", mustWork = TRUE)
 analysis_dir <- file.path(root, "mamamia_analysis", "arsenal")
 assemblies_dir <- file.path(root, "assemblies")
@@ -108,7 +155,15 @@ required <- c(
     bam_path,
     file.path(legacy_dir, paste0(legacy_prefix, ".w", opts$windows, ".rcov.bed")),
     file.path(legacy_dir, paste0(legacy_prefix, ".w", opts$windows, ".dcov.bed")),
-    file.path(assemblies_dir, "cs_t2t_se_cereale", "chromosomes.tsv")
+    file.path(assemblies_dir, "cs_t2t_se_cereale", "chromosomes.tsv"),
+    file.path(
+        assemblies_dir, "cs_t2t_se_cereale",
+        sprintf("donor.w%d.gc.bed", opts$windows)
+    ),
+    file.path(
+        assemblies_dir, "cs_t2t_se_cereale",
+        sprintf("recipient.w%d.gc.bed", opts$windows)
+    )
 )
 missing <- required[!file.exists(required)]
 if (length(missing) > 0L) {
@@ -199,9 +254,9 @@ staged_bam <- MaMaMIA:::stageBam(bam_path, session)
 index_path <- ensureBamIndex(staged_bam)
 check(env, "CSI index created for the staged BAM", file.exists(index_path), index_path)
 
-legacy <- readMaMaMIAInput(
+legacy <- read_legacy_layout(
     analysis_dir, assemblies_dir, opts$sample, assembly_key,
-    window = opts$windows
+    opts$windows
 )
 cat(
     sprintf(

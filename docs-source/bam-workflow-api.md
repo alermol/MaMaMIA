@@ -2,7 +2,7 @@
 
 **Status:** final for 0.99.1
 **Frozen on:** 2026-10-20
-**Amended:** 2026-10-21 (sections 16-17)
+**Amended:** 2026-10-21 (sections 16-18; T7.5 removal and the interacCircos overview)
 **Source of truth:** `AGENTIC_PLAN.md` sections 3.3-4 and 14
 **Applies from:** Wave 0 onward
 
@@ -250,9 +250,7 @@ writeToBedpe(ISA, file, sample = NULL)
 writeCohortToBedpe(result, file, samples = NULL, selected = NULL)
 
 # Application entrypoint
-runMaMaMIA(analysis_dir = NULL, assemblies_dir = NULL, cache = NULL,
-           config = NULL, bam_paths = NULL,
-           input = c("auto", "bam", "files", "example"),
+runMaMaMIA(cache = NULL, config = NULL, bam_paths = NULL,
            max_request_size = 5 * 1024^3,
            host = "127.0.0.1", port = NULL, launch.browser = interactive())
 ```
@@ -267,11 +265,11 @@ with `key`, `label`, `description`, `subgenomes`, `default_subgenome`,
 and the selected subgenomes; pass `resolved$config` and `resolved$key` to
 `preflightBams()` and `analyzeBamInput()`.
 
-`runMaMaMIA()` is the only application entrypoint. The legacy directory app is
-still reachable through `input = "files"`/`"example"` until T7.5, but the BAM
-workflow is selected whenever `config` or `bam_paths` is supplied (or when
-`input = "bam"`). `bam_launcher_app()` and `mamamia_app()` are internal. The
-legacy arguments and modes are deprecated in 0.99.1 (section 17.4).
+`runMaMaMIA()` is the only application entrypoint and always opens the
+BAM-first app. It accepts a validated `config` (or falls back to
+`MAMAMIA_CONFIG`), optional server-side `bam_paths`, and the upload limit.
+`bam_launcher_app()` and `mamamia_app()` are internal. The directory-layout
+arguments, modes and readers were removed in T7.5 (section 17.4).
 
 ---
 
@@ -781,7 +779,6 @@ The render validates when no analysis is loaded ("Run the analysis to plot") and
 when the filters leave no window ("Select at least one chromosome and pair to
 plot"). A failure inside `plot.ISA()` is reported as a warning notification and
 a plot-level validation message; it does not break the table or the download.
-The plot card is independent of the parked BioCircos view, which stays disabled.
 
 A 280,000-window synthetic ISA rendered in about 7.6 s (`diff`) and 11.1 s
 (`mirror`). `plot.ISA()` gained `max_points` (default `Inf`, so all other callers
@@ -832,17 +829,17 @@ sample name. A gated synthetic two-sample cohort run confirms that a real
 
 ## 13. Wave 6 implementation notes
 
-### 13.1 Entrypoint dispatch
+### 13.1 Entrypoint
 
-`runMaMaMIA(analysis_dir, assemblies_dir, cache, config, bam_paths, input,
-max_request_size, host, port, launch.browser)` keeps the legacy arguments and
-adds the BAM-first ones. `input` is one of `"auto"`, `"bam"`, `"files"` or
-`"example"`. `"auto"` selects the BAM app when `config` or `bam_paths` is
-supplied and the legacy app otherwise; `"bam"` always selects the BAM app and
-`"files"`/`"example"` keep the legacy launcher available through T7.5.
-`max_request_size` (default 5 GiB) is passed to `options(shiny.maxRequestSize)`.
-The internal `mamamia_app()` builds the app object without launching it and
-records the resolved mode in the `mamamia_input` attribute, which tests use.
+`runMaMaMIA(cache, config, bam_paths, max_request_size, host, port,
+launch.browser)` is the single Shiny entrypoint. The BAM-first app is always
+selected: `config` may be a YAML path or a validated configuration list, and a
+`NULL` falls back to `MAMAMIA_CONFIG`. `bam_paths` preselects server-side BAMs.
+`max_request_size` (default 5 GiB) is passed to
+`options(shiny.maxRequestSize)`. The internal `mamamia_app()` builds the app
+object without launching it and records `mamamia_input = "bam"`, which tests
+use. The legacy `analysis_dir` / `assemblies_dir` arguments and the `input`
+dispatch were removed in T7.5.
 
 ### 13.2 BAM-first application
 
@@ -1256,14 +1253,18 @@ described in section 4. Run-control validation (resolution, MAPQ, exclude
 flags, cores, fit cap, reference sample) uses the same condition classes, so a
 bad control and a failed run look alike in the Problems card.
 
-### 17.4 Deprecation of the directory-layout workflow
+### 17.4 Removal of the directory-layout workflow (T7.5)
 
-The legacy `analysis_dir` / `assemblies_dir` arguments, `input = "files"` /
-`"example"`, the directory-layout readers and the packaged-example launcher
-are deprecated in 0.99.1 and are removed in T7.5. `runMaMaMIA()` remains the
-single Shiny entrypoint. The table-level `RCA()`/`ISA` API, the golden
-regression and the core utilities are not deprecated. NEWS.md records the
-breaking change and the minimum environment (R 4.6.1, C++23).
+The T7.4 gate recorded that the BAM-first path covers the legacy workflow's
+purpose, so T7.5 removed the legacy `analysis_dir` / `assemblies_dir`
+arguments, `input = "files"` / `"example"`, `launcher_app()`,
+`readMaMaMIAInput()`, `listMaMaMIASamples()` and `listMaMaMIAReferences()`.
+`runMaMaMIA()` is the single Shiny entrypoint and always opens the BAM-first
+app. The table-level `RCA()`/`ISA` API, `buildSampleTables()`,
+`defaultTargetPairs()`, the golden regression and the core utilities remain
+supported. The gated golden test and `tools/benchmark-bam-pipeline.R` keep
+their legacy BED oracle in local readers. NEWS.md records the breaking change
+and the minimum environment (R 4.6.1, C++23).
 
 ### 17.5 Reproducible environment
 
@@ -1273,3 +1274,32 @@ is the project library. `uvr sync --frozen` reproduces the lockfile and fails
 on drift; `uvr doctor` diagnoses the install. The Docker image runs
 `uvr sync --frozen --unattended`, installs MaMaMIA into `.uvr/library` and
 starts the app through `uvr run /app/deployment/start.R`.
+
+---
+
+## 18. interacCircos overview (wave 11 follow-up)
+
+`explorer_results_ui()` gains an "Introgression circos" card rendered by
+`isa_dashboard_circos_output()` and `isa_dashboard_render_circos()`.
+interacCircos does not ship Shiny bindings, so these helpers wrap
+`htmlwidgets::shinyWidgetOutput()` and `htmlwidgets::shinyRenderWidget()` with
+the `interacCircos` widget name.
+
+`isa_dashboard_circos(ISA, segments, genome)` builds the widget:
+
+- `genome` is the named chromosome-length list from `isa_dashboard_genome()`;
+  donor chromosomes are dark grey and recipient chromosomes light grey.
+- A CNV track shows the per-window donor - recipient difference, clipped to the
+  99th percentile of `|diff|` and coloured by sign. High-resolution runs are
+  thinned to `circos_max_windows_per_chr` (400) peak windows per chromosome.
+- An arc track marks every visible segment on both chromosomes (putative calls
+  red, other visible calls grey).
+- A link track joins the donor and recipient interval of every visible segment;
+  hovering shows the segment id, pair, size and putative flag.
+
+The view uses the same `plot_isa()` and `visible_segments()` reactives as the
+mirror plot and table, so the chromosome, pair, width and putative filters
+apply. The render returns `NULL` before an analysis or when no chromosome
+remains. `interacCircos` is declared in `Imports`; `htmlwidgets` is an existing
+runtime dependency. Tests cover the data contracts, module names, genome
+colours, empty-segment behaviour and the Shiny output.

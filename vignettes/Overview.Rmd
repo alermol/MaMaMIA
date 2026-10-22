@@ -41,7 +41,8 @@ species registry:
 This vignette starts with that workflow on a small dataset bundled with the
 package. The following sections explain the `RCA` and `ISA` objects in detail
 using the packaged `triticum` tables; the BAM pipeline produces the same
-objects. The last section documents the deprecated directory-layout input.
+objects. The last section explains how to migrate from the removed
+directory-layout launcher.
 
 ```{r setup}
 library(MaMaMIA)
@@ -235,10 +236,12 @@ runMaMaMIA(config = "assemblies.yml")
 Choose a recipient and a donor species, optionally swap them, select one or
 more BAMs (upload or server-side), choose a resolution and normalization, and
 run. The cohort summary reports windows, segments and putative calls per
-sample; the explorer keeps selections per sample and exports a per-sample BEDPE
-or a combined BEDPE with a `sample` column. The app runs on ShinyProxy with the
-image and registry described in `docs-source/shinyproxy.md`; the container
-entrypoint is `uvr run /app/deployment/start.R`.
+sample. The explorer draws a circos overview with `interacCircos` (chromosome
+ideograms, the per-window donor-recipient difference, segment spans and links),
+keeps selections per sample and exports a per-sample BEDPE or a combined BEDPE
+with a `sample` column. The app runs on ShinyProxy with the image and registry
+described in `docs-source/shinyproxy.md`; the container entrypoint is
+`uvr run /app/deployment/start.R`.
 
 The bundled demo can be opened directly:
 
@@ -253,20 +256,20 @@ explorer for an existing `ISA` object:
 exploreIntrogressions(result$isa[[1]])
 ```
 
-# Preparing input data (deprecated)
+# Preparing tables for the core API
 
-> **Deprecated.** This section describes the directory-layout workflow:
-> precomputed coverage/GC tables read from `analysis_dir` and `assemblies_dir`.
-> Its readers and launcher arguments will be removed in the next release. Use
-> the BAM-first workflow above for new analyses, or call `RCA()` directly with
-> your own tables. The `RCA`/`ISA` API described below remains supported.
+> **BAM-first is the dashboard workflow.** The app now tiles contigs, reads GC
+> content and counts reads itself. This section is for scripts that already
+> have windowed tables and want to call `RCA()`, `correctReadCounts()` and
+> `segments()` directly. The directory-layout readers and launcher have been
+> removed.
 
-MaMaMIA expects windowed coverage (mapped read counts) and GC-content
-tables for both the **donor** and **recipient** genomes. The same
-preprocessing is applied independently to each genome. Downstream
-comparison matches windows by position index, not by shared genomic
-coordinates, so every chromosome-donor and recipient-must be tiled into
-the **same number of windows**.
+MaMaMIA's core analysis expects windowed coverage (mapped read counts) and
+GC-content tables for both the **donor** and **recipient** genomes. The same
+preprocessing is applied independently to each genome. Downstream comparison
+matches windows by position index, not by shared genomic coordinates, so every
+chromosome-donor and recipient-must be tiled into the **same number of
+windows**.
 
 ## Competitive mapping
 
@@ -696,46 +699,33 @@ read.table(bedpe_file, header = TRUE, sep = "\t")
 If no putative introgressions remain after filtering, a header-only file
 is written and a warning is issued.
 
-# Legacy directory-layout dashboard (deprecated)
+# Migration from the directory layout
 
-> **Deprecated.** The `analysis_dir` / `assemblies_dir` launcher and the
-> directory readers will be removed in the next release. The BAM-first app in
-> the first section is the supported dashboard.
+The directory-layout launcher and its readers have been removed.
+`runMaMaMIA(config = ..., bam_paths = ...)` is the single Shiny entrypoint, and
+`analyzeBamInput()` is the scripted pipeline. To migrate:
 
-The old launcher read precomputed tables from disk and paired chromosomes with
-`defaultTargetPairs()`:
+1. Keep the BAMs and `gcrank` indexes; describe the two genomes as `species:`
+   in a registry.
+2. Drop the precomputed `analysis_dir` / `assemblies_dir` tables; the app tiles,
+   extracts GC and counts reads from the BAMs.
+3. Open the app with `runMaMaMIA(config = "assemblies.yml")`, or call
+   `analyzeBamInput()` from a script.
 
-```{r legacy-run-ma-ma-mia, eval = FALSE}
-runMaMaMIA(
-  analysis_dir = "mamamia_analysis",
-  assemblies_dir = "assemblies"
-)
-```
+If the windowed tables must be kept, pass them to `RCA()` as before;
+`buildSampleTables()` assembles them into the pipeline contract, and
+`defaultTargetPairs()` provides chromosome-number pairing when an assembly has
+no explicit `pairs`. The explorer remains available for any `ISA` object and
+now includes the `interacCircos` overview:
 
-```
-analysis_dir/<sample>/<reference>.w<N>.dcov.bed   # donor coverage windows
-analysis_dir/<sample>/<reference>.w<N>.rcov.bed   # recipient coverage windows
-assemblies_dir/<reference>/donor.w<N>.gc.bed      # donor GC content
-assemblies_dir/<reference>/recipient.w<N>.gc.bed  # recipient GC content
-assemblies_dir/<reference>/chromosomes.tsv        # chr_id, chr_name, subgenome
-```
-
-All measurement tables have four columns (chromosome ID, start, end, value)
-and may carry the `bedtools nuc` header, which starts with `#`. See
-`?readMaMaMIAInput` for the format. Called without arguments, the legacy app
-started on the packaged `triticum` example.
-
-The explorer itself is unchanged and remains available for an `ISA` object:
-
-```{r explore-isa-legacy, eval = FALSE}
+```{r explore-isa-core, eval = FALSE}
 exploreIntrogressions(aat_segments)
 ```
 
 It draws a searchable segment table and exports selected rows as BEDPE. The
 call threshold (`threshold_type` and its minimum) and the minimum segment width
 re-flag segments through `subset.ISA()` without re-running segmentation, and
-the chromosome pair pickers restrict the view. The BioCircos circos plot is
-temporarily unavailable while the BioCircos dependency is removed.
+the chromosome pair pickers restrict the view.
 
 # Session info
 
