@@ -6,7 +6,8 @@
 #
 #   /srv/mamamia/config/assemblies.yml
 #   /srv/mamamia/gcidx/<assembly>/index.gcrank/
-#   /srv/mamamia/bams/                      (optional server-side BAM root)
+#
+# BAMs are uploaded by users; the container mounts no BAM directory.
 #
 # Mount the config and gcidx *directories*, not individual files/indexes: a
 # directory mount makes new indexes visible to new sessions without rebuilding
@@ -57,7 +58,6 @@ proxy:
       container-volumes:
         - /srv/mamamia/config:/srv/mamamia/config:ro
         - /srv/mamamia/gcidx:/srv/mamamia/gcidx:ro
-        - /srv/mamamia/bams:/srv/mamamia/bams:ro
       container-memory-limit: 16g
       container-cpu-limit: 4
       # One analysis per user; at most two 16 GB containers on the host.

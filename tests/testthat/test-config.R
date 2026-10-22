@@ -131,7 +131,7 @@ test_that("readMaMaMIAConfig() normalizes a valid registry", {
         root,
         assemblies = list(tiny = tiny_assembly()),
         defaults = list(windows_per_chromosome = 100L),
-        server = list(bam_root = "bams", max_bams = 3, max_total_bytes = 1024)
+        server = list(max_bams = 3, max_total_bytes = 1024)
     )
 
     config <- readMaMaMIAConfig(path)
@@ -151,10 +151,7 @@ test_that("readMaMaMIAConfig() normalizes a valid registry", {
     expect_true(config$defaults$normalization_by_side)
     expect_identical(config$server$max_bams, 3L)
     expect_identical(config$server$max_total_bytes, 1024)
-    expect_identical(
-        config$server$bam_root,
-        normalizePath(file.path(root, "bams"), winslash = "/", mustWork = FALSE)
-    )
+    expect_false("bam_root" %in% names(config$server))
 
     assembly <- config$assemblies$tiny
     expect_named(assembly, c(
@@ -723,14 +720,17 @@ test_that("server limits are validated", {
         )),
         "server\\.max_total_bytes"
     )
-    expect_error(
-        readMaMaMIAConfig(write_config_fixture(
-            file.path(root, "root"),
-            assemblies = list(tiny = tiny_assembly()),
-            server = list(bam_root = "")
-        )),
-        "server\\.bam_root"
+    ## Server-side BAM directories were removed; BAMs are uploaded by users.
+    ## An old registry key is ignored rather than rejected.
+    write_index_fixture(
+        file.path(root, "legacy", "idx"), c("d1", "r1"), c(20000, 20000)
     )
+    legacy <- readMaMaMIAConfig(write_config_fixture(
+        file.path(root, "legacy"),
+        assemblies = list(tiny = tiny_assembly()),
+        server = list(bam_root = "/srv/mamamia/bams")
+    ))
+    expect_false("bam_root" %in% names(legacy$server))
 })
 
 test_that("duplicate YAML keys fail during parsing", {

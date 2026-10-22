@@ -1,5 +1,22 @@
 # MaMaMIA 0.99.1
 
+## Upload-only BAMs and bundled example data
+
+* BAMs are accepted only through the Shiny upload control. `server.bam_root`,
+  the server-side BAM picker, the `bam_paths` argument of `runMaMaMIA()` and the
+  `/srv/mamamia/bams` container mount are removed. An old registry key is
+  ignored; `server.max_bams` and `server.max_total_bytes` still apply.
+* Added `inst/extdata/example`: a self-contained registry and pre-computed
+  `BamAnalysisResult` tables at 100 and 1,000 windows per chromosome. The live
+  sidebar offers **Use bundled example data**; it replays the normal pipeline
+  stage messages (preflight, indexes, windows, GC, counts, correction,
+  segmentation) while loading the stored result, so no example BAM is needed in
+  the container. Regenerate it with `tools/make-example-data.R`.
+* `deployment/smoke-test.R` now uses the bundled demo BAM and registry by
+  default; set `MAMAMIA_SMOKE_BAM` and `MAMAMIA_CONFIG` to test a production
+  registry instead. Deployment and API documentation reflect the upload-only
+  model.
+
 ## Deployment fix: fontconfig and cairo text metrics
 
 * The production image now installs `fontconfig` and `fonts-dejavu-core`. uvr's

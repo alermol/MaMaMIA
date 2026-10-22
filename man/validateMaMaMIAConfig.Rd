@@ -16,7 +16,7 @@ The validated, normalized configuration, invisibly.
 }
 \description{
 Takes a configuration list, either read from YAML or assembled in memory,
-and returns a normalized configuration. Relative GC index and \code{bam_root}
-paths are resolved against the directory recorded by
-\code{readMaMaMIAConfig()}, or the current working directory for a plain list.
+and returns a normalized configuration. Relative GC index paths are resolved
+against the directory recorded by \code{readMaMaMIAConfig()}, or the current
+working directory for a plain list.
 }

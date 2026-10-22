@@ -51,6 +51,16 @@ output_html <- function(output) {
     paste(as.character(output), collapse = "")
 }
 
+## Simulate the data frame Shiny produces for `fileInput("bams")`.
+upload_input <- function(paths) {
+    paths <- as.character(paths)
+    data.frame(
+        datapath = paths,
+        name = basename(paths),
+        stringsAsFactors = FALSE
+    )
+}
+
 fake_bam_result <- function(samples = c("A", "B"), isas = NULL,
                             counts = NULL) {
     if (is.null(isas)) {
@@ -579,10 +589,10 @@ test_that("the app shows preflight, assembly and a disabled run button", {
 
     shiny::testServer(bam_launcher_server(state, cache = FALSE), {
         expect_match(output_html(output$run_ui), "disabled")
-        expect_match(output_html(output$assembly_summary), "Select one or more")
-        expect_match(output$preflight_table, "Select one or more")
+        expect_match(output_html(output$assembly_summary), "Upload BAM files")
+        expect_match(output$preflight_table, "Upload BAM files")
 
-        session$setInputs(server_bams = fixture$bam_path)
+        session$setInputs(bams = upload_input(fixture$bam_path))
         pf <- preflight_state()
         expect_true(pf$ok)
         expect_identical(pf$table$sample, "synthetic")
@@ -666,7 +676,7 @@ test_that("auto-detection is an option but not an assembly selector", {
     shiny::testServer(bam_launcher_server(state, cache = FALSE), {
         session$setInputs(
             auto_detect = TRUE,
-            server_bams = fixture$bam_path,
+            bams = upload_input(fixture$bam_path),
             resolution = "100"
         )
         pf <- preflight_state()
@@ -709,7 +719,7 @@ test_that("a species-only registry exposes species selectors and runs", {
         session$setInputs(
             recipient_species = "recipient",
             donor_species = "donor",
-            server_bams = fixture$bam_path,
+            bams = upload_input(fixture$bam_path),
             resolution = "100",
             mapq = 20,
             exclude_flags = 2308,
@@ -796,7 +806,7 @@ test_that("an assembly mismatch shows candidate scores", {
     state <- app_state(fixture)
 
     shiny::testServer(bam_launcher_server(state, cache = FALSE), {
-        session$setInputs(server_bams = bad)
+        session$setInputs(bams = upload_input(bad))
         pf <- preflight_state()
         expect_false(pf$ok)
         expect_identical(pf$error$stage, "assembly")
@@ -826,7 +836,7 @@ test_that("missing BAMs and server limits fail without crashing the session", {
 
     shiny::testServer(bam_launcher_server(state, cache = FALSE), {
         session$setInputs(
-            server_bams = file.path(fixture$directory, "missing.bam")
+            bams = upload_input(file.path(fixture$directory, "missing.bam"))
         )
         pf <- preflight_state()
         expect_false(pf$ok)
@@ -843,7 +853,7 @@ test_that("missing BAMs and server limits fail without crashing the session", {
     expect_true(limited$ok)
 
     shiny::testServer(bam_launcher_server(limited, cache = FALSE), {
-        session$setInputs(server_bams = c(fixture$bam_path, second))
+        session$setInputs(bams = upload_input(c(fixture$bam_path, second)))
         pf <- preflight_state()
         expect_false(pf$ok)
         expect_identical(pf$error$stage, "limits")
@@ -859,7 +869,7 @@ test_that("missing BAMs and server limits fail without crashing the session", {
     expect_true(byte_limited$ok)
 
     shiny::testServer(bam_launcher_server(byte_limited, cache = FALSE), {
-        session$setInputs(server_bams = fixture$bam_path)
+        session$setInputs(bams = upload_input(fixture$bam_path))
         pf <- preflight_state()
         expect_false(pf$ok)
         expect_identical(pf$error$stage, "limits")
@@ -879,7 +889,7 @@ test_that("a single BAM runs end to end and cleans up the session", {
     on.exit(unlink(target), add = TRUE)
 
     shiny::testServer(bam_launcher_server(state, cache = FALSE), {
-        set_app_inputs(session, server_bams = fixture$bam_path)
+        set_app_inputs(session, bams = upload_input(fixture$bam_path))
         expect_true(preflight_state()$ok)
 
         suppressWarnings(session$setInputs(run = 1))
@@ -957,7 +967,7 @@ test_that("a cohort shows a selector and exports a combined BEDPE", {
     on.exit(unlink(sample_target), add = TRUE)
 
     shiny::testServer(bam_launcher_server(state, cache = FALSE), {
-        set_app_inputs(session, server_bams = c(first, second))
+        set_app_inputs(session, bams = upload_input(c(first, second)))
         expect_true(preflight_state()$ok)
         expect_match(
             output_html(output$reference_ui),
@@ -1045,7 +1055,7 @@ test_that("a three-sample cohort exports each sample and the cohort BEDPE", {
     on.exit(unlink(c(per_sample, cohort_target)), add = TRUE)
 
     shiny::testServer(bam_launcher_server(state, cache = FALSE), {
-        set_app_inputs(session, server_bams = bams)
+        set_app_inputs(session, bams = upload_input(bams))
         expect_true(preflight_state()$ok)
 
         session$setInputs(reference_sample = "")
@@ -1122,7 +1132,7 @@ test_that("a failing run reports the stage and keeps the session alive", {
 
     shiny::testServer(bam_launcher_server(state, cache = FALSE), {
         session$setInputs(
-            server_bams = tiny_bam_path(),
+            bams = upload_input(tiny_bam_path()),
             resolution = "100",
             mapq = 20,
             exclude_flags = 2308,
@@ -1170,7 +1180,7 @@ test_that("the run button is disabled when a contig is too short", {
     shiny::testServer(bam_launcher_server(state, cache = FALSE), {
         set_app_inputs(
             session,
-            server_bams = fixture$bam_path,
+            bams = upload_input(fixture$bam_path),
             resolution = "10000"
         )
         expect_true(preflight_state()$ok)
@@ -1226,7 +1236,7 @@ test_that("every error category is reported without escaping the server", {
             .package = "MaMaMIA"
         )
         shiny::testServer(bam_launcher_server(state, cache = FALSE), {
-            set_app_inputs(session, server_bams = fixture$bam_path)
+            set_app_inputs(session, bams = upload_input(fixture$bam_path))
             expect_true(preflight_state()$ok)
             previous <- fake_bam_result("previous")
             result(previous)
@@ -1262,7 +1272,7 @@ test_that("invalid reference selection is reported before the analysis", {
     shiny::testServer(bam_launcher_server(state, cache = FALSE), {
         set_app_inputs(
             session,
-            server_bams = c(fixture$bam_path, second),
+            bams = upload_input(c(fixture$bam_path, second)),
             reference_sample = "nope"
         )
         expect_true(preflight_state()$ok)
@@ -1285,10 +1295,6 @@ test_that("the entrypoint builds the BAM app and validates upload size", {
     app <- mamamia_app(config = fixture$config_path, cache = FALSE)
     expect_s3_class(app, "shiny.appobj")
     expect_identical(attr(app, "mamamia_input"), "bam")
-
-    preselected <- mamamia_app(bam_paths = fixture$bam_path, cache = FALSE)
-    expect_s3_class(preselected, "shiny.appobj")
-    expect_identical(attr(preselected, "mamamia_input"), "bam")
 
     expect_error(runMaMaMIA(max_request_size = 0), "positive")
 })

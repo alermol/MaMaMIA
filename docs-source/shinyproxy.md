@@ -12,7 +12,7 @@ Artifacts:
 | `deployment/start.R` | Entrypoint: `MaMaMIA::runMaMaMIA(host = "0.0.0.0", port = 3838, config = Sys.getenv("MAMAMIA_CONFIG"))` |
 | `deployment/shinyproxy.yml` | ShinyProxy spec, read-only mounts, limits and upload settings |
 | `deployment/nginx.conf` | Optional reverse proxy with large bodies and long timeouts |
-| `deployment/smoke-test.R` | Runs the full pipeline in the image on one mounted BAM |
+| `deployment/smoke-test.R` | Runs the full pipeline in the image on the bundled demo BAM (or `MAMAMIA_SMOKE_BAM`) |
 | `deployment/gcidx-checksums.txt` | Format, sizes and SHA-256 of the validated gcrank indexes |
 | `tools/validate-config.R` | Validates a production registry and its GC indexes before mounting it |
 
@@ -28,8 +28,9 @@ test. It is only needed for the final proxied deployment.
    /srv/mamamia/config/assemblies.yml`. Do not continue on a non-zero exit.
 3. Build the image from the repository root (section 2) and run
    `uvr doctor --unattended` inside it.
-4. Run the local smoke test with the real indexes and BAMs (section 3). The
-   script must print a result with at least one segment.
+4. Run the local smoke test (section 3). The script must print a result with
+   at least one segment. It uses the bundled demo BAM by default, so no BAM
+   mount is needed.
 5. Start the image through the ShinyProxy command
    `uvr run /app/deployment/start.R`; `MAMAMIA_CONFIG` must point at the
    mounted registry (section 4).
@@ -71,10 +72,9 @@ Rscript tools/validate-config.R /srv/mamamia/config/assemblies.yml
 ```
 
 The script calls `readMaMaMIAConfig()` (the same validation as application
-startup) and additionally checks the index payload files and `server.bam_root`.
-It exits non-zero on the first problem. Do not ship a registry that only works
-on the recipient side: every donor contig used in `pairs` must be present in an
-index.
+startup) and additionally checks the index payload files. It exits non-zero on
+the first problem. Do not ship a registry that only works on the recipient
+side: every donor contig used in `pairs` must be present in an index.
 
 The indexes validated for this deployment are recorded in
 `deployment/gcidx-checksums.txt`: format version, contig/bp totals, SHA-256 for
@@ -88,12 +88,12 @@ The expected host layout is:
 ```
 /srv/mamamia/config/assemblies.yml
 /srv/mamamia/gcidx/<species>/index.gcrank/
-/srv/mamamia/bams/<sample>/<name>.bam          # optional, read-only
 ```
 
-`server.bam_root` in the registry must be `/srv/mamamia/bams` when the
-server-side picker is used. Uploaded BAMs are staged into a per-session
-temporary directory; the source directory is never modified.
+BAMs are uploaded by users; the container does not mount a BAM directory.
+Uploaded BAMs are staged into a per-session temporary directory and the source
+upload directory is never modified. The app also offers a bundled synthetic
+example whose pre-computed tables are part of the image.
 
 ### 1.1 Growing the registry (new species and indexes)
 
@@ -197,47 +197,42 @@ result does not depend on the worker it ran on.
 
 ## 3. Local smoke test
 
-Start the image with the real read-only indexes and BAMs:
+Start the image with the real read-only indexes:
 
 ```sh
 docker run --rm -p 3838:3838 \
   -e MAMAMIA_CONFIG=/srv/mamamia/config/assemblies.yml \
   -v "$PWD/inst/config/assemblies.example.yml:/srv/mamamia/config/assemblies.yml:ro" \
   -v "$PWD/test_data/gcidx:/srv/mamamia/gcidx:ro" \
-  -v "$PWD/test_data/bam_files:/srv/mamamia/bams:ro" \
   mamamia:0.99.1
 ```
 
 Open `http://127.0.0.1:3838/`, confirm that the configuration summary shows
 the two species, choose `Triticum aestivum CS T2T` as the recipient and
-`Secale cereale` as the donor (or the reverse), select a server-side BAM (for
-example `Sq54/cs_t2t_se_cereale.bam`), wait for preflight, choose resolution
-1000 and run. The detected pair lists seven wheat A contigs and seven rye
-contigs. A successful run shows the cohort summary and the explorer plot. Stop
+`Secale cereale` as the donor (or the reverse), then either upload a BAM or tick
+**Use bundled example data**. The example needs no BAM mount and takes about a
+second; a successful run shows the cohort summary and the explorer plot. Stop
 the container with Ctrl-C; the session directory and staged indexes are removed
 on session end.
 
 To check the same pipeline without the browser, run the bundled smoke script in
-a one-off container (it stages a symlink into `/tmp` exactly as the app does):
+a one-off container. It uses the packaged demo BAM and registry, so it needs no
+BAM or registry mount (set `MAMAMIA_SMOKE_BAM` and `MAMAMIA_CONFIG` to exercise
+a production registry instead):
 
 ```sh
-docker run --rm \
-  -e MAMAMIA_CONFIG=/srv/mamamia/config/assemblies.yml \
-  -v "$PWD/inst/config/assemblies.example.yml:/srv/mamamia/config/assemblies.yml:ro" \
-  -v "$PWD/test_data/gcidx:/srv/mamamia/gcidx:ro" \
-  -v "$PWD/test_data/bam_files:/srv/mamamia/bams:ro" \
-  mamamia:0.99.1 uvr run /app/deployment/smoke-test.R
+docker run --rm mamamia:0.99.1 uvr run /app/deployment/smoke-test.R
 ```
 
-The script resolves the first two species in the registry. Override the pair
-with `MAMAMIA_SMOKE_RECIPIENT` and `MAMAMIA_SMOKE_DONOR` when the registry order
-is not the intended comparison. Expected output on `Sq54` at resolution 1000
-with the example pair: 14,000 windows (7 recipient + 7 donor contigs), a
-non-zero segment count, `putative:` calls, and a `plot:` line with a non-zero
-PNG size. The script prints every pipeline stage and fails if the result is not
-a `BamAnalysisResult` with at least one segment. It renders a cairo text probe
-before the pipeline and the real ISA plot at the end, so an image without
-fontconfig or fonts fails in the smoke test rather than in the dashboard.
+The script resolves the first two species when an external registry is used.
+Override the pair with `MAMAMIA_SMOKE_RECIPIENT` and `MAMAMIA_SMOKE_DONOR` when
+the registry order is not the intended comparison. Expected output on the demo
+at resolution 1000: 2,000 windows, a non-zero segment count, `putative:` calls,
+and a `plot:` line with a non-zero PNG size. The script prints every pipeline
+stage and fails if the result is not a `BamAnalysisResult` with at least one
+segment. It renders a cairo text probe before the pipeline and the real ISA
+plot at the end, so an image without fontconfig or fonts fails in the smoke
+test rather than in the dashboard.
 
 Check the image without starting the app:
 
@@ -253,8 +248,9 @@ request the app page with `curl -fsS http://127.0.0.1:3838/`.
 1. Copy `deployment/shinyproxy.yml` to the ShinyProxy host as
    `/opt/shinyproxy/application.yml`, or start the jar with
    `--spring.config.location=file:/path/to/shinyproxy.yml`.
-2. Create `/srv/mamamia/{config,gcidx,bams}` and mount them read-only for the
+2. Create `/srv/mamamia/{config,gcidx}` and mount them read-only for the
    ShinyProxy user. The container mounts in the spec repeat the same paths.
+   BAMs are not mounted; users upload them.
 3. Make the image available to the Docker daemon that ShinyProxy uses
    (`docker build`, `docker save`/`load`, or a registry).
 4. Start ShinyProxy. The app appears as **MaMaMIA** and starts containers with:
@@ -318,12 +314,13 @@ in-app cancellation.
 
 - Uploaded BAMs and generated CSI indexes live in the session temp directory
   and are removed by `session$onSessionEnded()`.
-- Server-side BAMs are staged by symlink (copied only when symlinking is not
-  supported) and are never written in place.
-- The image runs as the unprivileged `mamamia` user; the registry, indexes and
-  BAM root are mounted read-only; only `/tmp` and the R cache are writable.
-- There are no arbitrary server paths: the BAM root comes from the registry,
-  and every selected upload is validated by preflight.
+- Uploaded BAMs are staged by symlink into session temp (copied only when
+  symlinking is not supported) and are never written in place. The container
+  mounts no BAM directory.
+- The image runs as the unprivileged `mamamia` user; the registry and indexes
+  are mounted read-only; only `/tmp` and the R cache are writable.
+- There are no arbitrary server paths: every BAM comes from a Shiny upload and
+  is validated by preflight.
 - ShinyProxy listens on `127.0.0.1` in the supplied configuration. Enable
   ShinyProxy authentication (LDAP/OIDC/simple) or an authenticating reverse
   proxy before exposing it.

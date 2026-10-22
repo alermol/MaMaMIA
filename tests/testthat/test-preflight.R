@@ -199,49 +199,19 @@ test_that("preflightBams() enforces max_bams and max_total_bytes", {
     )
 })
 
-test_that("preflightBams() enforces server.bam_root containment", {
+test_that("preflightBams() accepts uploads without a server BAM root", {
     skip_if_no_tiny_fixtures()
-    root <- tempfile("bam-root-")
-    session <- tempfile("bam-session-")
-    outside_dir <- tempfile("bam-outside-")
-    dir.create(root)
-    dir.create(session)
-    dir.create(outside_dir)
-    on.exit(unlink(c(root, session, outside_dir), recursive = TRUE), add = TRUE)
-
-    inside <- file.path(root, "inside.bam")
-    outside <- file.path(outside_dir, "outside.bam")
-    expect_true(file.copy(tiny_bam_path(), inside))
-    expect_true(file.copy(tiny_bam_path(), outside))
+    directory <- tempfile("bam-upload-")
+    dir.create(directory)
+    on.exit(unlink(directory, recursive = TRUE), add = TRUE)
+    upload <- file.path(directory, "upload.bam")
+    expect_true(file.copy(tiny_bam_path(), upload))
 
     config <- preflight_tiny_config()
-    config$server$bam_root <- root
-    old_options <- options(MaMaMIA.session_dir = session)
-    on.exit(options(old_options), add = TRUE)
-
-    expect_no_error(preflightBams(inside, config))
-    expect_error(
-        preflightBams(outside, config),
-        "outside server.bam_root",
-        class = "MaMaMIAPathError"
-    )
-
-    upload <- file.path(session, "upload.bam")
-    expect_true(file.copy(tiny_bam_path(), upload))
+    ## Old registries may still carry the removed key; it must not restrict
+    ## uploads or fail validation.
+    config$server$bam_root <- tempfile("legacy-root-")
     expect_no_error(preflightBams(upload, config))
-
-    if (.Platform$OS.type == "unix") {
-        staged <- file.path(session, "staged.bam")
-        escape <- file.path(session, "escape.bam")
-        expect_true(file.symlink(inside, staged))
-        expect_true(file.symlink(outside, escape))
-        expect_no_error(preflightBams(staged, config))
-        expect_error(
-            preflightBams(escape, config),
-            "outside server.bam_root",
-            class = "MaMaMIAPathError"
-        )
-    }
 })
 
 test_that("preflightBams() reports CSI status and planned action", {
@@ -369,39 +339,5 @@ test_that("preflightBams() validates its inputs", {
         preflightBams(tiny_bam_path(), config, assembly = "unknown"),
         "Unknown assembly",
         class = "MaMaMIAAssemblyMatchError"
-    )
-})
-
-test_that(".list_bam_files() lists only regular BAM files under the root", {
-    root <- tempfile("bam-list-")
-    outside <- tempfile("bam-list-outside-")
-    dir.create(root)
-    dir.create(file.path(root, "sub", "deep"), recursive = TRUE)
-    dir.create(outside)
-    on.exit(unlink(c(root, outside), recursive = TRUE), add = TRUE)
-
-    file.create(file.path(root, "a.bam"))
-    file.create(file.path(root, "notes.txt"))
-    file.create(file.path(root, "sub", "b.bam"))
-    file.create(file.path(root, "sub", "deep", "c.bam"))
-    outside_bam <- file.path(outside, "evil.bam")
-    file.create(outside_bam)
-
-    if (.Platform$OS.type == "unix") {
-        file.symlink(outside_bam, file.path(root, "evil.bam"))
-    }
-
-    files <- MaMaMIA:::.list_bam_files(root, max_depth = 2L)
-    expect_identical(basename(files), c("a.bam", "b.bam"))
-    expect_false(attr(files, "truncated"))
-
-    truncated <- MaMaMIA:::.list_bam_files(root, max_depth = 2L, max_files = 1L)
-    expect_length(truncated, 1L)
-    expect_true(attr(truncated, "truncated"))
-
-    expect_error(
-        MaMaMIA:::.list_bam_files(tempfile()),
-        "does not exist or is not a directory",
-        class = "MaMaMIAPathError"
     )
 })

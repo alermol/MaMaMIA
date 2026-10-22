@@ -10,35 +10,6 @@
     .mamamia_error("MaMaMIAPreflightError", fmt, ...)
 }
 
-.strip_trailing_slash <- function(path) {
-    if (nchar(path) > 1L && grepl("[/\\\\]$", path)) {
-        sub("[/\\\\]+$", "", path)
-    } else {
-        path
-    }
-}
-
-.path_under <- function(path, root) {
-    path <- .strip_trailing_slash(path)
-    root <- .strip_trailing_slash(root)
-    if (!nzchar(root)) {
-        root <- "/"
-    }
-    if (.Platform$OS.type == "windows") {
-        path <- tolower(path)
-        root <- tolower(root)
-    }
-    if (identical(path, root)) {
-        return(TRUE)
-    }
-    prefix <- if (identical(root, "/") || grepl("[/\\\\]$", root)) {
-        root
-    } else {
-        paste0(root, "/")
-    }
-    startsWith(path, prefix)
-}
-
 .file_readable <- function(path) {
     if (.Platform$OS.type == "unix") {
         ## Permission bits, not file.access(): root can read a 0000 file, but
@@ -53,44 +24,6 @@
 
 .session_temp_dir <- function() {
     getOption("MaMaMIA.session_dir", tempdir())
-}
-
-.check_bam_containment <- function(path, bam_root, session_dir = .session_temp_dir()) {
-    if (is.null(bam_root)) {
-        return(invisible(path))
-    }
-    if (!is.character(bam_root) || length(bam_root) != 1L ||
-        is.na(bam_root) || !nzchar(bam_root)) {
-        .mamamia_error(
-            "MaMaMIAPathError", "`server.bam_root` must be a single directory path"
-        )
-    }
-    bam_root <- path.expand(bam_root)
-    if (!dir.exists(bam_root)) {
-        .mamamia_error(
-            "MaMaMIAPathError",
-            "server.bam_root '%s' does not exist or is not a directory", bam_root
-        )
-    }
-
-    resolved <- normalizePath(path, winslash = "/", mustWork = TRUE)
-    root <- normalizePath(bam_root, winslash = "/", mustWork = TRUE)
-    if (.path_under(resolved, root)) {
-        return(invisible(path))
-    }
-
-    ## Uploads and staged copies live in session temp. A symlink there that
-    ## points outside both the session directory and bam_root is still
-    ## rejected because normalizePath() resolves it first.
-    session <- normalizePath(session_dir, winslash = "/", mustWork = FALSE)
-    if (.path_under(resolved, session)) {
-        return(invisible(path))
-    }
-
-    .mamamia_error(
-        "MaMaMIAPathError",
-        "BAM path '%s' is outside server.bam_root '%s'", path, bam_root
-    )
 }
 
 .csi_status <- function(path) {
@@ -165,15 +98,16 @@
 #' Validate BAM inputs before an analysis
 #'
 #' Reads only file metadata and BAM headers. Every path must exist, be a
-#' non-empty regular file, be readable, and (when `server.bam_root` is set) live
-#' under that root or in session temporary storage. File count and total size
-#' limits from `config$server` are enforced. Headers are parsed once, sample
-#' names are resolved per D2, duplicate samples are rejected, and every BAM must
-#' match the same configured assembly.
+#' non-empty regular file and be readable. File count and total size limits from
+#' `config$server` are enforced. Headers are parsed once, sample names are
+#' resolved per D2, duplicate samples are rejected, and every BAM must match the
+#' same configured assembly.
 #'
-#' No index is built and no alignment is read. The returned table reports the
-#' CSI status and the action the pipeline will take: `reuse`, `create`,
-#' `rebuild`, or `stage` (for read-only BAM directories).
+#' BAMs are supplied only through Shiny uploads; there is no server-side BAM
+#' directory. No index is built and no alignment is read. The returned table
+#' reports the CSI status and the action the pipeline will take: `reuse`,
+#' `create`,
+#' `rebuild`, or `stage` (when the containing directory is not writable).
 #'
 #' @param paths Character vector of BAM paths.
 #' @param config A validated configuration list from [readMaMaMIAConfig()], or a
@@ -212,9 +146,6 @@ preflightBams <- function(paths, config, assembly = NULL) {
     if (is.null(server$max_total_bytes)) {
         server$max_total_bytes <- defaults$max_total_bytes
     }
-    if (is.null(server$bam_root)) {
-        server$bam_root <- defaults$bam_root
-    }
 
     n <- length(paths)
     if (n > server$max_bams) {
@@ -234,7 +165,6 @@ preflightBams <- function(paths, config, assembly = NULL) {
         if (!.file_readable(path)) {
             .bam_header_error("BAM file is not readable: %s", path)
         }
-        .check_bam_containment(path, server$bam_root)
         size <- file.info(path)$size
         if (length(size) != 1L || is.na(size) || !is.finite(size)) {
             .bam_header_error("Could not determine the size of BAM '%s'", path)
@@ -297,71 +227,4 @@ preflightBams <- function(paths, config, assembly = NULL) {
     )
     rownames(out) <- NULL
     out
-}
-
-#' List server-side BAM files under a configured root
-#'
-#' Returns regular `.bam` files below `root`, bounded by depth and file count.
-#' Symlinks are resolved; anything that escapes `root` is dropped. This is the
-#' listing used by the Shiny server-side picker.
-#'
-#' @param root Directory to scan.
-#' @param max_depth Maximum directory depth (1 = files directly in `root`).
-#' @param max_files Maximum number of files to return.
-#'
-#' @return A sorted character vector of absolute BAM paths. The
-#'   `"truncated"` attribute is `TRUE` when more files were found than
-#'   `max_files`.
-#' @noRd
-.list_bam_files <- function(root, max_depth = 3L, max_files = 5000L) {
-    if (!is.character(root) || length(root) != 1L || is.na(root) ||
-        !nzchar(root)) {
-        .mamamia_error("MaMaMIAPathError", "`root` must be a single directory path")
-    }
-    root <- path.expand(root)
-    if (!dir.exists(root)) {
-        .mamamia_error(
-            "MaMaMIAPathError",
-            "BAM root '%s' does not exist or is not a directory", root
-        )
-    }
-    max_depth <- .index_integer(max_depth, "max_depth", minimum = 1L)
-    max_files <- .index_integer(max_files, "max_files", minimum = 1L)
-    root <- normalizePath(root, winslash = "/", mustWork = TRUE)
-
-    files <- list.files(
-        root,
-        pattern = "(?i)\\.bam$",
-        recursive = TRUE,
-        full.names = TRUE,
-        all.files = FALSE,
-        include.dirs = FALSE,
-        no.. = TRUE
-    )
-    if (length(files) == 0L) {
-        out <- character(0)
-        attr(out, "truncated") <- FALSE
-        return(out)
-    }
-
-    relative <- substring(files, nchar(root) + 2L)
-    depth <- lengths(strsplit(relative, "/", fixed = TRUE))
-    files <- files[depth <= max_depth]
-    files <- files[utils::file_test("-f", files)]
-    if (length(files) == 0L) {
-        out <- character(0)
-        attr(out, "truncated") <- FALSE
-        return(out)
-    }
-
-    resolved <- normalizePath(files, winslash = "/", mustWork = TRUE)
-    keep <- vapply(resolved, .path_under, logical(1), root = root)
-    resolved <- sort(unique(resolved[keep]))
-
-    truncated <- length(resolved) > max_files
-    if (truncated) {
-        resolved <- utils::head(resolved, max_files)
-    }
-    attr(resolved, "truncated") <- truncated
-    resolved
 }

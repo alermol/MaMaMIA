@@ -27,7 +27,6 @@ defaults:
   normalization_by_side: true
 
 server:
-  bam_root: /srv/mamamia/bams   # optional; enables server-side file picking
   max_bams: 20
   max_total_bytes: 5368709120   # 5 GiB
 

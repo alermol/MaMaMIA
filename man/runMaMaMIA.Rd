@@ -7,7 +7,6 @@
 runMaMaMIA(
   cache = NULL,
   config = NULL,
-  bam_paths = NULL,
   max_request_size = 5 * 1024^3,
   host = "127.0.0.1",
   port = NULL,
@@ -22,10 +21,6 @@ user cache directory.}
 \item{config}{Optional assembly registry: a path to a YAML configuration or
 a validated configuration list from \code{\link[=readMaMaMIAConfig]{readMaMaMIAConfig()}}. The app falls
 back to the \code{MAMAMIA_CONFIG} environment variable when this is \code{NULL}.}
-
-\item{bam_paths}{Optional character vector of server-side BAM paths used to
-preselect the BAM picker. The paths must still pass preflight (under
-\code{server.bam_root} when it is configured).}
 
 \item{max_request_size}{Maximum size in bytes of a single Shiny upload,
 passed to \code{options(shiny.maxRequestSize = )}. Defaults to 5 GiB.}
@@ -53,12 +48,17 @@ from the \code{MAMAMIA_CONFIG} environment variable (the ShinyProxy deployment
 path). A missing or invalid registry is rendered as a configuration error
 card rather than a crash.
 
-Uploaded BAMs and server-side BAMs under \code{server.bam_root} are staged into a
-private per-session directory (symlinked for large files, copied for small
-files and when symlinks are unsupported) and indexed there. The source
-directories are never written to; the session directory and every staged BAM
-and CSI index are removed when the session ends. GC index handles are
-process-wide and are not cleared at session end.
+Uploaded BAMs are staged into a private per-session directory (symlinked
+for large files, copied for small files and when symlinks are unsupported)
+and indexed there. The source upload directory is never written to; the
+session directory and every staged BAM and CSI index are removed when the
+session ends. GC index handles are process-wide and are not cleared at
+session end.
+
+The app also offers a bundled synthetic example. It loads a pre-computed
+result instead of reading a BAM, but replays the normal pipeline stages, so
+the user sees the same progress messages as a real run without mounting an
+example BAM in the container.
 
 The analysis runs in the R session, so the session blocks while it runs; the
 progress bar reports the pipeline stages (headers, indexes, windows, GC,
@@ -77,7 +77,6 @@ before calling this function.
 \examples{
 \dontrun{
 runMaMaMIA(config = "assemblies.yml")
-runMaMaMIA(config = "assemblies.yml", bam_paths = "bams/sample1.bam")
 }
 }
 \seealso{

@@ -32,12 +32,17 @@ default_fit_cache <- function() {
 #' path). A missing or invalid registry is rendered as a configuration error
 #' card rather than a crash.
 #'
-#' Uploaded BAMs and server-side BAMs under `server.bam_root` are staged into a
-#' private per-session directory (symlinked for large files, copied for small
-#' files and when symlinks are unsupported) and indexed there. The source
-#' directories are never written to; the session directory and every staged BAM
-#' and CSI index are removed when the session ends. GC index handles are
-#' process-wide and are not cleared at session end.
+#' Uploaded BAMs are staged into a private per-session directory (symlinked
+#' for large files, copied for small files and when symlinks are unsupported)
+#' and indexed there. The source upload directory is never written to; the
+#' session directory and every staged BAM and CSI index are removed when the
+#' session ends. GC index handles are process-wide and are not cleared at
+#' session end.
+#'
+#' The app also offers a bundled synthetic example. It loads a pre-computed
+#' result instead of reading a BAM, but replays the normal pipeline stages, so
+#' the user sees the same progress messages as a real run without mounting an
+#' example BAM in the container.
 #'
 #' The analysis runs in the R session, so the session blocks while it runs; the
 #' progress bar reports the pipeline stages (headers, indexes, windows, GC,
@@ -59,9 +64,6 @@ default_fit_cache <- function() {
 #' @param config Optional assembly registry: a path to a YAML configuration or
 #'   a validated configuration list from [readMaMaMIAConfig()]. The app falls
 #'   back to the `MAMAMIA_CONFIG` environment variable when this is `NULL`.
-#' @param bam_paths Optional character vector of server-side BAM paths used to
-#'   preselect the BAM picker. The paths must still pass preflight (under
-#'   `server.bam_root` when it is configured).
 #' @param max_request_size Maximum size in bytes of a single Shiny upload,
 #'   passed to `options(shiny.maxRequestSize = )`. Defaults to 5 GiB.
 #' @param host Host passed to [shiny::runApp()].
@@ -74,10 +76,9 @@ default_fit_cache <- function() {
 #' @examples
 #' \dontrun{
 #' runMaMaMIA(config = "assemblies.yml")
-#' runMaMaMIA(config = "assemblies.yml", bam_paths = "bams/sample1.bam")
 #' }
 #' @export
-runMaMaMIA <- function(cache = NULL, config = NULL, bam_paths = NULL,
+runMaMaMIA <- function(cache = NULL, config = NULL,
                        max_request_size = 5 * 1024^3,
                        host = "127.0.0.1", port = NULL,
                        launch.browser = interactive()) {
@@ -94,7 +95,7 @@ runMaMaMIA <- function(cache = NULL, config = NULL, bam_paths = NULL,
         cache <- default_fit_cache()
     }
 
-    app <- mamamia_app(cache = cache, config = config, bam_paths = bam_paths)
+    app <- mamamia_app(cache = cache, config = config)
     args <- list(appDir = app, host = host, launch.browser = launch.browser)
     if (!is.null(port)) {
         args$port <- port
@@ -108,10 +109,9 @@ runMaMaMIA <- function(cache = NULL, config = NULL, bam_paths = NULL,
 #' launching Shiny. The `mamamia_input` attribute is always `"bam"`.
 #'
 #' @noRd
-mamamia_app <- function(cache = NULL, config = NULL, bam_paths = NULL) {
+mamamia_app <- function(cache = NULL, config = NULL) {
     app <- bam_launcher_app(
         config = config,
-        bam_paths = bam_paths,
         cache = cache
     )
     attr(app, "mamamia_input") <- "bam"

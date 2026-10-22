@@ -32,7 +32,6 @@
 
 .config_server_defaults <- function() {
     list(
-        bam_root = NULL,
         max_bams = 20L,
         max_total_bytes = 5 * 1024^3
     )
@@ -963,10 +962,6 @@ chr_number <- function(chr_name) {
         .config_error("`server` must be a mapping")
     }
     out <- .config_server_defaults()
-    if (!is.null(server$bam_root)) {
-        bam_root <- .config_string(server$bam_root, "server.bam_root")
-        out$bam_root <- .config_path(bam_root, config_dir)
-    }
     if (!is.null(server$max_bams)) {
         out$max_bams <- .config_integer(server$max_bams, "server.max_bams", min = 1L)
     }
@@ -1030,9 +1025,9 @@ readMaMaMIAConfig <- function(path) {
 #' Validate a MaMaMIA configuration
 #'
 #' Takes a configuration list, either read from YAML or assembled in memory,
-#' and returns a normalized configuration. Relative GC index and `bam_root`
-#' paths are resolved against the directory recorded by
-#' `readMaMaMIAConfig()`, or the current working directory for a plain list.
+#' and returns a normalized configuration. Relative GC index paths are resolved
+#' against the directory recorded by `readMaMaMIAConfig()`, or the current
+#' working directory for a plain list.
 #'
 #' @param config A configuration list with `version`, optional `defaults`,
 #'   optional `server`, optional `assemblies`, and optional `species`. At least

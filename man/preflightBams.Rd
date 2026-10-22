@@ -22,14 +22,15 @@ A data frame with one row per BAM and columns \code{path}, \code{file_size},
 }
 \description{
 Reads only file metadata and BAM headers. Every path must exist, be a
-non-empty regular file, be readable, and (when \code{server.bam_root} is set) live
-under that root or in session temporary storage. File count and total size
-limits from \code{config$server} are enforced. Headers are parsed once, sample
-names are resolved per D2, duplicate samples are rejected, and every BAM must
-match the same configured assembly.
+non-empty regular file and be readable. File count and total size limits from
+\code{config$server} are enforced. Headers are parsed once, sample names are
+resolved per D2, duplicate samples are rejected, and every BAM must match the
+same configured assembly.
 }
 \details{
-No index is built and no alignment is read. The returned table reports the
-CSI status and the action the pipeline will take: \code{reuse}, \code{create},
-\code{rebuild}, or \code{stage} (for read-only BAM directories).
+BAMs are supplied only through Shiny uploads; there is no server-side BAM
+directory. No index is built and no alignment is read. The returned table
+reports the CSI status and the action the pipeline will take: \code{reuse},
+\code{create},
+\code{rebuild}, or \code{stage} (when the containing directory is not writable).
 }

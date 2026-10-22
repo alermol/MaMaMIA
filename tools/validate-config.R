@@ -7,9 +7,8 @@
 ##
 ## This checks everything the application checks at startup (YAML shape,
 ## species groups and defaults, gcrank format version and contig tables,
-## target-contig coverage, pairs, windows) and adds deployment checks: index
-## payload files and the optional server-side BAM root. Exit status 0 means the
-## registry is usable.
+## target-contig coverage, pairs, windows) and adds deployment checks for the
+## index payload files. Exit status 0 means the registry is usable.
 
 usage <- "Usage: Rscript tools/validate-config.R <assemblies.yml>"
 
@@ -139,30 +138,6 @@ for (key in names(config$assemblies)) {
     }
     if (any(donor$subgenome %in% recipient$subgenome)) {
         fail("assembly '%s' shares a subgenome label between sides", key)
-    }
-}
-
-bam_root <- config$server$bam_root
-if (is.null(bam_root)) {
-    cat("BAM root: not configured (uploads only)\n")
-} else if (!dir.exists(bam_root)) {
-    fail("server.bam_root does not exist or is not a directory: %s", bam_root)
-} else {
-    bams <- list.files(
-        bam_root, pattern = "[.]bam$", recursive = TRUE, full.names = TRUE
-    )
-    cat("BAM root:", bam_root, "|", length(bams), "BAM file(s)\n")
-    if (length(bams) == 0L) {
-        warning(
-            "server.bam_root contains no BAM files; the picker will be empty",
-            call. = FALSE
-        )
-    }
-    if (file.access(bam_root, mode = 2L) == 0L) {
-        warning(
-            "server.bam_root is writable; mount it read-only in production",
-            call. = FALSE
-        )
     }
 }
 

@@ -226,24 +226,25 @@ the six-decimal precision stored in the legacy BED files.
 
 ## Interactive dashboard
 
-Start the BAM-first app with a registry. With `config` (or `bam_paths`),
-`runMaMaMIA()` selects the BAM-first app automatically:
+Start the BAM-first app with a registry:
 
 ```{r run-ma-ma-mia, eval = FALSE}
 runMaMaMIA(config = "assemblies.yml")
 ```
 
-Choose a recipient and a donor species, optionally swap them, select one or
-more BAMs (upload or server-side), choose a resolution and normalization, and
-run. The cohort summary reports windows, segments and putative calls per
-sample. The explorer draws a circos overview with `interacCircos` (chromosome
-ideograms, the per-window donor-recipient difference, segment spans and links),
-keeps selections per sample and exports a per-sample BEDPE or a combined BEDPE
-with a `sample` column. The app runs on ShinyProxy with the image and registry
-described in `docs-source/shinyproxy.md`; the container entrypoint is
+Choose a recipient and a donor species, optionally swap them, upload one or
+more BAMs, choose a resolution and normalization, and run. The container mounts
+no BAM directory; every BAM is uploaded by the user. The cohort summary reports
+windows, segments and putative calls per sample. The explorer draws a circos
+overview with `interacCircos` (chromosome ideograms, the per-window
+donor-recipient difference, segment spans and links), keeps selections per
+sample and exports a per-sample BEDPE or a combined BEDPE with a `sample`
+column. The app runs on ShinyProxy with the image and registry described in
+`docs-source/shinyproxy.md`; the container entrypoint is
 `uvr run /app/deployment/start.R`.
 
-The bundled demo can be opened directly:
+The bundled demo can be opened directly, or run without any upload from the
+**Use bundled example data** checkbox:
 
 ```{r run-demo, eval = FALSE}
 runMaMaMIA(config = file.path(demo, "assemblies.yml"))
@@ -702,7 +703,7 @@ is written and a warning is issued.
 # Migration from the directory layout
 
 The directory-layout launcher and its readers have been removed.
-`runMaMaMIA(config = ..., bam_paths = ...)` is the single Shiny entrypoint, and
+`runMaMaMIA(config = ...)` is the single Shiny entrypoint, and
 `analyzeBamInput()` is the scripted pipeline. To migrate:
 
 1. Keep the BAMs and `gcrank` indexes; describe the two genomes as `species:`

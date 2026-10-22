@@ -68,7 +68,6 @@ defaults:
   normalization_by_side: true
 
 server:
-  bam_root: /srv/mamamia/bams   # optional; enables the server-side picker
   max_bams: 20
   max_total_bytes: 5368709120   # 5 GiB
 
@@ -108,7 +107,7 @@ library(MaMaMIA)
 runMaMaMIA(config = "assemblies.yml")
 ```
 
-With `config` (or `bam_paths`), `runMaMaMIA()` opens the BAM-first app. Choose a
+With `config`, `runMaMaMIA()` opens the BAM-first app. Choose a
 **recipient species** and a **donor species**; each species can be used on
 either side of different runs (one run needs two different species), and the
 **Swap donor and recipient** button reverses the comparison without
@@ -120,26 +119,26 @@ When the registry also declares named `assemblies:` presets, an optional
 checkbox enables BAM-header auto-detection; a registry without a `species:`
 section falls back to auto-detection automatically.
 
-Select one or more BAMs (upload or server-side under `server.bam_root`),
-choose a resolution and normalization mode, and run. The app shows a cohort
-summary with a circos overview of the visible calls (chromosome ideograms, the
-per-window coverage difference, segment spans and donor-recipient links), keeps
-table selections per sample, and exports a per-sample BEDPE or a combined BEDPE
-with a `sample` column. Uploaded BAMs are staged into a private session
-directory and removed on session end; server-side BAMs are only read.
+Upload one or more BAMs, choose a resolution and normalization mode, and run.
+BAMs are accepted only through the upload control; the container does not
+mount a BAM directory. The app shows a cohort summary with a circos overview of
+the visible calls (chromosome ideograms, the per-window coverage difference,
+segment spans and donor-recipient links), keeps table selections per sample,
+and exports a per-sample BEDPE or a combined BEDPE with a `sample` column.
+Uploaded BAMs are staged into a private session directory and removed on
+session end.
 
-A small synthetic dataset ships with the package. It has two species, a
-variable-GC index and enough coverage for a complete run:
-
-```r
-demo <- system.file("extdata", "bam-demo", package = "MaMaMIA")
-runMaMaMIA(config = file.path(demo, "assemblies.yml"))
-```
-
-The demo BAM is listed under the server BAMs; choose resolution 100, run, and
-export the putative introgressions.
+A small synthetic example ships as pre-computed tables and is available from
+the **Use bundled example data** checkbox. It has two species and a
+variable-GC index, needs no BAM upload and no mounted BAM, and replays the
+normal pipeline stage messages before showing the stored result. Set
+`windows_per_chromosome` to 100 or 1,000 for the example (the bundled demo
+contigs are too short for a useful 10,000-window GC fit).
 
 ### Scripted BAM-first run
+
+The small `inst/extdata/bam-demo` fixture remains available for scripted runs
+and documentation examples:
 
 ```r
 demo <- system.file("extdata", "bam-demo", package = "MaMaMIA")
@@ -176,9 +175,8 @@ reverse comparison. The same two calls accept two or more BAMs and
 | `defaults.gc_mmap` | `true` | Memory-map GC indexes. |
 | `defaults.gc_validate_crc` | `false` | Verify every index payload against the manifest at open. |
 | `defaults.normalization_by_side` | `true` | Normalize donor and recipient windows independently. |
-| `server.bam_root` | none | Directory scanned for server-side BAMs. |
 | `server.max_bams` | `20` | Maximum BAMs per run. |
-| `server.max_total_bytes` | 5 GiB | Maximum total input size. |
+| `server.max_total_bytes` | 5 GiB | Maximum total upload size. |
 | `species.<key>.label` | required | Display name. |
 | `species.<key>.default_subgenome` | none | Preselected subgenome for a polyploid. |
 | `species.<key>.gc_indexes` | required | One or more `*.gcrank` directories. |
@@ -306,8 +304,8 @@ by the removal of the directory-layout launcher.
 The directory-layout launcher and its readers (`readMaMaMIAInput()`,
 `listMaMaMIASamples()`, `listMaMaMIAReferences()`, `launcher_app()` and the
 `analysis_dir` / `assemblies_dir` / `input` arguments of `runMaMaMIA()`) were
-removed. `runMaMaMIA(config = ..., bam_paths = ...)` is the single Shiny
-entrypoint. To migrate:
+removed. `runMaMaMIA(config = ...)` is the single Shiny entrypoint. To
+migrate:
 
 1. Keep the BAMs and the `gcrank` indexes; declare the two genomes as `species:`
    in a registry (see `inst/config/assemblies.example.yml`).

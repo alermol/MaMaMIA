@@ -36,7 +36,7 @@ MaMaMIAConfig <- list(
   ),
   assemblies = named list of AssemblyConfig,
   species = named list of SpeciesConfig,
-  server = list(bam_root = NULL, max_bams = 20L, max_total_bytes = 5 * 1024^3)
+  server = list(max_bams = 20L, max_total_bytes = 5 * 1024^3)
 )
 
 # SpeciesConfig; role-free. The user assigns donor/recipient at run time.
@@ -250,7 +250,7 @@ writeToBedpe(ISA, file, sample = NULL)
 writeCohortToBedpe(result, file, samples = NULL, selected = NULL)
 
 # Application entrypoint
-runMaMaMIA(cache = NULL, config = NULL, bam_paths = NULL,
+runMaMaMIA(cache = NULL, config = NULL,
            max_request_size = 5 * 1024^3,
            host = "127.0.0.1", port = NULL, launch.browser = interactive())
 ```
@@ -267,9 +267,10 @@ and the selected subgenomes; pass `resolved$config` and `resolved$key` to
 
 `runMaMaMIA()` is the only application entrypoint and always opens the
 BAM-first app. It accepts a validated `config` (or falls back to
-`MAMAMIA_CONFIG`), optional server-side `bam_paths`, and the upload limit.
-`bam_launcher_app()` and `mamamia_app()` are internal. The directory-layout
-arguments, modes and readers were removed in T7.5 (section 17.4).
+`MAMAMIA_CONFIG`) and the upload limit. `bam_launcher_app()` and `mamamia_app()`
+are internal. The directory-layout arguments, modes and readers were removed in
+T7.5 (section 17.4); the server-side BAM picker and `bam_paths` followed in the
+example-data revision.
 
 ---
 
@@ -326,7 +327,7 @@ assembly, contig, file). Functions must stop before expensive work starts.
 | `MaMaMIASampleError` | preflight | `BAM '<path>' has more than one distinct @RG SM value: <values>` |
 | `MaMaMIASampleError` | preflight | `Duplicate sample name '<sample>' in input BAMs: <paths>` |
 | `MaMaMIAHeaderMismatchError` | preflight | `BAM '<path>' target '<contig>' has length <observed>; assembly '<key>' expects <expected>` |
-| `MaMaMIAPathError` | preflight | `BAM path '<path>' is outside server.bam_root '<root>'` |
+| `MaMaMIAPathError` | preflight | Invalid or unreadable upload path |
 | `MaMaMIALimitError` | preflight | `Too many BAM files: <n> (limit <max_bams>)` or `Total BAM size <bytes> exceeds <max_total_bytes> bytes` |
 | `MaMaMIAAssemblyMatchError` | preflight | `BAM '<path>' covers only one side of assembly '<key>'` |
 | `MaMaMIAPreflightError` | preflight | malformed `paths` argument |
@@ -375,7 +376,7 @@ A species pair needs two different species; both sides are '<key>'
 | D9 | Fit at most `max_fit_windows` ideal windows, stratified by subgenome and GC; predict all; include the limit in the cache key and metadata. |
 | D10 | Remove legacy directory-layout code after the T7.4 gate; keep the core analysis API. |
 | D11 | Per-sample `ISA` list, sample selector in the UI, combined BEDPE download with a `sample` column. |
-| D12 | Support uploads (session temp) and server paths (only under `server.bam_root`); never write under `bam_root`. |
+| D12 | Support uploads only (session temp); the container mounts no BAM directory. |
 | D13 | Use `uvr`, not `renv`; commit `uvr.toml`, `uvr.lock`, `.r-version`; ignore `.uvr/library/`; CI uses `uvr sync --frozen --unattended`. |
 | D14 | R packages come only from uvr; conda `mamamia` is for non-R tools only. Production Docker uses apt/GCC/uvr, not the conda environment. |
 
@@ -536,17 +537,10 @@ D2 and duplicate resolved names stop preflight. `matchAssemblyCohort()` enforces
 one assembly across all inputs; extra header targets are allowed and reported
 as a warning.
 
-Path containment is enforced when `server.bam_root` is set: paths are resolved
-with `normalizePath()` (so `..` and symlinks cannot escape), and a path is
-accepted only under the root or under the session temporary directory. The
-upload directory is `getOption("MaMaMIA.session_dir", tempdir())`; the app can
-set this option per session. A symlink in session temp that resolves outside
-both locations is rejected.
+Uploaded paths are staged into session temporary storage; there is no
+server-side BAM root and no path-containment check. The upload directory is
+`getOption("MaMaMIA.session_dir", tempdir())`.
 
-`.list_bam_files(root, max_depth, max_files)` (internal) is the bounded listing
-for the server-side picker. It returns regular `.bam` files only, drops
-symlinks that resolve outside `root`, and records `attr(x, "truncated")` when
-`max_files` is reached.
 
 New error subclasses in this wave: `MaMaMIAPreflightError`,
 `MaMaMIAPathError`, `MaMaMIALimitError` and `MaMaMIACountError` (all inherit
@@ -831,11 +825,10 @@ sample name. A gated synthetic two-sample cohort run confirms that a real
 
 ### 13.1 Entrypoint
 
-`runMaMaMIA(cache, config, bam_paths, max_request_size, host, port,
-launch.browser)` is the single Shiny entrypoint. The BAM-first app is always
-selected: `config` may be a YAML path or a validated configuration list, and a
-`NULL` falls back to `MAMAMIA_CONFIG`. `bam_paths` preselects server-side BAMs.
-`max_request_size` (default 5 GiB) is passed to
+`runMaMaMIA(cache, config, max_request_size, host, port, launch.browser)` is
+the single Shiny entrypoint. The BAM-first app is always selected: `config` may
+be a YAML path or a validated configuration list, and a `NULL` falls back to
+`MAMAMIA_CONFIG`. `max_request_size` (default 5 GiB) is passed to
 `options(shiny.maxRequestSize)`. The internal `mamamia_app()` builds the app
 object without launching it and records `mamamia_input = "bam"`, which tests
 use. The legacy `analysis_dir` / `assemblies_dir` arguments and the `input`
@@ -843,16 +836,15 @@ dispatch were removed in T7.5.
 
 ### 13.2 BAM-first application
 
-`bam_launcher_app(config, bam_paths = NULL, cache = NULL)` is the internal app
-factory. `config` is a YAML path, a validated configuration list or `NULL`; a
-`NULL` falls back to `MAMAMIA_CONFIG`. A missing or invalid registry renders a
-configuration error card instead of stopping the process.
+`bam_launcher_app(config, cache = NULL)` is the internal app factory. `config`
+is a YAML path, a validated configuration list or `NULL`; a `NULL` falls back
+to `MAMAMIA_CONFIG`. A missing or invalid registry renders a configuration
+error card instead of stopping the process.
 
-Sidebar controls: configuration summary; `fileInput("bams")`;
-`pickerInput("server_bams")` when `server.bam_root` is configured or initial
-`bam_paths` are supplied (bounded to depth 3 and 2,000 files, listed once per
-session); resolution radio buttons built from `defaults.allowed_windows` (Low =
-100, Medium = 1,000, High = 10,000, default
+Sidebar controls: configuration summary; `fileInput("bams")`; a
+`checkboxInput("example_data")` that runs the bundled pre-computed example;
+resolution radio buttons built from `defaults.allowed_windows` (Low = 100,
+Medium = 1,000, High = 10,000, default
 `defaults.windows_per_chromosome`); the reference selector (hidden for one
 BAM); the assembly override; advanced MAPQ, exclude-flags, cores and
 `max_fit_windows`; and a Run button that carries the `disabled` attribute and
@@ -869,15 +861,16 @@ candidate table.
 
 ### 13.3 Preflight, staging and run flow
 
-The preflight reactive collects uploaded `datapath`s and server-side picker
-paths, stages each BAM (and an existing CSI sibling) into a per-session
-directory (symlink for files of at least 1 MiB, copy for smaller files and when
-symlinks are unsupported), and calls `preflightBams()` on the staged paths. The
-copy path also means temporary-directory cleanup that follows and chmods
-symlinks cannot touch the source metadata. Staging normalizes sources to
-absolute paths, so relative picker values cannot create dangling symlinks. The
-table reports the original path as `source` but keeps the staged path for the
-run.
+The preflight reactive collects uploaded `datapath`s, stages each BAM (and an
+existing CSI sibling) into a per-session directory (symlink for files of at
+least 1 MiB, copy for smaller files and when symlinks are unsupported), and
+calls `preflightBams()` on the staged paths. The copy path also means
+temporary-directory cleanup that follows and chmods symlinks cannot touch the
+source metadata. Staging normalizes sources to absolute paths. The table
+reports the original path as `source` but keeps the staged path for the run.
+When `example_data` is selected, preflight instead returns the stored demo
+preflight table and the run loads a pre-computed `BamAnalysisResult`; it never
+opens a BAM.
 
 The run handler validates the controls through `bam_run_parameters()` (single
 BAM → `none`; cohort with an empty reference → `median`; a named reference →
@@ -909,7 +902,7 @@ zero or near-zero coverage on a side and all-zero windows in a reference sample
 are shown both in the cohort card and as a warning notification.
 
 `session$onSessionEnded()` removes the session directory, including every
-staged BAM and generated CSI index. `server.bam_root` is never written to
+staged BAM and generated CSI index. The upload directory is never written to
 because the pipeline only sees the staged copies. GC index handles are
 process-wide and are not cleared on session end. The analysis is synchronous:
 the UI states that the session blocks and no cancellation path is offered.
@@ -1069,14 +1062,14 @@ for every sample, and a new result resets the map.
 | `start.R` | validates `MAMAMIA_CONFIG` and calls `runMaMaMIA(host = "0.0.0.0", port = 3838, config = ...)` with a 5 GiB request limit |
 | `shinyproxy.yml` | `container-cmd` via `uvr run`, read-only `container-volumes`, 16 GB / 4 CPU limits, one instance per user, two per host, upload and session timeouts |
 | `nginx.conf` | 6 GB bodies, streamed uploads, one-hour proxy timeouts, WebSocket upgrade |
-| `smoke-test.R` | stages a mounted BAM in `/tmp`, runs the full pipeline and checks the result |
+| `smoke-test.R` | runs the full pipeline on the bundled demo BAM (or `MAMAMIA_SMOKE_BAM`) and checks the result |
 | `gcidx-checksums.txt` | validated gcrank format, sizes and SHA-256 (including source-FASTA digests) |
 
 `tools/validate-config.R` validates the production registry with the same
-`readMaMaMIAConfig()` path as startup, then checks index payload files and
-`server.bam_root`. `.dockerignore` keeps `test_data/`, tests and local tooling
-out of the build context and excludes compiled `*.o`/`*.so` files so the image
-compiles MaMaMIA from source.
+`readMaMaMIAConfig()` path as startup, then checks index payload files.
+`.dockerignore` keeps `test_data/`, tests and local tooling out of the build
+context and excludes compiled `*.o`/`*.so` files so the image compiles MaMaMIA
+from source.
 
 The ShinyProxy key for bind mounts is `container-volumes`; the plan's `volumes`
 snippet is shorthand. The app is synchronous, so the deployed heartbeat and
@@ -1091,9 +1084,10 @@ cohort summary, the selector, selection persistence for every sample, each
 per-sample BEDPE and the combined file (three rows, `sample` last).
 
 Deployment validation is the image build followed by a local smoke test with
-the real gcrank indexes and a server-side BAM; `docs-source/shinyproxy.md`
-records the exact commands, the consistent upload limits and the troubleshooting
-matrix. ShinyProxy itself is not needed for the build or the smoke test.
+the real gcrank indexes and either the bundled demo BAM or an external BAM;
+`docs-source/shinyproxy.md` records the exact commands, the consistent upload
+limits and the troubleshooting matrix. ShinyProxy itself is not needed for the
+build or the smoke test.
 
 On the validation host, `bioconductor.org` was unreachable, so the image was
 built with `--build-arg BIOC_MIRROR=https://bioconductor.statistik.tu-dortmund.de/packages`
@@ -1205,7 +1199,7 @@ The signatures in section 2 are final for 0.99.1. `RCA()`,
 `correctReadCounts()`, `segments()`, `writeToBedpe()` and
 `exploreIntrogressions()` remain the supported table-level API. The BAM-first
 entrypoint is `analyzeBamInput()`; the Shiny entrypoint is `runMaMaMIA()` with
-`config` and/or `bam_paths`.
+`config`.
 
 `readMaMaMIAConfig()` and `validateMaMaMIAConfig()` return the normalized
 configuration. `resolveSpeciesAssembly()` does not modify its input: it
@@ -1222,7 +1216,7 @@ by `tools/make-docs-fixture.R`:
 
 | File | Content |
 |---|---|
-| `assemblies.yml` | Two role-free species (`triticum_like`, `secale_like`) sharing one index; `bam_root: .` |
+| `assemblies.yml` | Two role-free species (`triticum_like`, `secale_like`) sharing one index |
 | `demo.gcrank/` | Two 20 kb contigs with variable GC (format `0.1.0`) |
 | `demo.bam`, `demo.bam.csi` | One sample with a donor excess in the first half of `d1` |
 | `demo.fa` | Source sequence for the index |

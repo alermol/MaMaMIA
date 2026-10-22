@@ -187,7 +187,6 @@ config <- list(
         normalization_by_side = TRUE
     ),
     server = list(
-        bam_root = ".",
         max_bams = 4L,
         max_total_bytes = 20 * 1024^2
     ),

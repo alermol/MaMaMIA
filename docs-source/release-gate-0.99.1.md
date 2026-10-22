@@ -186,7 +186,7 @@ total absolute delta 708, max GC delta 4.9995e-7.
 | D9 | Deterministic stratified fit subsample, predict all | `R/correction.R`, `R/fit-cache.R`; `test-correction.R`; high-resolution run fitted 50,000 of 271,712 ideal windows with a recorded seed | PASS |
 | D10 | Keep legacy code through T7.4 as the regression oracle | `R/app.R`, `R/input.R`, `R/validation.R`, `R/dashboard.R` still present; golden test passes | PASS (see readiness note) |
 | D11 | Per-sample ISA, UI sample selector, combined BEDPE | `R/app-bam.R` sample selector; `R/bedpe.R` combined export with `sample`; `test-dashboard-bam.R`, `test-bedpe.R`; integration BEDPE checks | PASS |
-| D12 | Uploads staged in session temp; server paths contained under `bam_root` | `R/preflight.R` containment check, `R/bam-index.R` staging; `test-preflight.R`, `test-dashboard-bam.R` | PASS |
+| D12 | Uploads staged in session temp; server-side BAM directories removed | `R/preflight.R`, `R/bam-index.R` staging; `test-preflight.R`, `test-dashboard-bam.R` | PASS |
 | D13 | uvr (not renv) | `uvr.toml`, `uvr.lock`, `.r-version`; `uvr sync --frozen` and `uvr doctor` pass; drift guards verified | PASS |
 | D14 | Conda only for non-R tools; uvr for R packages | Dockerfile has no conda; conda `mamamia` has 0 R packages and only samtools/bedtools/pandoc | PASS |
 
@@ -270,7 +270,7 @@ Removed from the package:
 * `launcher_app()`, the `analysis_dir` / `assemblies_dir` arguments and the
   `input = "auto"` / `"bam"` / `"files"` / `"example"` dispatch of
   `runMaMaMIA()`. The entrypoint is now
-  `runMaMaMIA(cache, config, bam_paths, max_request_size, host, port,
+  `runMaMaMIA(cache, config, max_request_size, host, port,
   launch.browser)` and always opens the BAM-first app.
 * `R/input.R`: `readMaMaMIAInput()`, `listMaMaMIASamples()`,
   `listMaMaMIAReferences()`, `list_window_labels()`, `read_window_table()`,
