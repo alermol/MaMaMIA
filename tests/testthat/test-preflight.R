@@ -26,9 +26,9 @@ test_that("preflightBams() describes the tiny fixture", {
     expect_s3_class(table, "data.frame")
     expect_identical(nrow(table), 1L)
     expect_named(table, c(
-        "path", "file_size", "sample", "sample_source", "assembly",
-        "n_targets", "n_assembly_targets", "index_path", "index_status",
-        "index_action", "warnings", "valid"
+        "path", "file_size", "sample", "sample_source", "n_samples",
+        "assembly", "n_targets", "n_assembly_targets", "index_path",
+        "index_status", "index_action", "warnings", "valid"
     ))
     expect_identical(
         table$path,
@@ -40,6 +40,7 @@ test_that("preflightBams() describes the tiny fixture", {
     )
     expect_identical(table$sample, "tiny-sample")
     expect_identical(table$sample_source, "rg")
+    expect_identical(table$n_samples, 1L)
     expect_identical(table$assembly, "tiny")
     expect_identical(table$n_targets, 2L)
     expect_identical(table$n_assembly_targets, 2L)
@@ -122,7 +123,7 @@ test_that("preflightBams() rejects a basename-fallback collision", {
     )
 })
 
-test_that("preflightBams() rejects BAMs with several @RG SM values", {
+test_that("preflightBams() expands a multi-sample BAM into one row per sample", {
     skip_if_no_tiny_fixtures()
     skip_if_no_samtools()
     path <- tempfile("multi-sm-", fileext = ".bam")
@@ -138,11 +139,14 @@ test_that("preflightBams() rejects BAMs with several @RG SM values", {
         path
     )
 
-    expect_error(
-        preflightBams(path, preflight_tiny_config()),
-        "more than one distinct @RG SM value.*one.*two",
-        class = "MaMaMIASampleError"
-    )
+    table <- preflightBams(path, preflight_tiny_config())
+    expect_identical(nrow(table), 2L)
+    expect_identical(table$sample, c("one", "two"))
+    expect_identical(table$n_samples, c(2L, 2L))
+    expect_identical(table$path, rep(
+        normalizePath(path, winslash = "/", mustWork = TRUE), 2L
+    ))
+    expect_identical(table$index_status, c("missing", "missing"))
 })
 
 test_that("preflightBams() rejects BAMs matching different assemblies", {

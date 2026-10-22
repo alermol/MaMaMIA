@@ -289,7 +289,7 @@ Three limits must stay consistent:
 | nginx | `client_max_body_size` | 6 GB |
 
 Raise all three together when the registry allows larger cohorts. A
-high-resolution multi-BAM run can take tens of minutes; the ShinyProxy
+high-resolution multi-sample run can take tens of minutes; the ShinyProxy
 `heartbeat-timeout` is 10 minutes and the session timeout is 12 hours. The
 analysis is synchronous, so the R session blocks during a run; there is no
 in-app cancellation.

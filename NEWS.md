@@ -2,22 +2,37 @@
 
 ## Grid dashboard layout
 
-* The BAM-first dashboard now uses the `gridlayout` package with the layout
-  `2rem` gap, `200px` sidebar, `150px` header, fluid main area and `120px`
-  footer. The application name is shown in the header, and the main area holds
-  only the **Introgression circos**, **Coverage / dosage** and **Segments**
-  tabs.
-* The sidebar starts with a **Single BAM / Multiple BAMs** selector, the upload
-  control and an **Example data** button for both modes. Analysis controls
-  appear after preflight succeeds and live in single-open collapsible panels
-  (**Analysis**, **Assembly**, **Advanced**, **Filters**, **Export**).
+* The BAM-first dashboard now uses the `gridlayout` package with a `0.5rem`
+  gap, `240px` sidebar, `75px` header, fluid main area and `100px` footer. The
+  slimmer header and footer give the result tabs more vertical space; the
+  application name is shown in large bold type in the header. The main area
+  holds only the **Introgression circos**, **Coverage / dosage** and
+  **Segments** tabs.
+* The sidebar starts with one BAM upload control and an **Example data** button.
+  Analysis controls appear after preflight succeeds and live in single-open
+  collapsible panels (**Analysis**, **Assembly**, **Filters**, **Export**).
+  There is no manual single/multi mode switch: the sample count is detected
+  from the BAM header and cohort controls appear automatically for several
+  samples. **Advanced** was removed: MAPQ, flag masks, fit limits and cores
+  come from the validated registry and the BAM is processed as-is.
+* A single BAM may contain one or several samples. Samples are read from
+  `@RG SM` tags and read groups from `@RG ID`; incomplete or duplicate read
+  groups are rejected, and reads are counted per read group for multi-sample
+  BAMs. Multi-file upload and the old multiple-BAM mode were removed; the
+  single/multi distinction is now inferred from the header.
+* The **Assembly** panel contains only the recipient/donor species and
+  subgenome selectors plus **Swap donor and recipient**. Assembly detection,
+  preflight tables and candidates are no longer shown there.
 * Preflight status, detected assemblies, assembly candidates, problems,
   suggested fixes and every pipeline stage are written to the calculation log
-  in the footer. The standalone preflight, problems and detected-window cards
-  are no longer part of the main area.
+  in the footer. The line above the log reports only the number of BAM files.
+  The log autoscrolls to new entries. The standalone preflight, problems and
+  detected-window cards are no longer part of the main area.
 * The bundled example is now loaded with the **Example data** button; pressing
   it again clears the example and restores the registry resolution choices.
-  The button is available in both single-BAM and multi-BAM modes.
+  The button is available in both modes and fills the example species and
+  resolution fields. Example progress messages are identical to a real BAM
+  run; the example itself remains pre-computed and needs no mounted BAM.
 
 ## Upload-only BAMs and bundled example data
 
@@ -48,6 +63,12 @@
   missing font setup now fails the build or the smoke test instead of the
   dashboard. `deployment/start.R` warns at startup when cairo is enabled but no
   fontconfig configuration is visible.
+* The image now installs `pandoc` so the rmarkdown/knitr development
+  dependencies and vignette tooling work in the container. The lockfile is
+  installed with the normal binary `uvr sync --frozen`; no source-build flag is
+  required. On a host that cannot reach `bioconductor.org`, build with
+  `--build-arg BIOC_MIRROR=https://bioconductor.statistik.tu-dortmund.de/packages`
+  and `--network=host` as documented in the Dockerfile.
 
 ## Dashboard layout fix: fillable pages
 

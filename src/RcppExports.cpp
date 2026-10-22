@@ -104,6 +104,26 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
+// bam_count_rg_cpp
+Rcpp::IntegerMatrix bam_count_rg_cpp(const std::string& path, Rcpp::CharacterVector contig_names, Rcpp::NumericVector contig_lengths, int n_per_chromosome, Rcpp::CharacterVector read_group_ids, Rcpp::IntegerVector sample_index, Rcpp::CharacterVector sample_names, int mapq, int exclude_flags, bool allow_missing_rg);
+RcppExport SEXP _MaMaMIA_bam_count_rg_cpp(SEXP pathSEXP, SEXP contig_namesSEXP, SEXP contig_lengthsSEXP, SEXP n_per_chromosomeSEXP, SEXP read_group_idsSEXP, SEXP sample_indexSEXP, SEXP sample_namesSEXP, SEXP mapqSEXP, SEXP exclude_flagsSEXP, SEXP allow_missing_rgSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< const std::string& >::type path(pathSEXP);
+    Rcpp::traits::input_parameter< Rcpp::CharacterVector >::type contig_names(contig_namesSEXP);
+    Rcpp::traits::input_parameter< Rcpp::NumericVector >::type contig_lengths(contig_lengthsSEXP);
+    Rcpp::traits::input_parameter< int >::type n_per_chromosome(n_per_chromosomeSEXP);
+    Rcpp::traits::input_parameter< Rcpp::CharacterVector >::type read_group_ids(read_group_idsSEXP);
+    Rcpp::traits::input_parameter< Rcpp::IntegerVector >::type sample_index(sample_indexSEXP);
+    Rcpp::traits::input_parameter< Rcpp::CharacterVector >::type sample_names(sample_namesSEXP);
+    Rcpp::traits::input_parameter< int >::type mapq(mapqSEXP);
+    Rcpp::traits::input_parameter< int >::type exclude_flags(exclude_flagsSEXP);
+    Rcpp::traits::input_parameter< bool >::type allow_missing_rg(allow_missing_rgSEXP);
+    rcpp_result_gen = Rcpp::wrap(bam_count_rg_cpp(path, contig_names, contig_lengths, n_per_chromosome, read_group_ids, sample_index, sample_names, mapq, exclude_flags, allow_missing_rg));
+    return rcpp_result_gen;
+END_RCPP
+}
 
 static const R_CallMethodDef CallEntries[] = {
     {"_MaMaMIA_gcrank_open_cpp", (DL_FUNC) &_MaMaMIA_gcrank_open_cpp, 3},
@@ -114,6 +134,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_MaMaMIA_build_stub_cpp", (DL_FUNC) &_MaMaMIA_build_stub_cpp, 0},
     {"_MaMaMIA_bam_header_info_cpp", (DL_FUNC) &_MaMaMIA_bam_header_info_cpp, 1},
     {"_MaMaMIA_bam_index_build_cpp", (DL_FUNC) &_MaMaMIA_bam_index_build_cpp, 4},
+    {"_MaMaMIA_bam_count_rg_cpp", (DL_FUNC) &_MaMaMIA_bam_count_rg_cpp, 10},
     {NULL, NULL, 0}
 };
 

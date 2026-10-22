@@ -15,22 +15,22 @@ path to a YAML configuration.}
 \item{assembly}{Optional assembly key to validate instead of auto-selecting.}
 }
 \value{
-A data frame with one row per BAM and columns \code{path}, \code{file_size},
-\code{sample}, \code{sample_source}, \code{assembly}, \code{n_targets},
+A data frame with one row per sample and columns \code{path}, \code{file_size},
+\code{sample}, \code{sample_source}, \code{n_samples}, \code{assembly}, \code{n_targets},
 \code{n_assembly_targets}, \code{index_path}, \code{index_status}, \code{index_action},
 \code{warnings} and \code{valid}.
 }
 \description{
 Reads only file metadata and BAM headers. Every path must exist, be a
 non-empty regular file and be readable. File count and total size limits from
-\code{config$server} are enforced. Headers are parsed once, sample names are
-resolved per D2, duplicate samples are rejected, and every BAM must match the
-same configured assembly.
+\code{config$server} are enforced. Headers are parsed once, samples are resolved
+from \verb{@RG SM} and read groups from \verb{@RG ID}, duplicate samples are rejected,
+and every BAM must match the same configured assembly.
 }
 \details{
 BAMs are supplied only through Shiny uploads; there is no server-side BAM
 directory. No index is built and no alignment is read. The returned table
 reports the CSI status and the action the pipeline will take: \code{reuse},
-\code{create},
-\code{rebuild}, or \code{stage} (when the containing directory is not writable).
+\code{create}, \code{rebuild}, or \code{stage} (when the containing directory is not
+writable). One BAM with several \verb{@RG SM} values yields one row per sample.
 }

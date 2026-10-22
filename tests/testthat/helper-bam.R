@@ -148,6 +148,76 @@ add_variable_gc_bam <- function(fixture, sample, filename = NULL, step = 4L) {
     path
 }
 
+## One coordinate-sorted SAM containing several samples, each with its own
+## @RG ID and RG tag on every read. Reads are emitted in coordinate order so
+## samtools can index the resulting BAM directly.
+multi_sample_variable_gc_sam <- function(samples, contig_length = 20000L,
+                                         read_length = 50L,
+                                         steps = NULL) {
+    if (is.null(steps)) {
+        steps <- rep(4L, length(samples))
+    }
+    if (length(steps) == 1L) {
+        steps <- rep(steps, length(samples))
+    }
+    if (length(steps) != length(samples)) {
+        stop("steps must have length one or length(samples)", call. = FALSE)
+    }
+    sequence <- strrep("A", read_length)
+    quality <- strrep("I", read_length)
+    reads <- list()
+    for (sample_index in seq_along(samples)) {
+        sample <- samples[[sample_index]]
+        positions <- seq(
+            1L, contig_length - read_length + 1L, by = steps[[sample_index]]
+        )
+        for (contig in c("d1", "r1")) {
+            reads[[length(reads) + 1L]] <- data.frame(
+                contig = contig,
+                position = positions,
+                sample = sample,
+                stringsAsFactors = FALSE
+            )
+        }
+    }
+    reads <- do.call(rbind, reads)
+    reads <- reads[order(
+        match(reads$contig, c("d1", "r1")), reads$position, reads$sample
+    ), , drop = FALSE]
+    read_lines <- sprintf(
+        "r_%s_%s_%d\t0\t%s\t%d\t60\t%dM\t*\t0\t0\t%s\t%s\tRG:Z:%s",
+        reads$sample, reads$contig, reads$position, reads$contig,
+        reads$position, read_length, sequence, quality, reads$sample
+    )
+    c(
+        "@HD\tVN:1.6\tSO:coordinate",
+        sprintf("@SQ\tSN:d1\tLN:%d", contig_length),
+        sprintf("@SQ\tSN:r1\tLN:%d", contig_length),
+        sprintf("@RG\tID:%s\tSM:%s", samples, samples),
+        read_lines
+    )
+}
+
+add_multi_sample_gc_bam <- function(fixture, samples, filename = "multi.bam",
+                                    steps = NULL) {
+    contig_length <- if (is.null(fixture$contig_length)) {
+        20000L
+    } else {
+        fixture$contig_length
+    }
+    path <- file.path(fixture$directory, filename)
+    write_test_bam(
+        multi_sample_variable_gc_sam(
+            samples,
+            contig_length = contig_length,
+            steps = steps
+        ),
+        path,
+        index = TRUE
+    )
+    path
+}
+
 variable_gc_fixture <- function(sample = "synthetic", windows = 100L,
                                 contig_length = 20000L,
                                 allowed_windows = c(100L, 1000L, 10000L),

@@ -175,7 +175,9 @@ explorer_results_ui <- function(id) {
         id = ns("tabs"),
         bslib::nav_panel(
             "Introgression circos",
-            isa_dashboard_circos_output(ns("circos"), height = "640px")
+            isa_dashboard_circos_output(
+                ns("circos"), height = "calc(100vh - 265px)"
+            )
         ),
         bslib::nav_panel(
             "Coverage / dosage",
@@ -184,7 +186,7 @@ explorer_results_ui <- function(id) {
                 choices = c("Mirror" = "mirror", "Difference" = "diff"),
                 inline = TRUE
             ),
-            shiny::plotOutput(ns("isa_plot"), height = "520px")
+            shiny::plotOutput(ns("isa_plot"), height = "calc(100vh - 335px)")
         ),
         bslib::nav_panel(
             "Segments",

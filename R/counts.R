@@ -281,3 +281,134 @@ countReads <- function(bam_path, gr, mapq = 20L, exclude_flags = 2308L,
 
     .count_reads_bamsignals(bam_path, gr, mapq, exclude_flags, verbose)
 }
+
+#' Count reads per sample in a multi-sample BAM
+#'
+#' Counts the 5' end of every alignment in the windows of `windows`, exactly as
+#' [countReads()] does, but separates the counts by the read group (`RG`) tag of
+#' each read. Every read group must be declared in the BAM header and every read
+#' group must map to one of `samples`; reads without an `RG` tag are rejected.
+#'
+#' This is the counting backend for one BAM that contains several samples. A
+#' BAM with a single sample keeps using bamsignals through [countReads()], so the
+#' established single-sample path is unchanged.
+#'
+#' @param bam_path Path to a coordinate-sorted, indexed BAM.
+#' @param windows A window list from [makeAnalysisWindows()].
+#' @param samples Sample names, in the order of the returned matrix rows.
+#' @param read_groups A data frame with `id` and `sample` columns, as returned
+#'   by [bamHeaderInfo()].
+#' @param mapq Minimum mapping quality (0-255).
+#' @param exclude_flags SAM flag mask; a read is excluded when any bit is set.
+#'
+#' @return An integer matrix with one row per sample and one column per window.
+#' @noRd
+.count_reads_by_sample <- function(bam_path, windows, samples, read_groups,
+                                   mapq = 20L, exclude_flags = 2308L) {
+    bam_path <- .validate_bam_path(bam_path)
+    mapq <- .count_integer(mapq, "mapq", 0L, 255L)
+    exclude_flags <- .count_integer(exclude_flags, "exclude_flags", 0L, 4095L)
+
+    if (!is.list(windows) || is.null(windows$table) ||
+        !is.data.frame(windows$table) || is.null(windows$n_per_chromosome)) {
+        .count_error("`windows` must be a list returned by makeAnalysisWindows()")
+    }
+    table <- windows$table
+    required <- c("chr_id", "start", "stop")
+    if (!all(required %in% names(table)) || nrow(table) == 0L) {
+        .count_error("`windows$table` must contain chr_id, start and stop")
+    }
+    n_per <- .count_integer(
+        windows$n_per_chromosome, "n_per_chromosome", 1L, .Machine$integer.max
+    )
+    chr_ids <- unique(as.character(table$chr_id))
+    if (length(chr_ids) == 0L) {
+        .count_error("`windows$table` contains no contigs")
+    }
+    if (!identical(
+        as.character(table$chr_id), rep(chr_ids, each = n_per)
+    )) {
+        .count_error(
+            "`windows$table` must list each contig as one contiguous block"
+        )
+    }
+    lengths <- vapply(chr_ids, function(chr_id) {
+        rows <- which(table$chr_id == chr_id)
+        if (length(rows) != n_per) {
+            .count_error(
+                "Contig '%s' has %d windows, expected %d",
+                chr_id, length(rows), n_per
+            )
+        }
+        start <- as.numeric(table$start[rows])
+        stop <- as.numeric(table$stop[rows])
+        if (start[[1L]] != 0 || any(start[-1L] != stop[-n_per]) ||
+            any(stop <= start)) {
+            .count_error(
+                "Windows for contig '%s' are not a contiguous half-open tiling",
+                chr_id
+            )
+        }
+        stop[[n_per]]
+    }, numeric(1L))
+
+    if (!is.character(samples) || length(samples) == 0L || anyNA(samples) ||
+        any(!nzchar(samples))) {
+        .count_error("`samples` must be a non-empty character vector")
+    }
+    samples <- as.character(samples)
+    if (anyDuplicated(samples)) {
+        .count_error("`samples` must be unique")
+    }
+    if (!is.data.frame(read_groups) ||
+        !all(c("id", "sample") %in% names(read_groups))) {
+        .count_error("`read_groups` must have id and sample columns")
+    }
+    read_groups$id <- as.character(read_groups$id)
+    read_groups$sample <- as.character(read_groups$sample)
+    read_groups <- read_groups[
+        !is.na(read_groups$id) & nzchar(read_groups$id) &
+            !is.na(read_groups$sample) & nzchar(read_groups$sample),
+        ,
+        drop = FALSE
+    ]
+    missing_samples <- setdiff(samples, read_groups$sample)
+    if (length(missing_samples) > 0L) {
+        .count_error(
+            "No @RG line maps sample%s %s to a read group",
+            if (length(missing_samples) == 1L) "" else "s",
+            paste(sprintf("'%s'", missing_samples), collapse = ", ")
+        )
+    }
+    read_groups <- read_groups[read_groups$sample %in% samples, , drop = FALSE]
+
+    counts <- tryCatch(
+        bam_count_rg_cpp(
+            bam_path,
+            contig_names = chr_ids,
+            contig_lengths = lengths,
+            n_per_chromosome = n_per,
+            read_group_ids = read_groups$id,
+            sample_index = match(read_groups$sample, samples),
+            sample_names = samples,
+            mapq = mapq,
+            exclude_flags = exclude_flags,
+            allow_missing_rg = length(samples) == 1L
+        ),
+        error = function(e) {
+            .count_error(
+                "Could not count reads per sample in BAM '%s': %s",
+                bam_path, conditionMessage(e)
+            )
+        }
+    )
+    if (!is.matrix(counts) || nrow(counts) != length(samples) ||
+        ncol(counts) != nrow(table)) {
+        .count_error(
+            "Per-sample counting returned a matrix of the wrong shape"
+        )
+    }
+    dimnames(counts) <- list(samples, NULL)
+    storage.mode(counts) <- "integer"
+    counts
+}

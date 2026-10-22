@@ -108,39 +108,47 @@ runMaMaMIA(config = "assemblies.yml")
 ```
 
 With `config`, `runMaMaMIA()` opens the BAM-first app. The sidebar starts
-with a **Single BAM / Multiple BAMs** switch, the upload control and the
-**Example data** button. The analysis controls are revealed only after preflight
-succeeds, as collapsible panels (only one panel is open at a time): **Analysis**,
-**Assembly**, **Advanced**, **Filters** and **Export**.
+with one BAM upload control and the **Example data** button. Samples are read
+from the `@RG SM` tags and read groups from the `@RG ID` tags in the BAM header;
+a single BAM can therefore contain one or several samples. There is no
+multi-file upload and no manual single/multi mode switch: the interface detects
+the sample count from the header and enables cohort controls (reference sample,
+combined export) automatically when more than one sample is present. The
+analysis controls are revealed only after preflight succeeds, as collapsible
+panels (only one panel is open at a time): **Analysis**, **Assembly**,
+**Filters** and **Export**.
 
-In a cohort run, choose a **recipient species** and a **donor species**; each
-species can be used on either side of different runs (one run needs two
-different species), and the **Swap donor and recipient** button reverses the
-comparison without reselecting anything. Subgenome selectors appear only for
-species with several subgenomes. There is no predefined-assembly selector:
-contigs are paired by chromosome group (the optional `group` field, otherwise
-the first number in `name`), and the assembly panel lists any excluded contigs
-and the reason. When the registry also declares named `assemblies:` presets, an
-optional checkbox enables BAM-header auto-detection; a registry without a
-`species:` section falls back to auto-detection automatically.
+Choose a **recipient species** and a **donor species**; each species can be
+used on either side of different runs (one run needs two different species), and
+the **Swap donor and recipient** button reverses the comparison without
+reselecting anything. Subgenome selectors appear only for species with several
+subgenomes. The **Assembly** panel contains only these selectors and the swap
+button. There is no predefined-assembly selector and no BAM-header
+auto-detection checkbox: contigs are paired by chromosome group (the optional
+`group` field, otherwise the first number in `name`). A registry without a
+`species:` section falls back to header-based auto-detection automatically.
+BAM processing uses the MAPQ, flag mask, fit cap and core count from the
+validated registry; those controls are not exposed in the interface.
 
-Upload one or more BAMs, choose a resolution and normalization mode, and run.
-BAMs are accepted only through the upload control; the container does not
-mount a BAM directory. The main area is split into **Introgression circos**,
-**Coverage / dosage** (mirror or difference) and **Segments** tabs; preflight
-status, detected assemblies, problems and every pipeline stage are written to
-the calculation log in the footer. The app keeps table selections per sample
-and exports a per-sample BEDPE or a combined BEDPE with a `sample` column.
-Uploaded BAMs are staged into a private session directory and removed on
+Upload one BAM, choose a resolution and, for several samples, a reference
+sample or median normalization. BAMs are accepted only through the upload
+control; the container does not mount a BAM directory. The main area is split
+into **Introgression circos**, **Coverage / dosage** (mirror or difference) and
+**Segments** tabs; preflight status, detected assemblies, problems and every
+pipeline stage are written to the calculation log in the footer. The line above
+the log reports only the number of BAM files. The app keeps table selections
+per sample and exports a per-sample BEDPE or a combined BEDPE with a `sample`
+column. Uploaded BAMs are staged into a private session directory and removed on
 session end.
 
 A small synthetic example ships as pre-computed tables and is loaded with the
 **Example data** button. It has two species and a variable-GC index, needs no
-BAM upload and no mounted BAM, and replays the normal pipeline stage messages
-before showing the stored result. The button fills the resolution field with
-the example resolution; press it again to clear the example. Set
-`windows_per_chromosome` to 100 or 1,000 for the example (the bundled demo
-contigs are too short for a useful 10,000-window GC fit).
+BAM upload and no mounted BAM, fills the example species/resolution fields, and
+replays the normal pipeline stage messages before showing the stored result. The
+button is available in both modes; pressing it again clears the example and
+restores the registry resolution choices. Set `windows_per_chromosome` to 100
+or 1,000 for the example (the bundled demo contigs are too short for a useful
+10,000-window GC fit).
 
 ### Scripted BAM-first run
 

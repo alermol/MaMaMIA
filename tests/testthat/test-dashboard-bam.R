@@ -14,13 +14,8 @@ app_state <- function(fixture) {
 
 app_inputs <- function(...) {
     defaults <- list(
-        bam_mode = "single",
         resolution = "100",
-        reference_sample = "",
-        mapq = 20,
-        exclude_flags = 2308,
-        cores = 1,
-        max_fit_windows = 1000
+        reference_sample = ""
     )
     utils::modifyList(defaults, list(...))
 }
@@ -404,9 +399,10 @@ test_that("progress stages follow the cohort size and normalization", {
     expect_identical(bam_progress_label("preflight"), "Checking BAM headers")
     expect_identical(
         bam_progress_label(
-            "preflight", list(n_bams = 2L, assembly = "tiny")
+            "preflight",
+            list(n_bams = 2L, n_samples = 3L, assembly = "tiny")
         ),
-        "Checking BAM headers (2 files, assembly 'tiny')"
+        "Checking BAM headers (2 BAM files, 3 samples)"
     )
     expect_identical(
         bam_progress_label("index", list(n_bams = 2L, staged = 1L)),
@@ -453,17 +449,20 @@ test_that("progress stages follow the cohort size and normalization", {
     )
 })
 
-test_that("run parameters resolve normalization and validate controls", {
+test_that("run parameters use the registry defaults as-is", {
     config <- list(defaults = .config_defaults())
-    base <- list(
-        resolution = "1000", mapq = 20, exclude_flags = 2308,
-        cores = 1, max_fit_windows = 50000, reference_sample = ""
-    )
+    base <- list(resolution = "1000", reference_sample = "")
 
     single <- bam_run_parameters(base, config, "s1")
     expect_identical(single$resolution, 1000L)
     expect_identical(single$normalization, "none")
     expect_null(single$reference_sample)
+    expect_identical(single$mapq, as.integer(config$defaults$mapq))
+    expect_identical(
+        single$exclude_flags, as.integer(config$defaults$exclude_flags)
+    )
+    expect_identical(single$max_fit_windows, config$defaults$max_fit_windows)
+    expect_identical(single$cores, min(30L, bam_max_cores()))
 
     cohort <- bam_run_parameters(base, config, c("s1", "s2"))
     expect_identical(cohort$normalization, "median")
@@ -483,32 +482,27 @@ test_that("run parameters resolve normalization and validate controls", {
         ),
         "not one of"
     )
+
+    bad_mapq <- config
+    bad_mapq$defaults$mapq <- 500
     expect_error(
-        bam_run_parameters(
-            utils::modifyList(base, list(mapq = 500)), config, "s1"
-        ),
+        bam_run_parameters(base, bad_mapq, "s1"),
         "MAPQ",
         class = "MaMaMIAAnalysisError"
     )
+    bad_flags <- config
+    bad_flags$defaults$exclude_flags <- 9000
     expect_error(
-        bam_run_parameters(
-            utils::modifyList(base, list(exclude_flags = 9000)),
-            config, "s1"
-        ),
-        "Exclude flags"
+        bam_run_parameters(base, bad_flags, "s1"),
+        "Exclude flags",
+        class = "MaMaMIAAnalysisError"
     )
+    bad_fit <- config
+    bad_fit$defaults$max_fit_windows <- 0
     expect_error(
-        bam_run_parameters(
-            utils::modifyList(base, list(cores = 0)), config, "s1"
-        ),
-        "Cores"
-    )
-    expect_error(
-        bam_run_parameters(
-            utils::modifyList(base, list(max_fit_windows = 0)),
-            config, "s1"
-        ),
-        "Max fit windows"
+        bam_run_parameters(base, bad_fit, "s1"),
+        "Max fit windows",
+        class = "MaMaMIAAnalysisError"
     )
 })
 
@@ -623,8 +617,12 @@ test_that("the initial calculation log is built without a reactive context", {
         entries[[1L]],
         "^\\[03:04:05\\] MaMaMIA session started\\.$"
     )
-    expect_match(entries[[2L]], "species|assembl")
-    expect_match(entries[[3L]], "Input mode: single BAM", fixed = TRUE)
+    expect_match(entries[[2L]], "Configuration validated")
+    expect_match(
+        entries[[3L]],
+        "Samples are detected from the BAM header",
+        fixed = TRUE
+    )
 })
 
 test_that("the launcher uses the grid layout with header, sidebar, main and footer", {
@@ -641,39 +639,53 @@ test_that("the launcher uses the grid layout with header, sidebar, main and foot
     expect_match(html, 'data-gridlayout-area="sidebar"', fixed = TRUE)
     expect_match(html, 'data-gridlayout-area="main"', fixed = TRUE)
     expect_match(html, 'data-gridlayout-area="footer"', fixed = TRUE)
-    expect_match(layout, "|2rem  |200px   |1fr      |", fixed = TRUE)
-    expect_match(layout, "|150px |header  |header   |", fixed = TRUE)
+    expect_match(layout, "|0.5rem|240px   |1fr      |", fixed = TRUE)
+    expect_match(layout, "|75px  |header  |header   |", fixed = TRUE)
     expect_match(layout, "|1fr   |sidebar |main     |", fixed = TRUE)
-    expect_match(layout, "|120px |footer  |footer   |", fixed = TRUE)
+    expect_match(layout, "|100px |footer  |footer   |", fixed = TRUE)
     expect_match(html, "mamamia-header", fixed = TRUE)
     expect_match(html, "mamamia-sidebar", fixed = TRUE)
     expect_match(html, "mamamia-main", fixed = TRUE)
     expect_match(html, "mamamia-footer", fixed = TRUE)
     expect_match(html, "MaMaMIA</h1>", fixed = TRUE)
-    expect_match(html, "Single BAM", fixed = TRUE)
-    expect_match(html, "Multiple BAMs", fixed = TRUE)
     expect_match(html, "Example data", fixed = TRUE)
-    expect_match(html, 'id="explorer-isa_plot"[^>]*height:520px', perl = TRUE)
+    expect_match(html, 'id="explorer-isa_plot"', fixed = TRUE)
 })
 
-test_that("single and multi modes expose different upload controls", {
+test_that("one upload control auto-detects the sample count", {
     skip_if_no_dashboard()
     skip_if_no_samtools()
     fixture <- variable_gc_fixture()
     on.exit(unlink(fixture$directory, recursive = TRUE), add = TRUE)
+    multi_bam <- add_multi_sample_gc_bam(
+        fixture, c("sample-a", "sample-b"), steps = c(4L, 6L)
+    )
     state <- app_state(fixture)
 
     shiny::testServer(bam_launcher_server(state, cache = FALSE), {
-        single <- output_html(output$bam_upload_ui)
-        expect_match(single, "BAM file")
-        expect_false(grepl("multiple=\"multiple\"", single, fixed = TRUE))
-        expect_match(output_html(output$bam_mode_note), "Single-sample run")
+        upload <- output_html(output$bam_upload_ui)
+        expect_match(upload, "BAM file")
+        expect_false(grepl("multiple=\"multiple\"", upload, fixed = TRUE))
+        expect_match(
+            output_html(output$bam_mode_note),
+            "samples are detected from the @RG SM"
+        )
 
-        session$setInputs(bam_mode = "multi")
-        multi <- output_html(output$bam_upload_ui)
-        expect_match(multi, "BAM files")
-        expect_match(multi, "multiple=\"multiple\"", fixed = TRUE)
-        expect_match(output_html(output$bam_mode_note), "Cohort run")
+        session$setInputs(bams = upload_input(fixture$bam_path))
+        expect_true(preflight_state()$ok)
+        expect_match(
+            output_html(output$bam_mode_note),
+            "1 sample detected from @RG SM"
+        )
+        expect_null(output$reference_ui)
+
+        session$setInputs(bams = upload_input(multi_bam))
+        expect_true(preflight_state()$ok)
+        expect_match(
+            output_html(output$bam_mode_note),
+            "2 samples detected from @RG SM"
+        )
+        expect_match(output_html(output$reference_ui), "Reference sample")
     })
 })
 
@@ -693,12 +705,14 @@ test_that("the setup appears as single-open spoilers after preflight", {
         expect_true(sidebar_unlocked())
 
         sidebar <- output_html(output$sidebar_body)
-        expect_match(sidebar, "accordion autoclose", fixed = TRUE)
+        expect_match(sidebar, "accordion", fixed = TRUE)
         expect_match(sidebar, "Analysis")
         expect_match(sidebar, "Assembly")
-        expect_match(sidebar, "Advanced")
+        expect_false(grepl("Advanced", sidebar, fixed = TRUE))
         expect_match(sidebar, "Filters")
         expect_match(sidebar, "Export")
+        expect_false(grepl("Minimum MAPQ", sidebar, fixed = TRUE))
+        expect_false(grepl("Max fit windows", sidebar, fixed = TRUE))
     })
 })
 
@@ -743,7 +757,7 @@ test_that("the swap button exchanges donor and recipient species", {
     })
 })
 
-test_that("auto-detection is an option but not an assembly selector", {
+test_that("the assembly always follows the species selectors", {
     skip_if_no_dashboard()
     skip_if_no_samtools()
     fixture <- variable_gc_fixture(species = TRUE)
@@ -760,21 +774,17 @@ test_that("auto-detection is an option but not an assembly selector", {
         as.character(bam_sidebar_species_ui(state$config)),
         collapse = ""
     )
-    expect_match(html, "Detect the assembly from the BAM header")
-    expect_false(grepl("Predefined assembly", html, fixed = TRUE))
+    expect_false(grepl("Detect the assembly from the BAM header", html))
+    expect_match(html, "Recipient species")
+    expect_match(html, "Donor species")
 
     shiny::testServer(bam_launcher_server(state, cache = FALSE), {
         session$setInputs(
-            auto_detect = TRUE,
+            recipient_species = "recipient",
+            donor_species = "donor",
             bams = upload_input(fixture$bam_path),
             resolution = "100"
         )
-        pf <- preflight_state()
-        expect_true(pf$ok)
-        expect_identical(pf$assembly, "preset_pair")
-        expect_match(output_html(output$assembly_summary), "Variable-GC")
-
-        session$setInputs(auto_detect = FALSE)
         pf <- preflight_state()
         expect_true(pf$ok)
         expect_identical(pf$assembly, "recipient__R__donor__D")
@@ -809,7 +819,7 @@ test_that("a species-only registry exposes species selectors and runs", {
         collapse = ""
     )
     expect_false(grepl("Predefined assembly", preset_html, fixed = TRUE))
-    expect_match(preset_html, "Detect the assembly from the BAM header")
+    expect_false(grepl("Detect the assembly from the BAM header", preset_html))
 
     shiny::testServer(bam_launcher_server(state, cache = FALSE), {
         session$setInputs(
@@ -953,19 +963,17 @@ test_that("missing BAMs and server limits fail without crashing the session", {
     expect_true(limited$ok)
 
     shiny::testServer(bam_launcher_server(limited, cache = FALSE), {
-        session$setInputs(
-            bam_mode = "multi",
-            bams = upload_input(c(fixture$bam_path, second))
-        )
+        session$setInputs(bams = upload_input(fixture$bam_path))
         pf <- preflight_state()
-        expect_false(pf$ok)
-        expect_identical(pf$error$stage, "limits")
-        expect_match(
-            paste(bam_preflight_log(pf), collapse = "\n"),
-            "Too many BAM files"
-        )
-        expect_match(output_html(output$run_ui), "disabled")
+        expect_true(pf$ok)
     })
+    expect_error(
+        preflightBams(
+            c(fixture$bam_path, second), limited$config
+        ),
+        "Too many BAM files",
+        class = "MaMaMIALimitError"
+    )
 
     config$server$max_bams <- 4
     config$server$max_total_bytes <- 1
@@ -1067,8 +1075,9 @@ test_that("a cohort shows a selector and exports a combined BEDPE", {
     skip_if_no_samtools()
     fixture <- variable_gc_fixture()
     on.exit(unlink(fixture$directory, recursive = TRUE), add = TRUE)
-    first <- add_variable_gc_bam(fixture, "sample-a", step = 4L)
-    second <- add_variable_gc_bam(fixture, "sample-b", step = 6L)
+    bam <- add_multi_sample_gc_bam(
+        fixture, c("sample-a", "sample-b"), steps = c(4L, 6L)
+    )
     state <- app_state(fixture)
     target <- tempfile(fileext = ".bedpe")
     on.exit(unlink(target), add = TRUE)
@@ -1078,8 +1087,7 @@ test_that("a cohort shows a selector and exports a combined BEDPE", {
     shiny::testServer(bam_launcher_server(state, cache = FALSE), {
         set_app_inputs(
             session,
-            bam_mode = "multi",
-            bams = upload_input(c(first, second))
+            bams = upload_input(bam)
         )
         expect_true(preflight_state()$ok)
         expect_match(
@@ -1154,10 +1162,8 @@ test_that("a three-sample cohort exports each sample and the cohort BEDPE", {
     fixture <- variable_gc_fixture()
     on.exit(unlink(fixture$directory, recursive = TRUE), add = TRUE)
     samples <- c("sample-a", "sample-b", "sample-c")
-    bams <- c(
-        add_variable_gc_bam(fixture, samples[[1L]], step = 4L),
-        add_variable_gc_bam(fixture, samples[[2L]], step = 6L),
-        add_variable_gc_bam(fixture, samples[[3L]], step = 8L)
+    bam <- add_multi_sample_gc_bam(
+        fixture, samples, steps = c(4L, 6L, 8L)
     )
     state <- app_state(fixture)
     per_sample <- stats::setNames(
@@ -1170,8 +1176,7 @@ test_that("a three-sample cohort exports each sample and the cohort BEDPE", {
     shiny::testServer(bam_launcher_server(state, cache = FALSE), {
         set_app_inputs(
             session,
-            bam_mode = "multi",
-            bams = upload_input(bams)
+            bams = upload_input(bam)
         )
         expect_true(preflight_state()$ok)
 
@@ -1387,14 +1392,13 @@ test_that("invalid reference selection is reported before the analysis", {
     skip_if_no_samtools()
     fixture <- variable_gc_fixture()
     on.exit(unlink(fixture$directory, recursive = TRUE), add = TRUE)
-    second <- add_variable_gc_bam(fixture, "synthetic-2")
+    bam <- add_multi_sample_gc_bam(fixture, c("sample-a", "sample-b"))
     state <- app_state(fixture)
 
     shiny::testServer(bam_launcher_server(state, cache = FALSE), {
         set_app_inputs(
             session,
-            bam_mode = "multi",
-            bams = upload_input(c(fixture$bam_path, second)),
+            bams = upload_input(bam),
             reference_sample = "nope"
         )
         expect_true(preflight_state()$ok)
@@ -1423,4 +1427,34 @@ test_that("the entrypoint builds the BAM app and validates upload size", {
     expect_identical(attr(app, "mamamia_input"), "bam")
 
     expect_error(runMaMaMIA(max_request_size = 0), "positive")
+})
+
+test_that("a multi-sample BAM is detected automatically", {
+    skip_if_no_dashboard()
+    skip_if_no_samtools()
+    fixture <- variable_gc_fixture()
+    on.exit(unlink(fixture$directory, recursive = TRUE), add = TRUE)
+    bam <- add_multi_sample_gc_bam(
+        fixture, c("sample-a", "sample-b"), steps = c(4L, 6L)
+    )
+    state <- app_state(fixture)
+
+    shiny::testServer(bam_launcher_server(state, cache = FALSE), {
+        session$setInputs(bams = upload_input(bam))
+        pf <- preflight_state()
+        expect_true(pf$ok)
+        expect_identical(nrow(pf$table), 2L)
+        expect_match(
+            output_html(output$bam_mode_note),
+            "2 samples detected from @RG SM",
+            fixed = TRUE
+        )
+        expect_match(output_html(output$reference_ui), "Reference sample")
+        expect_true(sidebar_unlocked())
+
+        status <- output_html(output$footer_status)
+        expect_match(status, "1 BAM file", fixed = TRUE)
+        expect_false(grepl("sample-a", status, fixed = TRUE))
+        expect_false(grepl("recipient__R", status, fixed = TRUE))
+    })
 })

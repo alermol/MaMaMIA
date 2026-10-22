@@ -324,7 +324,8 @@ assembly, contig, file). Functions must stop before expensive work starts.
 | `MaMaMIAAssemblyMatchError` | `matchAssembly()` / `preflightBams()` | `BAM '<path>' does not match any configured assembly` or `BAM '<path>' matches more than one assembly: <keys>` |
 | `MaMaMIAIndexError` | `ensureBamIndex()` | `Could not build a CSI index for '<path>': <reason>` |
 | `MaMaMIAIndexError` | `ensureBamIndex()` | `BAM '<path>' has a corrupt or unreadable CSI index: <path>` |
-| `MaMaMIASampleError` | preflight | `BAM '<path>' has more than one distinct @RG SM value: <values>` |
+| `MaMaMIASampleError` | preflight | `BAM '<path>' has an @RG line without a read group ID (@RG ID)` or `without a sample ID (@RG SM)` |
+| `MaMaMIASampleError` | preflight | `BAM '<path>' has duplicate @RG ID value(s): <ids>` |
 | `MaMaMIASampleError` | preflight | `Duplicate sample name '<sample>' in input BAMs: <paths>` |
 | `MaMaMIAHeaderMismatchError` | preflight | `BAM '<path>' target '<contig>' has length <observed>; assembly '<key>' expects <expected>` |
 | `MaMaMIAPathError` | preflight | Invalid or unreadable upload path |
@@ -428,11 +429,13 @@ wrapper can be tested at single-read resolution.
 
 ### 8.1 BAM headers
 
-`bamHeaderInfo(path)` returns the `BamHeaderInfo` contract plus `sample`,
-`sample_source` (`"rg"` or `"basename"`), `sort_order` and `n_targets`.
-`@RG SM` values are trimmed; missing `SM` values are `NA_character_` in
-`read_groups$sample` and are excluded from `samples`. A header with multiple
-distinct `SM` values raises `MaMaMIASampleError`.
+`bamHeaderInfo(path)` returns the `BamHeaderInfo` contract plus `samples`,
+`sample` (the only sample, or `NA` for several), `sample_source` (`"rg"` or
+`"basename"`), `multi_sample`, `sort_order` and `n_targets`. `@RG ID` and
+`@RG SM` values are trimmed. A header with several distinct `SM` values is
+accepted; each becomes a sample row. A missing `ID`, a missing `SM` or a
+duplicate `ID` raises `MaMaMIASampleError`. A header without any `@RG` line
+falls back to the basename as a one-sample file.
 
 A truncated or non-BAM file whose format cannot be determined raises
 `MaMaMIABamHeaderError`. A readable SAM/CRAM raises
@@ -520,22 +523,28 @@ New error subclasses introduced in wave 1: `MaMaMIAWindowError` and
 
 `preflightBams(paths, config, assembly = NULL)` reads file metadata and BAM
 headers only; it never builds an index or reads alignments. It returns one row
-per BAM with:
+per sample with:
 
 ```text
-path, file_size, sample, sample_source, assembly, n_targets,
+path, file_size, sample, sample_source, n_samples, assembly, n_targets,
 n_assembly_targets, index_path, index_status, index_action, warnings, valid
 ```
+
+A BAM with several `@RG SM` values therefore contributes several rows; its
+`path` and index columns are repeated. `@RG ID` values must be present and
+unique, `@RG SM` must be present, and reads in a multi-sample BAM must carry an
+`RG` tag that names one of those read groups. A BAM without any `@RG` line keeps
+the basename fallback and contributes one sample.
 
 `index_status` is one of `valid`, `missing`, `stale` or `corrupt`.
 `index_action` says what the pipeline will do: `reuse`, `create`, `rebuild`, or
 `stage` when the BAM directory is not writable. A read-only BAM with no valid
 CSI is therefore not an error at preflight; it is planned for staging.
 
-Limits come from `config$server` (`max_bams`, `max_total_bytes`). Samples follow
-D2 and duplicate resolved names stop preflight. `matchAssemblyCohort()` enforces
-one assembly across all inputs; extra header targets are allowed and reported
-as a warning.
+Limits come from `config$server` (`max_bams`, `max_total_bytes`) and count BAM
+files, not samples. Duplicate resolved sample names across inputs stop
+preflight. `matchAssemblyCohort()` enforces one assembly across all inputs;
+extra header targets are allowed and reported as a warning.
 
 Uploaded paths are staged into session temporary storage; there is no
 server-side BAM root and no path-containment check. The upload directory is
@@ -627,14 +636,16 @@ recipient raise `MaMaMIASampleError`. The assembled tables are passed through
 `RCA()` and the result must be uncorrected, so malformed data fails before the
 GC-bias fit. Validation errors are re-raised with the sample name.
 
-### 10.2 Single-BAM orchestration
+### 10.2 BAM orchestration
 
 `analyzeBamInput()` runs preflight, index, windows, GC, counts, tables, RCA,
 correction and segmentation in that order. It stages BAMs whose directory is
 not writable before indexing, uses a per-process fit cache in session temp when
 `cache = NULL`, and records provenance (config path/hash, BAM sizes/mtimes,
 package/htslib/gcrank/uvr versions, `uvr.lock` hash, window rule, filters,
-normalization and timings).
+normalization and timings). A BAM with several `@RG SM` samples is counted once
+per read group: `.count_reads_by_sample()` uses Rhtslib to read each alignment's
+`RG` tag and its 5' end, while a one-sample BAM keeps the bamsignals backend.
 
 The `progress` callback is `function(stage, detail)` and is called after each
 completed stage: `preflight`, `index`, `windows`, `gc`, `counts`,
@@ -729,7 +740,8 @@ segmented on it (axis label `Dosage`), otherwise `cor.gc`. `print.RCA()` and
 
 ### 11.3 Cohort orchestration
 
-For more than one BAM, `analyzeBamInput()` counts and corrects every sample
+For more than one sample (from several BAMs or several `@RG SM` groups in one
+BAM), `analyzeBamInput()` counts and corrects every sample
 first, then calls `normalizeReadCounts()` once, then segments every sample with
 the same target pairs. `normalization = "reference"` requires
 `reference_sample`; an unknown name fails with `MaMaMIAAnalysisError`. A single
@@ -842,34 +854,39 @@ to `MAMAMIA_CONFIG`. A missing or invalid registry renders a configuration
 error card instead of stopping the process.
 
 The page uses a `gridlayout::grid_container()` with the layout
-`|2rem|200px|1fr|` / `|150px|header|header|` / `|1fr|sidebar|main|` /
-`|120px|footer|footer|`: a 2 rem gap, a 200 px sidebar, a 150 px header, the
-fluid main area and a 120 px footer. The header holds the application name.
+`|0.5rem|240px|1fr|` / `|75px|header|header|` / `|1fr|sidebar|main|` /
+`|100px|footer|footer|`: a 0.5 rem gap, a 240 px sidebar, a 75 px header, the
+fluid main area and a 100 px footer. The header holds the application name in
+large bold type.
 
-The sidebar starts with `selectInput("bam_mode")` (**Single BAM** or
-**Multiple BAMs**), `fileInput("bams")` (`multiple = TRUE` only in cohort
-mode) and the **Example data** action button. The button loads the bundled
-pre-computed example and sets the example resolution; pressing it again clears
-the example. The remaining controls are rendered only after preflight succeeds
-and are grouped in single-open `bslib::accordion()` panels: **Analysis**
-(resolution, reference selector for cohorts, Run), **Assembly** (detected
-assembly, species/subgenome selectors, preflight table), **Advanced** (MAPQ,
-exclude flags, cores, `max_fit_windows`), **Filters** (the explorer controls)
-and **Export** (cohort summary and BEDPE downloads). A failed preflight can
-unlock the panels explicitly with **Show setup** so a wrong species choice can
-be corrected.
+The sidebar starts with one `fileInput("bams")` with `multiple = FALSE` and
+the **Example data** action button. Samples come from `@RG SM` tags and read
+groups from `@RG ID`; one BAM can contain one or several samples. The sample
+count is detected during preflight and drives the interface: single-sample runs
+hide the reference selector and use `none` normalization, while multi-sample
+runs show the reference selector and offer median/reference normalization and
+the combined export. There is no manual mode switch. The button loads the
+bundled pre-computed example, fills the example species and resolution fields,
+and pressing it again clears the example. The remaining controls are rendered
+only after preflight succeeds and are grouped in single-open
+`bslib::accordion()` panels: **Analysis** (resolution, reference selector for
+multi-sample runs, Run), **Assembly** (recipient/donor species and subgenome
+selectors plus **Swap donor and recipient**), **Filters** (the explorer
+controls) and **Export** (cohort summary and BEDPE downloads). There is no
+**Advanced** panel: MAPQ, exclude flags, `max_fit_windows` and cores come from
+the validated registry. A failed preflight can unlock the panels explicitly
+with **Show setup** so a wrong species choice can be corrected.
 
 The main area only contains the result tabs: **Introgression circos**,
 **Coverage / dosage** (mirror or difference) and **Segments**. The footer holds
 `verbatimTextOutput("calculation_log")`, a timestamped log that reports
-preflight status, the detected assembly and pairs, assembly candidates,
-problems with suggested fixes, and every pipeline progress stage. The
-preflight table (`file`, `sample`, `assembly`, `targets`, `index`, `warnings`)
-and the detected-assembly summary are in the **Assembly** panel, not in the
-main area. Candidate scores use the same
-`.match_candidate()`/`.candidate_table()` helpers as `matchAssembly()`, so they
-are available even for header-length mismatches whose condition payload has no
-candidate table.
+preflight status, the detected assembly, assembly candidates, problems with
+suggested fixes, and every pipeline progress stage. The log autoscrolls to new
+entries. The status line above the log reports only the number of BAM files;
+sample names and the assembly key are reported in the log, not in that line.
+Candidate scores use the same `.match_candidate()`/`.candidate_table()` helpers
+as `matchAssembly()`, so they are available even for header-length mismatches
+whose condition payload has no candidate table.
 
 ### 13.3 Preflight, staging and run flow
 
@@ -884,25 +901,31 @@ When the **Example data** button is active, preflight instead returns the
 stored demo preflight table and the run loads a pre-computed
 `BamAnalysisResult`; it never opens a BAM.
 
-The run handler validates the controls through `bam_run_parameters()` (single
-BAM → `none`; cohort with an empty reference → `median`; a named reference →
-`reference`; resolution from `allowed_windows`; MAPQ 0-255; flags 0-4095; cores
-bounded by `detectCores()`; positive `max_fit_windows`), then calls
-`analyzeBamInput()` inside `shiny::withProgress()`. `bam_progress_stages()`
-reports `preflight`, `index`, `windows`, `gc`, one `counts`, `correction` and
-`segmentation` per sample, plus `normalization` for a cohort.
-`bam_progress_label()` adds the detail reported by each stage to the progress
-text: the BAM count and detected assembly, reused versus staged indexes, total
-and per-chromosome windows, reads per sample, ideal fit windows, the
-normalization mode and reference, and segments per sample. Every failure is
-caught, classified by `bam_error_stage()`, and shown as
-`[stage] message / File: <source> / Suggested fix: ...`; the previous result is
-restored and the last error remains visible in the footer calculation log. A
-`MaMaMIASampleError` is mapped back to its source BAM through the preflight
-table, so the notification names the file the user supplied rather than the
-staged session copy. The result is invalidated when the BAM selection,
-resolution, assembly, reference, MAPQ, exclude flags or `max_fit_windows`
-change, so a stale BEDPE cannot be downloaded for different inputs.
+The preflight table has one row per sample: `@RG SM` supplies the sample and
+`@RG ID` the read groups. A BAM without `@RG` keeps the basename fallback and
+is a one-sample file. There is no separate single/multi mode input; the number
+of sample rows tells the app whether to enable cohort controls. A BAM with
+several `SM` values is therefore accepted directly in the same upload.
+
+The run handler validates the controls through `bam_run_parameters()` (one
+sample → `none`; several samples with an empty reference → `median`; a named
+reference → `reference`; resolution from `allowed_windows`). MAPQ, exclude
+flags, `max_fit_windows` and cores are taken from the validated registry; the
+BAM is processed as-is. The handler then calls `analyzeBamInput()` inside
+`shiny::withProgress()`. `bam_progress_stages()` reports `preflight`, `index`,
+`windows`, `gc`, one `counts`, `correction` and `segmentation` per sample,
+plus `normalization` for several samples. `bam_progress_label()` adds the
+detail reported by each stage to the progress text: the BAM and sample count,
+reused versus staged indexes, total and per-chromosome windows, reads per
+sample, ideal fit windows, the normalization mode and reference, and segments
+per sample. Every failure is caught, classified by `bam_error_stage()`, and
+shown as `[stage] message / File: <source> / Suggested fix: ...`; the previous
+result is restored and the last error remains visible in the footer
+calculation log. A `MaMaMIASampleError` is mapped back to its source BAM through
+the preflight table, so the notification names the file the user supplied
+rather than the staged session copy. The result is invalidated when the BAM
+selection, resolution, assembly or reference changes, so a stale BEDPE cannot
+be downloaded for different inputs.
 
 `bam_resolution_problem()` mirrors the `makeAnalysisWindows()` length check
 before the run starts. A configured contig shorter than the selected resolution

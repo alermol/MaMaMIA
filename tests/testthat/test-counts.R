@@ -324,3 +324,32 @@ test_that("countReads() matches legacy tables within boundary effects", {
     expect_lte(max(abs(delta)), 20L)
     expect_lt(sum(abs(delta)) / sum(expected), 0.001)
 })
+
+test_that(".count_reads_by_sample() matches bamsignals on a one-sample BAM", {
+    skip_if_no_samtools()
+    demo <- system.file("extdata", "bam-demo", package = "MaMaMIA")
+    if (!nzchar(demo) || !file.exists(file.path(demo, "demo.bam"))) {
+        testthat::skip("the bundled demo BAM is not installed")
+    }
+    directory <- tempfile("counts-per-sample-")
+    dir.create(directory)
+    on.exit(unlink(directory, recursive = TRUE), add = TRUE)
+    bam <- file.path(directory, "demo.bam")
+    expect_true(file.copy(file.path(demo, "demo.bam"), bam))
+
+    config <- readMaMaMIAConfig(file.path(demo, "assemblies.yml"))
+    pair <- resolveSpeciesAssembly(
+        config, donor = "secale_like", recipient = "triticum_like"
+    )
+    contigs <- readContigsTsv(file.path(demo, "demo.gcrank", "contigs.tsv"))
+    windows <- makeAnalysisWindows(pair$assembly, contigs, 100L)
+    header <- bamHeaderInfo(bam)
+
+    expected <- countReads(bam, windows$gr)
+    observed <- MaMaMIA:::.count_reads_by_sample(
+        bam, windows, "demo-sample", header$read_groups
+    )
+    expect_identical(dim(observed), c(1L, nrow(windows$table)))
+    expect_identical(as.integer(observed[1L, ]), expected)
+    expect_identical(rownames(observed), "demo-sample")
+})

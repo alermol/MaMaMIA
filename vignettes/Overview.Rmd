@@ -146,9 +146,11 @@ result$rca[[1]]
 result$isa[[1]]
 ```
 
-With several BAMs, pass a vector of paths and choose `"median"` or
-`"reference"` normalization. The per-sample RCAs are corrected first and then
-normalized together, so the dosage is comparable across the cohort:
+With several BAMs, pass a vector of paths to `analyzeBamInput()`. A single
+multi-sample BAM works too: samples are read from its `@RG SM` tags and reads
+are counted per `RG` tag. Choose `"median"` or `"reference"` normalization;
+the per-sample RCAs are corrected first and then normalized together, so the
+dosage is comparable across the cohort:
 
 ```{r bam-cohort, eval = FALSE}
 result <- analyzeBamInput(

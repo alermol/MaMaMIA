@@ -39,16 +39,16 @@ test_that("bamHeaderInfo() falls back to the basename without @RG SM", {
     )
 
     header <- bamHeaderInfo(path)
-    expect_identical(header$samples, character(0))
-    expect_identical(
-        header$sample,
-        sub("\\.bam$", "", basename(path), ignore.case = TRUE)
-    )
+    fallback <- sub("\\.bam$", "", basename(path), ignore.case = TRUE)
+    expect_identical(header$samples, fallback)
+    expect_identical(header$sample, fallback)
     expect_identical(header$sample_source, "basename")
-    expect_identical(nrow(header$read_groups), 0L)
+    expect_identical(header$read_groups$id, "<basename>")
+    expect_identical(header$read_groups$sample, fallback)
+    expect_false(header$multi_sample)
 })
 
-test_that("bamHeaderInfo() rejects several distinct @RG SM values", {
+test_that("bamHeaderInfo() returns every sample from several @RG SM values", {
     skip_if_no_tiny_fixtures()
     skip_if_no_samtools()
 
@@ -64,9 +64,43 @@ test_that("bamHeaderInfo() rejects several distinct @RG SM values", {
         path
     )
 
+    header <- bamHeaderInfo(path)
+    expect_identical(header$samples, c("one", "two"))
+    expect_identical(header$read_groups$id, c("a", "b"))
+    expect_identical(header$read_groups$sample, c("one", "two"))
+    expect_true(is.na(header$sample))
+    expect_true(header$multi_sample)
+    expect_identical(header$sample_source, "rg")
+})
+
+test_that("bamHeaderInfo() rejects incomplete @RG lines", {
+    skip_if_no_samtools()
+
+    missing_sm <- tempfile("missing-sm-", fileext = ".bam")
+    missing_id <- tempfile("missing-id-", fileext = ".bam")
+    duplicate_id <- tempfile("duplicate-id-", fileext = ".bam")
+    on.exit(unlink(c(missing_sm, missing_id, duplicate_id)), add = TRUE)
+    header <- c(
+        "@HD\tVN:1.6\tSO:coordinate",
+        "@SQ\tSN:d1\tLN:20000"
+    )
+    write_test_bam(c(header, "@RG\tID:a"), missing_sm)
+    write_test_bam(c(header, "@RG\tSM:one"), missing_id)
+    write_test_bam(c(header, "@RG\tID:a\tSM:one", "@RG\tID:a\tSM:two"), duplicate_id)
+
     expect_error(
-        bamHeaderInfo(path),
-        "more than one distinct @RG SM value.*one.*two",
+        bamHeaderInfo(missing_sm),
+        "without a sample ID.*@RG SM",
+        class = "MaMaMIASampleError"
+    )
+    expect_error(
+        bamHeaderInfo(missing_id),
+        "without a read group ID.*@RG ID",
+        class = "MaMaMIASampleError"
+    )
+    expect_error(
+        bamHeaderInfo(duplicate_id),
+        "duplicate @RG ID.*'a'",
         class = "MaMaMIASampleError"
     )
 })

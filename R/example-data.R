@@ -179,9 +179,20 @@ bam_example_preflight_state <- function() {
 }
 
 #' @noRd
-bam_example_note <- function() {
+bam_example_species_selection <- function() {
     data <- bam_example_data()
     selection <- data$species_selection
+    list(
+        recipient = selection$recipient,
+        recipient_subgenome = selection$recipient_subgenome,
+        donor = selection$donor,
+        donor_subgenome = selection$donor_subgenome
+    )
+}
+
+#' @noRd
+bam_example_note <- function() {
+    selection <- bam_example_species_selection()
     config <- bam_example_config()
     recipient <- config$species[[selection$recipient]]
     donor <- config$species[[selection$donor]]
@@ -196,11 +207,8 @@ bam_example_note <- function() {
         donor$label
     }
     sprintf(
-        paste(
-            "%s: %s recipient and %s donor;",
-            "results are pre-computed, no BAM upload or server-side BAM is used."
-        ),
-        data$label, recipient_label, donor_label
+        "Example dataset: %s recipient and %s donor; one sample.",
+        recipient_label, donor_label
     )
 }
 
@@ -228,11 +236,14 @@ bam_example_progress <- function(result, progress, pause = 0) {
     }
 
     samples <- names(result$isa)
-    n_bams <- nrow(result$bams)
+    n_bams <- length(unique(result$bams$path))
+    n_samples <- length(samples)
     n_windows <- nrow(result$windows$table)
     assembly_key <- as.character(result$samples$assembly[[1L]])
 
-    report("preflight", list(n_bams = n_bams, assembly = assembly_key))
+    report("preflight", list(
+        n_bams = n_bams, n_samples = n_samples, assembly = assembly_key
+    ))
     report("index", list(
         n_bams = n_bams,
         staged = sum(as.logical(result$provenance$staged), na.rm = TRUE)

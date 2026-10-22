@@ -1,9 +1,10 @@
 ## Rhtslib BAM header reading and sample resolution (D2, D8).
 ##
 ## The header is parsed exactly once per BAM, before any index or count work.
-## Sample identity follows D2: one distinct non-empty @RG SM wins, otherwise
-## the file basename without .bam is used, and several distinct SM values stop
-## the workflow.
+## Samples are read from the @RG SM tags, read groups from the @RG ID tags. A
+## BAM may contain one or several samples; every read group must be complete
+## and every read group ID must be unique. A BAM without any @RG line keeps
+## the legacy single-sample fallback: the file basename without .bam.
 
 #' Construct a MaMaMIA error condition
 #'
@@ -185,41 +186,92 @@
     sort_order
 }
 
-.resolve_sample <- function(path, samples) {
-    if (length(samples) == 1L) {
-        return(list(sample = samples[[1L]], source = "rg"))
+.resolve_samples <- function(path, read_groups) {
+    if (nrow(read_groups) == 0L) {
+        sample <- sub("\\.bam$", "", basename(path), ignore.case = TRUE)
+        if (!nzchar(sample)) {
+            .mamamia_error(
+                "MaMaMIASampleError",
+                paste(
+                    "Could not resolve a sample name for BAM '%s':",
+                    "no @RG SM value and the file name yields an empty basename"
+                ),
+                path
+            )
+        }
+        return(list(
+            samples = sample,
+            source = "basename",
+            read_groups = data.frame(
+                id = "<basename>",
+                sample = sample,
+                stringsAsFactors = FALSE
+            )
+        ))
     }
-    if (length(samples) > 1L) {
+
+    ids <- trimws(read_groups$id)
+    samples <- trimws(read_groups$sample)
+    missing_id <- is.na(ids) | !nzchar(ids)
+    if (any(missing_id)) {
         .mamamia_error(
             "MaMaMIASampleError",
-            "BAM '%s' has more than one distinct @RG SM value: %s",
-            path, paste(sprintf("'%s'", samples), collapse = ", ")
-        )
-    }
-    sample <- sub("\\.bam$", "", basename(path), ignore.case = TRUE)
-    if (!nzchar(sample)) {
-        .mamamia_error(
-            "MaMaMIASampleError",
-            "Could not resolve a sample name for BAM '%s': no @RG SM value and the file name yields an empty basename",
+            paste(
+                "BAM '%s' has an @RG line without a read group ID (@RG ID);",
+                "every read group needs both ID and SM tags"
+            ),
             path
         )
     }
-    list(sample = sample, source = "basename")
+    missing_sample <- is.na(samples) | !nzchar(samples)
+    if (any(missing_sample)) {
+        .mamamia_error(
+            "MaMaMIASampleError",
+            paste(
+                "BAM '%s' has an @RG line without a sample ID (@RG SM);",
+                "every read group needs both ID and SM tags"
+            ),
+            path
+        )
+    }
+    duplicated_ids <- unique(ids[duplicated(ids)])
+    if (length(duplicated_ids) > 0L) {
+        .mamamia_error(
+            "MaMaMIASampleError",
+            "BAM '%s' has duplicate @RG ID value%s: %s",
+            path,
+            if (length(duplicated_ids) == 1L) "" else "s",
+            paste(sprintf("'%s'", duplicated_ids), collapse = ", ")
+        )
+    }
+
+    read_groups$id <- ids
+    read_groups$sample <- samples
+    list(
+        samples = unique(samples),
+        source = "rg",
+        read_groups = read_groups
+    )
 }
 
 #' Read BAM header metadata
 #'
 #' Parses the header of a coordinate-sorted BAM with Rhtslib, without reading
-#' any alignments or requiring an index. The sample name follows D2: the single
-#' distinct non-empty `@RG SM` value, otherwise `basename(path)` without the
-#' `.bam` suffix. Several distinct `SM` values are an error.
+#' any alignments or requiring an index. Samples come from the non-empty
+#' `@RG SM` tags and read groups from `@RG ID`. A BAM may contain one or several
+#' samples, and several read groups may share one sample. Every `@RG` line must
+#' contain both `ID` and `SM`, and the IDs must be unique; otherwise a BAM
+#' without any `@RG` line falls back to `basename(path)` without the `.bam`
+#' suffix.
 #'
 #' @param path Path to a BAM file.
 #'
 #' @return A list with `path`, `format`, `targets` (a data frame with `name`
 #'   and `length`), `samples`, `read_groups` (`id`, `sample`), `programs`
-#'   (`id`, `name`, `version`, `command`), `header_text`, `sample`,
-#'   `sample_source` (`"rg"` or `"basename"`), `sort_order` and `n_targets`.
+#'   (`id`, `name`, `version`, `command`), `header_text`, `sample` (the only
+#'   sample, or `NA_character_` when the BAM contains several samples),
+#'   `sample_source` (`"rg"` or `"basename"`), `multi_sample`, `sort_order`
+#'   and `n_targets`.
 #'
 #' @examples
 #' demo <- system.file("extdata", "bam-demo", package = "MaMaMIA")
@@ -264,21 +316,20 @@ bamHeaderInfo <- function(path) {
 
     read_groups <- .parse_read_groups(lines)
     programs <- .parse_programs(lines)
-    samples <- read_groups$sample
-    samples <- samples[!is.na(samples) & nzchar(trimws(samples))]
-    samples <- unique(trimws(samples))
-    resolved <- .resolve_sample(path, samples)
+    resolved <- .resolve_samples(path, read_groups)
+    samples <- resolved$samples
 
     list(
         path = path,
         format = "BAM",
         targets = targets,
         samples = samples,
-        read_groups = read_groups,
+        read_groups = resolved$read_groups,
         programs = programs,
         header_text = header_text,
-        sample = resolved$sample,
+        sample = if (length(samples) == 1L) samples[[1L]] else NA_character_,
         sample_source = resolved$source,
+        multi_sample = length(samples) > 1L,
         sort_order = sort_order,
         n_targets = as.integer(nrow(targets))
     )

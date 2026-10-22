@@ -12,14 +12,19 @@ bamHeaderInfo(path)
 \value{
 A list with \code{path}, \code{format}, \code{targets} (a data frame with \code{name}
 and \code{length}), \code{samples}, \code{read_groups} (\code{id}, \code{sample}), \code{programs}
-(\code{id}, \code{name}, \code{version}, \code{command}), \code{header_text}, \code{sample},
-\code{sample_source} (\code{"rg"} or \code{"basename"}), \code{sort_order} and \code{n_targets}.
+(\code{id}, \code{name}, \code{version}, \code{command}), \code{header_text}, \code{sample} (the only
+sample, or \code{NA_character_} when the BAM contains several samples),
+\code{sample_source} (\code{"rg"} or \code{"basename"}), \code{multi_sample}, \code{sort_order}
+and \code{n_targets}.
 }
 \description{
 Parses the header of a coordinate-sorted BAM with Rhtslib, without reading
-any alignments or requiring an index. The sample name follows D2: the single
-distinct non-empty \verb{@RG SM} value, otherwise \code{basename(path)} without the
-\code{.bam} suffix. Several distinct \code{SM} values are an error.
+any alignments or requiring an index. Samples come from the non-empty
+\verb{@RG SM} tags and read groups from \verb{@RG ID}. A BAM may contain one or several
+samples, and several read groups may share one sample. Every \verb{@RG} line must
+contain both \code{ID} and \code{SM}, and the IDs must be unique; otherwise a BAM
+without any \verb{@RG} line falls back to \code{basename(path)} without the \code{.bam}
+suffix.
 }
 \examples{
 demo <- system.file("extdata", "bam-demo", package = "MaMaMIA")

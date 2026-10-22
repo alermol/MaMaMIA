@@ -67,14 +67,14 @@
     invisible(progress)
 }
 
-.pipeline_normalization <- function(normalization, n_bams) {
+.pipeline_normalization <- function(normalization, n_samples) {
     mode <- tryCatch(
         match.arg(normalization, c("median", "reference", "none")),
         error = function(e) .analysis_error("%s", conditionMessage(e))
     )
     ## There is nothing to normalize a single sample against; the requested
     ## mode is still recorded in provenance.
-    if (n_bams == 1L) {
+    if (n_samples == 1L) {
         return("none")
     }
     mode
@@ -128,14 +128,16 @@
 }
 
 .pipeline_index <- function(preflight) {
-    n <- nrow(preflight)
+    paths <- unique(as.character(preflight$path))
+    representative <- match(paths, preflight$path)
+    n <- length(paths)
     working <- character(n)
     index_path <- character(n)
     staged <- logical(n)
 
     for (i in seq_len(n)) {
-        original <- preflight$path[[i]]
-        if (identical(preflight$index_action[[i]], "stage")) {
+        original <- paths[[i]]
+        if (identical(preflight$index_action[[representative[[i]]]], "stage")) {
             working[[i]] <- stageBam(original, .session_temp_dir())
             staged[[i]] <- TRUE
         } else {
@@ -146,7 +148,7 @@
 
     list(
         path = working,
-        original_path = preflight$path,
+        original_path = paths,
         index_path = index_path,
         staged = staged
     )
@@ -307,6 +309,7 @@
         assembly = preflight$assembly[[1L]],
         bams = bams,
         staged = indexed$staged,
+        n_bams = length(unique(preflight$path)),
         window_rule = "exact_equal_windows",
         windows_per_chromosome = n_per,
         n_samples = nrow(preflight),
@@ -453,7 +456,6 @@ analyzeBamInput <- function(bam_paths,
         match.arg(normalization, c("median", "reference", "none")),
         error = function(e) .analysis_error("%s", conditionMessage(e))
     )
-    mode <- .pipeline_normalization(requested_mode, length(bam_paths))
     if (!is.null(reference_sample)) {
         if (!is.character(reference_sample) || length(reference_sample) != 1L ||
             is.na(reference_sample) || !nzchar(reference_sample)) {
@@ -465,6 +467,9 @@ analyzeBamInput <- function(bam_paths,
     cache <- .pipeline_cache(cache)
 
     preflight <- preflightBams(bam_paths, config, assembly)
+    n_bams <- length(unique(preflight$path))
+    n_samples <- nrow(preflight)
+    mode <- .pipeline_normalization(requested_mode, n_samples)
     assembly_key <- preflight$assembly[[1L]]
     assembly_config <- config$assemblies[[assembly_key]]
     if (is.null(assembly_config)) {
@@ -486,13 +491,14 @@ analyzeBamInput <- function(bam_paths,
         )
     }
     .pipeline_progress(progress, "preflight", list(
-        n_bams = nrow(preflight),
+        n_bams = n_bams,
+        n_samples = n_samples,
         assembly = assembly_key
     ))
 
     indexed <- .pipeline_index(preflight)
     .pipeline_progress(progress, "index", list(
-        n_bams = nrow(preflight),
+        n_bams = n_bams,
         staged = sum(indexed$staged)
     ))
 
@@ -503,7 +509,7 @@ analyzeBamInput <- function(bam_paths,
         n_windows = nrow(windows$table)
     ))
 
-    total_windows <- nrow(preflight) * nrow(windows$table)
+    total_windows <- n_samples * nrow(windows$table)
     if (is.finite(max_fit_windows) && total_windows > max_fit_windows) {
         warning(
             sprintf(
@@ -511,7 +517,7 @@ analyzeBamInput <- function(bam_paths,
                     "Total analysis windows across %d sample(s) is %d, above ",
                     "max_fit_windows (%s); the run may be slow and memory-hungry"
                 ),
-                nrow(preflight), total_windows,
+                n_samples, total_windows,
                 format(max_fit_windows, scientific = FALSE)
             ),
             call. = FALSE
@@ -547,60 +553,100 @@ analyzeBamInput <- function(bam_paths,
     names(rcas) <- samples
     tables_list <- vector("list", length(samples))
 
-    for (i in seq_along(samples)) {
-        sample <- samples[[i]]
-        original_path <- preflight$path[[i]]
-        counts <- tryCatch(
-            countReads(
-                indexed$path[[i]],
-                windows$gr,
-                mapq = mapq,
-                exclude_flags = exclude_flags
-            ),
-            error = function(e) .sample_stage_error(e, sample, "counts")
-        )
-        total <- sum(as.numeric(counts))
-        if (total <= 0) {
-            .mamamia_error(
-                "MaMaMIASampleError",
-                "Sample '%s' has zero reads in all analysis windows; cannot estimate GC bias",
-                sample
-            )
+    ## Count one BAM at a time. A BAM with one sample keeps the bamsignals
+    ## backend; a BAM with several @RG SM samples is counted per read group so
+    ## every sample gets its own column without splitting the file on disk.
+    headers <- lapply(indexed$original_path, bamHeaderInfo)
+    names(headers) <- indexed$original_path
+    selected_paths <- as.character(preflight$path)
+    for (bam_index in seq_along(indexed$original_path)) {
+        original_path <- indexed$original_path[[bam_index]]
+        rows <- which(selected_paths == original_path)
+        if (length(rows) == 0L) {
+            next
         }
-        donor_counts[, i] <- counts[windows$table$role == "donor"]
-        recipient_counts[, i] <- counts[windows$table$role == "recipient"]
-        .pipeline_progress(progress, "counts", list(
-            sample = sample,
-            path = original_path,
-            total = total
-        ))
+        bam_samples <- samples[rows]
+        counts_by_sample <- if (length(rows) == 1L) {
+            list(tryCatch(
+                countReads(
+                    indexed$path[[bam_index]],
+                    windows$gr,
+                    mapq = mapq,
+                    exclude_flags = exclude_flags
+                ),
+                error = function(e) {
+                    .sample_stage_error(e, bam_samples[[1L]], "counts")
+                }
+            ))
+        } else {
+            matrix_counts <- tryCatch(
+                .count_reads_by_sample(
+                    indexed$path[[bam_index]],
+                    windows,
+                    samples = bam_samples,
+                    read_groups = headers[[bam_index]]$read_groups,
+                    mapq = mapq,
+                    exclude_flags = exclude_flags
+                ),
+                error = function(e) {
+                    .mamamia_error(
+                        class(e)[[1L]],
+                        "BAM '%s' (%d samples): %s",
+                        basename(original_path), length(rows),
+                        conditionMessage(e)
+                    )
+                }
+            )
+            lapply(seq_along(bam_samples), function(j) matrix_counts[j, ])
+        }
 
-        tables <- buildSampleTables(
-            counts, gc, windows, assembly_config, sample
-        )
-        tables_list[[i]] <- tables
-        rca <- tryCatch(
-            do.call(RCA, tables[c("dcov", "dgc", "rcov", "rgc", "meta")]),
-            error = function(e) .sample_stage_error(e, sample, "RCA")
-        )
-        corrected <- tryCatch(
-            correctReadCounts(
-                rca,
-                cores = cores,
-                verbose = FALSE,
-                cache = cache,
-                max_fit_windows = max_fit_windows
-            ),
-            error = function(e) {
-                .sample_stage_error(e, sample, "GC correction")
+        for (j in seq_along(rows)) {
+            i <- rows[[j]]
+            sample <- samples[[i]]
+            counts <- counts_by_sample[[j]]
+            total <- sum(as.numeric(counts))
+            if (total <= 0) {
+                .mamamia_error(
+                    "MaMaMIASampleError",
+                    "Sample '%s' has zero reads in all analysis windows; cannot estimate GC bias",
+                    sample
+                )
             }
-        )
-        .pipeline_progress(progress, "correction", list(
-            sample = sample,
-            n_ideal = sum(corrected$data$ideal)
-        ))
+            donor_counts[, i] <- counts[windows$table$role == "donor"]
+            recipient_counts[, i] <- counts[windows$table$role == "recipient"]
+            .pipeline_progress(progress, "counts", list(
+                sample = sample,
+                path = original_path,
+                total = total
+            ))
 
-        rcas[[sample]] <- corrected
+            tables <- buildSampleTables(
+                counts, gc, windows, assembly_config, sample
+            )
+            tables_list[[i]] <- tables
+            rca <- tryCatch(
+                do.call(RCA, tables[c("dcov", "dgc", "rcov", "rgc", "meta")]),
+                error = function(e) .sample_stage_error(e, sample, "RCA")
+            )
+            corrected <- tryCatch(
+                correctReadCounts(
+                    rca,
+                    cores = cores,
+                    verbose = FALSE,
+                    cache = cache,
+                    max_fit_windows = max_fit_windows
+                ),
+                error = function(e) {
+                    .sample_stage_error(e, sample, "GC correction")
+                }
+            )
+            .pipeline_progress(progress, "correction", list(
+                sample = sample,
+                n_ideal = sum(corrected$data$ideal)
+            ))
+
+            rcas[[sample]] <- corrected
+        }
     }
 
     ## Normalize only after every sample has been corrected, and before any
@@ -686,11 +732,12 @@ analyzeBamInput <- function(bam_paths,
     } else {
         samples == reference_used
     }
+    sample_bam <- match(preflight$path, indexed$original_path)
     samples_meta <- data.frame(
         sample = samples,
         path = preflight$path,
         assembly = preflight$assembly,
-        index_path = indexed$index_path,
+        index_path = indexed$index_path[sample_bam],
         reference = is_reference,
         normalization = rep(normalization_out$mode, length(samples)),
         n_windows = rep(nrow(windows$table), length(samples)),
@@ -706,7 +753,7 @@ analyzeBamInput <- function(bam_paths,
     bams <- data.frame(
         path = preflight$path,
         sample = samples,
-        index_path = indexed$index_path,
+        index_path = indexed$index_path[sample_bam],
         n_targets = preflight$n_targets,
         stringsAsFactors = FALSE
     )

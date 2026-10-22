@@ -617,3 +617,37 @@ test_that("a read-only BAM directory is staged in session temp", {
         normalizePath(tempdir(), winslash = "/", mustWork = TRUE)
     ))
 })
+
+test_that("one BAM with several @RG samples runs as a cohort", {
+    skip_if_no_samtools()
+    fixture <- variable_gc_fixture()
+    on.exit(unlink(fixture$directory, recursive = TRUE), add = TRUE)
+    samples <- c("sample-a", "sample-b")
+    bam <- add_multi_sample_gc_bam(
+        fixture, samples, steps = c(4L, 6L)
+    )
+
+    result <- suppressWarnings(analyzeBamInput(
+        bam,
+        fixture$config_path,
+        windows_per_chromosome = 100L,
+        normalization = "median",
+        cores = 1L,
+        max_fit_windows = Inf,
+        cache = FALSE
+    ))
+
+    expect_s3_class(result, "BamAnalysisResult")
+    expect_identical(result$provenance$n_bams, 1L)
+    expect_identical(result$provenance$n_samples, 2L)
+    expect_identical(result$samples$sample, samples)
+    expect_identical(names(result$isa), samples)
+    expect_identical(nrow(result$bams), 2L)
+    expect_identical(unique(result$bams$path), normalizePath(bam, winslash = "/"))
+    expect_identical(result$normalization$mode, "median")
+    expect_true(all(result$samples$normalization == "median"))
+    expect_gt(
+        sum(abs(result$counts$donor[, 1L] - result$counts$donor[, 2L])),
+        0
+    )
+})

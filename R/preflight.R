@@ -1,10 +1,15 @@
-## Multi-BAM preflight validation (T1.4).
+## BAM preflight validation (T1.4).
 ##
 ## Preflight is deliberately cheap: it reads file metadata and headers only.
 ## No index is built and no alignment is read, so every structural problem
 ## (wrong assembly, duplicate sample, limits, path escapes) fails before the
 ## expensive stages start. Index status is reported for the UI; the pipeline
 ## itself calls ensureBamIndex() later.
+##
+## One BAM may contain several samples through its @RG SM tags. The returned
+## table has one row per sample; `path` and the index columns are repeated for
+## every sample in that BAM, and `n_samples` records how many samples the BAM
+## contributed.
 
 .preflight_error <- function(fmt, ...) {
     .mamamia_error("MaMaMIAPreflightError", fmt, ...)
@@ -99,23 +104,23 @@
 #'
 #' Reads only file metadata and BAM headers. Every path must exist, be a
 #' non-empty regular file and be readable. File count and total size limits from
-#' `config$server` are enforced. Headers are parsed once, sample names are
-#' resolved per D2, duplicate samples are rejected, and every BAM must match the
-#' same configured assembly.
+#' `config$server` are enforced. Headers are parsed once, samples are resolved
+#' from `@RG SM` and read groups from `@RG ID`, duplicate samples are rejected,
+#' and every BAM must match the same configured assembly.
 #'
 #' BAMs are supplied only through Shiny uploads; there is no server-side BAM
 #' directory. No index is built and no alignment is read. The returned table
 #' reports the CSI status and the action the pipeline will take: `reuse`,
-#' `create`,
-#' `rebuild`, or `stage` (when the containing directory is not writable).
+#' `create`, `rebuild`, or `stage` (when the containing directory is not
+#' writable). One BAM with several `@RG SM` values yields one row per sample.
 #'
 #' @param paths Character vector of BAM paths.
 #' @param config A validated configuration list from [readMaMaMIAConfig()], or a
 #'   path to a YAML configuration.
 #' @param assembly Optional assembly key to validate instead of auto-selecting.
 #'
-#' @return A data frame with one row per BAM and columns `path`, `file_size`,
-#'   `sample`, `sample_source`, `assembly`, `n_targets`,
+#' @return A data frame with one row per sample and columns `path`, `file_size`,
+#'   `sample`, `sample_source`, `n_samples`, `assembly`, `n_targets`,
 #'   `n_assembly_targets`, `index_path`, `index_status`, `index_action`,
 #'   `warnings` and `valid`.
 #' @export
@@ -184,15 +189,18 @@ preflightBams <- function(paths, config, assembly = NULL) {
     }
 
     headers <- lapply(checked, bamHeaderInfo)
-    samples <- vapply(headers, `[[`, character(1), "sample")
-    duplicated_samples <- unique(samples[duplicated(samples)])
+    header_samples <- lapply(headers, `[[`, "samples")
+    all_samples <- unlist(header_samples, use.names = FALSE)
+    duplicated_samples <- unique(all_samples[duplicated(all_samples)])
     if (length(duplicated_samples) > 0L) {
         sample <- duplicated_samples[[1L]]
-        sample_paths <- checked[samples == sample]
+        sample_paths <- checked[rep(seq_len(n), lengths(header_samples))][
+            all_samples == sample
+        ]
         .mamamia_error(
             "MaMaMIASampleError",
             "Duplicate sample name '%s' in input BAMs: %s",
-            sample, paste(sprintf("'%s'", sample_paths), collapse = ", ")
+            sample, paste(sprintf("'%s'", unique(sample_paths)), collapse = ", ")
         )
     }
 
@@ -210,19 +218,35 @@ preflightBams <- function(paths, config, assembly = NULL) {
         )
     }, character(1))
 
+    ## Expand one BAM into one row per sample. The order follows the BAM order
+    ## and then the @RG order, which is also the order used by the pipeline.
+    row_bam <- rep(seq_len(n), lengths(header_samples))
+    row_sample <- unlist(header_samples, use.names = FALSE)
+    row_sources <- rep(
+        vapply(headers, `[[`, character(1), "sample_source"),
+        lengths(header_samples)
+    )
+
     out <- data.frame(
-        path = checked,
-        file_size = sizes,
-        sample = samples,
-        sample_source = vapply(headers, `[[`, character(1), "sample_source"),
-        assembly = rep(assembly_key, n),
-        n_targets = vapply(headers, `[[`, integer(1), "n_targets"),
-        n_assembly_targets = rep(as.integer(nrow(targets)), n),
-        index_path = vapply(indexes, `[[`, character(1), "index_path"),
-        index_status = vapply(indexes, `[[`, character(1), "status"),
-        index_action = vapply(indexes, `[[`, character(1), "action"),
-        warnings = warnings,
-        valid = rep(TRUE, n),
+        path = checked[row_bam],
+        file_size = sizes[row_bam],
+        sample = row_sample,
+        sample_source = row_sources,
+        n_samples = rep(lengths(header_samples), lengths(header_samples)),
+        assembly = keys[row_bam],
+        n_targets = vapply(headers, `[[`, integer(1), "n_targets")[row_bam],
+        n_assembly_targets = rep(as.integer(nrow(targets)), length(row_bam)),
+        index_path = vapply(
+            indexes, `[[`, character(1), "index_path"
+        )[row_bam],
+        index_status = vapply(
+            indexes, `[[`, character(1), "status"
+        )[row_bam],
+        index_action = vapply(
+            indexes, `[[`, character(1), "action"
+        )[row_bam],
+        warnings = warnings[row_bam],
+        valid = rep(TRUE, length(row_bam)),
         stringsAsFactors = FALSE
     )
     rownames(out) <- NULL

@@ -22,13 +22,8 @@ output_html <- function(output) {
 
 example_inputs <- function(...) {
     defaults <- list(
-        bam_mode = "single",
         resolution = "100",
-        reference_sample = "",
-        mapq = 20,
-        exclude_flags = 2308,
-        cores = 1,
-        max_fit_windows = 1000
+        reference_sample = ""
     )
     utils::modifyList(defaults, list(...))
 }
@@ -88,7 +83,7 @@ test_that("the example replay uses the normal pipeline stage messages", {
     )
     expect_match(
         MaMaMIA:::bam_progress_label("preflight", seen[[1L]]$detail),
-        "Checking BAM headers \\(1 file, assembly '"
+        "Checking BAM headers \\(1 BAM file, 1 sample"
     )
     expect_match(
         MaMaMIA:::bam_progress_label("counts", seen[[5L]]$detail),
@@ -149,12 +144,15 @@ test_that("the Example data button unlocks the setup and writes the footer log",
         sidebar <- output_html(output$sidebar_body)
         expect_match(sidebar, "Analysis")
         expect_match(sidebar, "Assembly")
-        expect_match(sidebar, "Advanced")
+        expect_false(grepl("Advanced", sidebar, fixed = TRUE))
         expect_match(sidebar, "Filters")
         expect_match(sidebar, "Export")
+        species <- output_html(output$species_ui)
+        expect_match(species, "Recipient species")
+        expect_match(species, "Donor species")
+        expect_match(species, "triticum_like")
 
         log <- output$calculation_log
-        expect_match(log, "Example data loaded", fixed = TRUE)
         expect_match(log, "Preflight OK", fixed = TRUE)
         expect_match(log, "Detected assembly", fixed = TRUE)
 
