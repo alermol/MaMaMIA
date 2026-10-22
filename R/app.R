@@ -55,8 +55,8 @@ default_fit_cache <- function() {
 #' carrying the `sample` column.
 #'
 #' Dashboard packages are optional MaMaMIA dependencies. Install them with
-#' `install.packages(c("shiny", "bslib", "shinyWidgets", "DT"))`
-#' before calling this function.
+#' `install.packages(c("shiny", "bslib", "shinyWidgets", "DT"))` and
+#' `remotes::install_github("rstudio/gridlayout")` before calling this function.
 #'
 #' @param cache Optional path to an `.rds` file used to memoise the GC-bias
 #'   model fit, passed to [correctReadCounts()]. Defaults to a file in the

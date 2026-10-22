@@ -148,10 +148,11 @@ rule is not the intended comparison.
 
 The sidebar has no predefined-assembly selector. A "Swap donor and recipient"
 button reverses the comparison without reselecting the species, and keeps each
-species' subgenome choice. When the registry also declares named assemblies, a
-checkbox enables BAM-header auto-detection; a registry with no `species:`
-section falls back to auto-detection automatically. The resolution, upload
-limits, resource limits and registry-growth caveats are unchanged.
+species' subgenome choice. These selectors live in the **Assembly** panel,
+which appears after preflight succeeds. When the registry also declares named
+assemblies, a checkbox enables BAM-header auto-detection; a registry with no
+`species:` section falls back to auto-detection automatically. The resolution,
+upload limits, resource limits and registry-growth caveats are unchanged.
 
 ## 2. Build the image
 
@@ -207,13 +208,14 @@ docker run --rm -p 3838:3838 \
   mamamia:0.99.1
 ```
 
-Open `http://127.0.0.1:3838/`, confirm that the configuration summary shows
-the two species, choose `Triticum aestivum CS T2T` as the recipient and
-`Secale cereale` as the donor (or the reverse), then either upload a BAM or tick
-**Use bundled example data**. The example needs no BAM mount and takes about a
-second; a successful run shows the cohort summary and the explorer plot. Stop
-the container with Ctrl-C; the session directory and staged indexes are removed
-on session end.
+Open `http://127.0.0.1:3838/`, confirm that the calculation log shows the two
+species registry, choose `Triticum aestivum CS T2T` as the recipient and
+`Secale cereale` as the donor (or the reverse) in the **Assembly** panel, then
+either upload a BAM or press **Example data**. The example needs no BAM mount
+and takes about a second; a successful run populates the **Introgression
+circos**, **Coverage / dosage** and **Segments** tabs, and the footer log ends
+with the analysis summary. Stop the container with Ctrl-C; the session
+directory and staged indexes are removed on session end.
 
 To check the same pipeline without the browser, run the bundled smoke script in
 a one-off container. It uses the packaged demo BAM and registry, so it needs no

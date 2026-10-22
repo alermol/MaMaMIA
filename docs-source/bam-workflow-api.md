@@ -841,20 +841,32 @@ is a YAML path, a validated configuration list or `NULL`; a `NULL` falls back
 to `MAMAMIA_CONFIG`. A missing or invalid registry renders a configuration
 error card instead of stopping the process.
 
-Sidebar controls: configuration summary; `fileInput("bams")`; a
-`checkboxInput("example_data")` that runs the bundled pre-computed example;
-resolution radio buttons built from `defaults.allowed_windows` (Low = 100,
-Medium = 1,000, High = 10,000, default
-`defaults.windows_per_chromosome`); the reference selector (hidden for one
-BAM); the assembly override; advanced MAPQ, exclude-flags, cores and
-`max_fit_windows`; and a Run button that carries the `disabled` attribute and
-the Bootstrap `disabled` class until preflight succeeds.
+The page uses a `gridlayout::grid_container()` with the layout
+`|2rem|200px|1fr|` / `|150px|header|header|` / `|1fr|sidebar|main|` /
+`|120px|footer|footer|`: a 2 rem gap, a 200 px sidebar, a 150 px header, the
+fluid main area and a 120 px footer. The header holds the application name.
 
-Main cards: a preflight table (`file`, `sample`, `assembly`, `targets`,
-`index`, `warnings`), the detected-assembly card (label, description, donor and
-recipient contigs, pairs, window counts per allowed resolution) and a problems
-card with the error stage, message, suggested fix and, for assembly failures,
-the candidate scores. Candidate scores are computed with the same
+The sidebar starts with `selectInput("bam_mode")` (**Single BAM** or
+**Multiple BAMs**), `fileInput("bams")` (`multiple = TRUE` only in cohort
+mode) and the **Example data** action button. The button loads the bundled
+pre-computed example and sets the example resolution; pressing it again clears
+the example. The remaining controls are rendered only after preflight succeeds
+and are grouped in single-open `bslib::accordion()` panels: **Analysis**
+(resolution, reference selector for cohorts, Run), **Assembly** (detected
+assembly, species/subgenome selectors, preflight table), **Advanced** (MAPQ,
+exclude flags, cores, `max_fit_windows`), **Filters** (the explorer controls)
+and **Export** (cohort summary and BEDPE downloads). A failed preflight can
+unlock the panels explicitly with **Show setup** so a wrong species choice can
+be corrected.
+
+The main area only contains the result tabs: **Introgression circos**,
+**Coverage / dosage** (mirror or difference) and **Segments**. The footer holds
+`verbatimTextOutput("calculation_log")`, a timestamped log that reports
+preflight status, the detected assembly and pairs, assembly candidates,
+problems with suggested fixes, and every pipeline progress stage. The
+preflight table (`file`, `sample`, `assembly`, `targets`, `index`, `warnings`)
+and the detected-assembly summary are in the **Assembly** panel, not in the
+main area. Candidate scores use the same
 `.match_candidate()`/`.candidate_table()` helpers as `matchAssembly()`, so they
 are available even for header-length mismatches whose condition payload has no
 candidate table.
@@ -868,9 +880,9 @@ calls `preflightBams()` on the staged paths. The copy path also means
 temporary-directory cleanup that follows and chmods symlinks cannot touch the
 source metadata. Staging normalizes sources to absolute paths. The table
 reports the original path as `source` but keeps the staged path for the run.
-When `example_data` is selected, preflight instead returns the stored demo
-preflight table and the run loads a pre-computed `BamAnalysisResult`; it never
-opens a BAM.
+When the **Example data** button is active, preflight instead returns the
+stored demo preflight table and the run loads a pre-computed
+`BamAnalysisResult`; it never opens a BAM.
 
 The run handler validates the controls through `bam_run_parameters()` (single
 BAM → `none`; cohort with an empty reference → `median`; a named reference →
@@ -885,7 +897,7 @@ and per-chromosome windows, reads per sample, ideal fit windows, the
 normalization mode and reference, and segments per sample. Every failure is
 caught, classified by `bam_error_stage()`, and shown as
 `[stage] message / File: <source> / Suggested fix: ...`; the previous result is
-restored and the last error remains visible in the Problems card. A
+restored and the last error remains visible in the footer calculation log. A
 `MaMaMIASampleError` is mapped back to its source BAM through the preflight
 table, so the notification names the file the user supplied rather than the
 staged session copy. The result is invalidated when the BAM selection,
@@ -984,10 +996,10 @@ detail, so the callback remains optional.
 `suggestion`. Files are resolved in this order: a `path` in the condition
 payload, the sample name in a `MaMaMIASampleError` mapped through the preflight
 `sample`/`source` columns, then the caller's fallback list. Notifications and
-the Problems card use `File:` for one file and `Files:` for several, capped at
-five paths with a `(+N more)` suffix. `bam_error_file_label()` is the single
-formatter for notifications, the preflight error card and the persistent
-last-run error card.
+the footer calculation log use `File:` for one file and `Files:` for several,
+capped at five paths with a `(+N more)` suffix. `bam_error_file_label()` is the
+single formatter for notifications, the preflight log lines and the persistent
+run-failure log lines.
 
 Run-control errors are MaMaMIA conditions: an invalid resolution raises
 `MaMaMIAWindowError`, a bad MAPQ/flag/core/fit-window value raises
@@ -1245,7 +1257,7 @@ Species pair '<r>' (recipient) + '<d>' (donor): donor and recipient subgenome la
 The application turns every error into the stage/file/suggestion presentation
 described in section 4. Run-control validation (resolution, MAPQ, exclude
 flags, cores, fit cap, reference sample) uses the same condition classes, so a
-bad control and a failed run look alike in the Problems card.
+bad control and a failed run look alike in the footer calculation log.
 
 ### 17.4 Removal of the directory-layout workflow (T7.5)
 

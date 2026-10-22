@@ -50,8 +50,8 @@ To run the whole pipeline (input files to dashboard) instead, use
 \code{\link[=runMaMaMIA]{runMaMaMIA()}}.
 
 Dashboard packages are optional MaMaMIA dependencies. Install them with
-\code{install.packages(c("shiny", "bslib", "shinyWidgets", "DT"))}
-before calling this function.
+\code{install.packages(c("shiny", "bslib", "shinyWidgets", "DT"))} and
+\code{remotes::install_github("rstudio/gridlayout")} before calling this function.
 }
 \examples{
 \dontrun{

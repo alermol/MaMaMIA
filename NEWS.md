@@ -1,5 +1,24 @@
 # MaMaMIA 0.99.1
 
+## Grid dashboard layout
+
+* The BAM-first dashboard now uses the `gridlayout` package with the layout
+  `2rem` gap, `200px` sidebar, `150px` header, fluid main area and `120px`
+  footer. The application name is shown in the header, and the main area holds
+  only the **Introgression circos**, **Coverage / dosage** and **Segments**
+  tabs.
+* The sidebar starts with a **Single BAM / Multiple BAMs** selector, the upload
+  control and an **Example data** button for both modes. Analysis controls
+  appear after preflight succeeds and live in single-open collapsible panels
+  (**Analysis**, **Assembly**, **Advanced**, **Filters**, **Export**).
+* Preflight status, detected assemblies, assembly candidates, problems,
+  suggested fixes and every pipeline stage are written to the calculation log
+  in the footer. The standalone preflight, problems and detected-window cards
+  are no longer part of the main area.
+* The bundled example is now loaded with the **Example data** button; pressing
+  it again clears the example and restores the registry resolution choices.
+  The button is available in both single-BAM and multi-BAM modes.
+
 ## Upload-only BAMs and bundled example data
 
 * BAMs are accepted only through the Shiny upload control. `server.bam_root`,
@@ -8,7 +27,7 @@
   ignored; `server.max_bams` and `server.max_total_bytes` still apply.
 * Added `inst/extdata/example`: a self-contained registry and pre-computed
   `BamAnalysisResult` tables at 100 and 1,000 windows per chromosome. The live
-  sidebar offers **Use bundled example data**; it replays the normal pipeline
+  sidebar offers the **Example data** button; it replays the normal pipeline
   stage messages (preflight, indexes, windows, GC, counts, correction,
   segmentation) while loading the stored result, so no example BAM is needed in
   the container. Regenerate it with `tools/make-example-data.R`.

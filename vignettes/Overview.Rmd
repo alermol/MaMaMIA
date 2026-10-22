@@ -243,8 +243,8 @@ column. The app runs on ShinyProxy with the image and registry described in
 `docs-source/shinyproxy.md`; the container entrypoint is
 `uvr run /app/deployment/start.R`.
 
-The bundled demo can be opened directly, or run without any upload from the
-**Use bundled example data** checkbox:
+The bundled demo can be opened directly, or run without any upload by pressing
+the **Example data** button in the sidebar:
 
 ```{r run-demo, eval = FALSE}
 runMaMaMIA(config = file.path(demo, "assemblies.yml"))

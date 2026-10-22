@@ -4,6 +4,13 @@
 #
 #   docker build -f deployment/Dockerfile -t mamamia:0.99.1 .
 #
+# On a host that cannot reach bioconductor.org, use host networking and the
+# mirror argument instead:
+#
+#   docker build --network=host \
+#     --build-arg BIOC_MIRROR=https://bioconductor.statistik.tu-dortmund.de/packages \
+#     -f deployment/Dockerfile -t mamamia:0.99.1 .
+#
 # The image pins the uvr release, R and every R package (uvr.lock). It runs as
 # an unprivileged user and is meant to be started by ShinyProxy through
 # `uvr run /app/deployment/start.R`.
@@ -26,7 +33,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
     LC_ALL=C.UTF-8
 
 # GCC 14 (Debian trixie) provides C++23. The development libraries are needed
-# for source builds of Rhtslib, Bioconductor packages and MaMaMIA itself.
+# for source builds of Rhtslib, Bioconductor packages and MaMaMIA itself;
+# pandoc supports the knitr/rmarkdown development dependencies in the lockfile.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         ca-certificates \
@@ -52,6 +60,9 @@ RUN apt-get update \
         liblapack-dev \
         libncurses-dev \
         libuv1 \
+        libuv1-dev \
+        cmake \
+        pandoc \
         libjpeg-dev \
         libpng-dev \
         libtiff-dev \

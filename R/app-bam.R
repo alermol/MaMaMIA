@@ -551,6 +551,116 @@ bam_stage_paths <- function(paths, session_dir) {
     )
 }
 
+#' Format a preflight state for the dashboard calculation log
+#'
+#' The footer log is the only place that reports preflight status, detected
+#' assemblies and problems, so the messages are deliberately explicit.
+#' @noRd
+bam_preflight_log <- function(pf) {
+    if (is.null(pf)) {
+        return("Preflight: no state available.")
+    }
+    if (isTRUE(pf$empty)) {
+        return("Preflight: waiting for a BAM upload.")
+    }
+    if (!isTRUE(pf$ok)) {
+        info <- pf$error
+        if (is.null(info)) {
+            return("Preflight failed.")
+        }
+        lines <- sprintf(
+            "Preflight failed at stage '%s': %s", info$stage, info$message
+        )
+        file_label <- bam_error_file_label(info$files)
+        if (!is.null(file_label)) {
+            lines <- c(lines, file_label)
+        }
+        lines <- c(lines, sprintf("Suggested fix: %s", info$suggestion))
+        candidates <- pf$candidates
+        if (is.data.frame(candidates) && nrow(candidates) > 0L) {
+            lines <- c(lines, paste0(
+                "Assembly candidates: ",
+                paste(sprintf(
+                    "%s (%d/%d targets, %.1f%%)",
+                    candidates$key, candidates$n_matched,
+                    candidates$n_targets, 100 * candidates$score
+                ), collapse = "; ")
+            ))
+        }
+        return(lines)
+    }
+
+    table <- pf$table
+    n <- if (is.null(table)) 0L else nrow(table)
+    lines <- character()
+    if (isTRUE(pf$example)) {
+        lines <- c(
+            lines,
+            "Example data loaded: pre-computed tables, no BAM is read."
+        )
+    }
+    lines <- c(lines, sprintf(
+        "Preflight OK: %d BAM%s, assembly '%s'.",
+        n, if (n == 1L) "" else "s", pf$assembly
+    ))
+    if (!is.null(table) && n > 0L) {
+        lines <- c(lines, sprintf(
+            "Samples: %s", paste(unique(table$sample), collapse = ", ")
+        ))
+        warnings <- unique(table$warnings[nzchar(table$warnings)])
+        if (length(warnings) > 0L) {
+            lines <- c(lines, paste0("Preflight note: ", warnings))
+        }
+    }
+
+    assembly <- pf$assembly_config
+    if (!is.null(assembly)) {
+        lines <- c(lines, sprintf(
+            "Detected assembly: %s (%s); %d contig pair%s.",
+            assembly$label, assembly$key, length(assembly$pairs),
+            if (length(assembly$pairs) == 1L) "" else "s"
+        ))
+        if (length(assembly$pairs) > 0L) {
+            lines <- c(lines, paste0(
+                "Pairs: ",
+                paste(
+                    sprintf(
+                        "%s -> %s", names(assembly$pairs), unname(assembly$pairs)
+                    ),
+                    collapse = "; "
+                )
+            ))
+        }
+    }
+    lines
+}
+
+#' Format one timestamped calculation-log entry
+#'
+#' Pure helper used both when the log is seeded during server creation and by
+#' the reactive `log_line()` writer. Returning `NULL` for empty text lets `c()`
+#' drop the entry.
+#' @noRd
+bam_log_entry <- function(message, time = Sys.time()) {
+    if (length(message) != 1L || is.na(message) || !nzchar(message)) {
+        return(NULL)
+    }
+    sprintf("[%s] %s", format(time, "%H:%M:%S"), message)
+}
+
+#' Initial calculation-log lines for a new session
+#'
+#' This must not read or write a reactive value: it runs during server
+#' creation, before Shiny has entered a reactive consumer context.
+#' @noRd
+bam_initial_log <- function(config, time = Sys.time()) {
+    c(
+        bam_log_entry("MaMaMIA session started.", time),
+        bam_log_entry(bam_config_summary(config), time),
+        bam_log_entry("Input mode: single BAM.", time)
+    )
+}
+
 ## Preflight presentation ----------------------------------------------------
 
 #' @noRd
@@ -1241,6 +1351,260 @@ bam_bedpe_filename <- function(sample) {
 ## UI ------------------------------------------------------------------------
 
 #' @noRd
+## Dashboard layout ----------------------------------------------------------
+
+## The page is a three-column, three-row grid. The 2rem first column is a
+## gutter; the header and footer span the sidebar and main columns. The grid
+## keeps the log visible while the result tabs scroll independently.
+#' @noRd
+bam_dashboard_css <- function() {
+    "
+    .container-fluid {
+        height: 100vh;
+        padding: 0 !important;
+    }
+    html, body { height: 100%; }
+    body { overflow: hidden; }
+
+    .mamamia-header {
+        display: flex;
+        align-items: center;
+        min-width: 0;
+        height: 100%;
+        padding: 0 1.5rem;
+        border-bottom: 1px solid var(--bs-border-color);
+        background: var(--bs-tertiary-bg);
+    }
+
+    .mamamia-title {
+        margin: 0;
+        font-size: clamp(2rem, 4vw, 3.25rem);
+        font-weight: 800;
+        line-height: 1;
+        letter-spacing: -0.02em;
+    }
+
+    .mamamia-subtitle {
+        margin: .35rem 0 0;
+        color: var(--bs-secondary-color);
+        font-size: .95rem;
+    }
+
+    .mamamia-sidebar {
+        min-width: 0;
+        min-height: 0;
+        overflow-x: hidden;
+        overflow-y: auto;
+        padding: .55rem .6rem;
+        border-right: 1px solid var(--bs-border-color);
+        background: var(--bs-body-bg);
+    }
+
+    .mamamia-main {
+        min-width: 0;
+        min-height: 0;
+        overflow: auto;
+        padding: .75rem 1rem;
+    }
+
+    .mamamia-footer {
+        display: flex;
+        flex-direction: column;
+        gap: .25rem;
+        min-width: 0;
+        min-height: 0;
+        overflow: hidden;
+        padding: .35rem .75rem .45rem;
+        border-top: 1px solid var(--bs-border-color);
+        background: var(--bs-tertiary-bg);
+    }
+
+    .mamamia-footer .shiny-text-output {
+        flex: 1 1 auto;
+        margin: 0;
+        padding: .15rem .35rem;
+        overflow-y: auto;
+        font-size: .72rem;
+        line-height: 1.3;
+        white-space: pre-wrap;
+        background: var(--bs-body-bg);
+        border: 1px solid var(--bs-border-color);
+        border-radius: .25rem;
+    }
+
+    .mamamia-footer .footer-status { font-size: .76rem; min-height: 1.25rem; }
+
+    .mamamia-sidebar .shiny-input-container {
+        width: 100% !important;
+        margin-bottom: .45rem;
+    }
+    .mamamia-sidebar .form-label,
+    .mamamia-sidebar .control-label,
+    .mamamia-sidebar label {
+        margin-bottom: .1rem;
+        font-size: .72rem;
+    }
+    .mamamia-sidebar .form-control,
+    .mamamia-sidebar .form-select {
+        height: auto;
+        padding: .18rem .35rem;
+        font-size: .78rem;
+    }
+    .mamamia-sidebar .btn {
+        padding: .18rem .4rem;
+        font-size: .74rem;
+    }
+    .mamamia-sidebar .accordion-button {
+        padding: .35rem .45rem;
+        font-size: .78rem;
+    }
+    .mamamia-sidebar .accordion-body { padding: .45rem; }
+    .mamamia-sidebar .radio label,
+    .mamamia-sidebar .checkbox label { font-size: .72rem; }
+    .mamamia-sidebar .table { margin-bottom: .25rem; font-size: .65rem; }
+
+    .mamamia-main .nav-link { font-size: .9rem; }
+    .mamamia-main .tab-content { padding-top: .75rem; }
+    "
+}
+
+#' @noRd
+bam_sidebar_species_ui <- function(config) {
+    species_choices <- bam_species_choices(config)
+    species_keys <- names(config$species)
+    if (length(species_keys) < 2L) {
+        return(shiny::p(
+            class = "text-muted small",
+            paste(
+                "This registry has no species section, so the assembly is",
+                "detected from the BAM header."
+            )
+        ))
+    }
+
+    species_controls <- shiny::tagList(
+        shiny::selectInput(
+            "recipient_species", "Recipient species",
+            choices = species_choices,
+            selected = species_keys[[1L]]
+        ),
+        shiny::uiOutput("recipient_subgenome_ui"),
+        shiny::selectInput(
+            "donor_species", "Donor species",
+            choices = species_choices,
+            selected = species_keys[[2L]]
+        ),
+        shiny::uiOutput("donor_subgenome_ui"),
+        shiny::actionButton(
+            "swap_species", "Swap donor and recipient", class = "btn-sm"
+        ),
+        shiny::p(
+            class = "text-muted small",
+            paste(
+                "Contigs are paired by chromosome group within the selected",
+                "subgenomes; only paired contigs enter the analysis."
+            )
+        )
+    )
+
+    if (length(config$assemblies) > 0L) {
+        shiny::tagList(
+            shiny::checkboxInput(
+                "auto_detect",
+                "Detect the assembly from the BAM header",
+                value = FALSE
+            ),
+            shiny::conditionalPanel("!input.auto_detect", species_controls)
+        )
+    } else {
+        species_controls
+    }
+}
+
+#' @noRd
+bam_sidebar_details_ui <- function(config) {
+    defaults <- config$defaults
+    bslib::accordion(
+        id = "bam_sidebar_accordion",
+        multiple = FALSE,
+        open = FALSE,
+        bslib::accordion_panel(
+            "Analysis",
+            shiny::radioButtons(
+                "resolution", "Resolution",
+                choices = bam_resolution_choices(defaults),
+                selected = bam_default_resolution(defaults)
+            ),
+            shiny::uiOutput("reference_ui"),
+            shiny::uiOutput("run_ui"),
+            shiny::p(
+                class = "text-muted small",
+                paste(
+                    "The analysis runs in this session and blocks until it",
+                    "finishes; a disconnect is handled after the current",
+                    "stage returns."
+                )
+            )
+        ),
+        bslib::accordion_panel(
+            "Assembly",
+            shiny::uiOutput("assembly_summary"),
+            shiny::uiOutput("species_ui"),
+            shiny::div(
+                class = "table-responsive",
+                shiny::tableOutput("preflight_table")
+            )
+        ),
+        bslib::accordion_panel(
+            "Advanced",
+            shiny::numericInput(
+                "mapq", "Minimum MAPQ",
+                value = defaults$mapq, min = 0, max = 255, step = 1
+            ),
+            shiny::numericInput(
+                "exclude_flags", "Exclude flags (SAM mask)",
+                value = defaults$exclude_flags,
+                min = 0, max = 4095, step = 1
+            ),
+            shiny::numericInput(
+                "cores", "Cores for the GC-bias fit",
+                value = default_cores(), min = 1L, max = bam_max_cores()
+            ),
+            shiny::numericInput(
+                "max_fit_windows", "Max fit windows",
+                value = defaults$max_fit_windows,
+                min = 1, step = 1000
+            )
+        ),
+        bslib::accordion_panel(
+            "Filters",
+            explorer_controls_ui("explorer")
+        ),
+        bslib::accordion_panel(
+            "Export",
+            shiny::uiOutput("cohort_ui")
+        )
+    )
+}
+
+#' Grid layout template for the dashboard
+#'
+#' The 2rem first column is the gap size understood by `gridlayout`, so the
+#' page has a 200 px sidebar, a fluid main area, a 150 px header and a 120 px
+#' footer with a uniform 2rem gap.
+#' @noRd
+bam_dashboard_layout <- function() {
+    paste(
+        "|      |        |         |",
+        "|------|--------|---------|",
+        "|2rem  |200px   |1fr      |",
+        "|150px |header  |header   |",
+        "|1fr   |sidebar |main     |",
+        "|120px |footer  |footer   |",
+        sep = "\n"
+    )
+}
+
 bam_launcher_ui <- function(state) {
     if (!isTRUE(state$ok)) {
         file_label <- bam_error_file_label(state$error$files)
@@ -1269,176 +1633,88 @@ bam_launcher_ui <- function(state) {
     }
 
     config <- state$config
-    defaults <- config$defaults
     example_available <- bam_example_available()
-    species_choices <- bam_species_choices(config)
-    species_keys <- names(config$species)
-    use_species <- length(species_keys) >= 2L
 
-    upload_ui <- shiny::fileInput(
-        "bams", "BAM files",
-        multiple = TRUE, accept = ".bam"
-    )
-    if (example_available) {
-        upload_ui <- shiny::conditionalPanel(
-            "!input.example_data", upload_ui
-        )
-    }
-
-    species_ui <- if (use_species) {
-        species_controls <- shiny::tagList(
-            shiny::selectInput(
-                "recipient_species", "Recipient species",
-                choices = species_choices,
-                selected = species_keys[[1L]]
-            ),
-            shiny::uiOutput("recipient_subgenome_ui"),
-            shiny::selectInput(
-                "donor_species", "Donor species",
-                choices = species_choices,
-                selected = species_keys[[2L]]
-            ),
-            shiny::uiOutput("donor_subgenome_ui"),
-            shiny::actionButton(
-                "swap_species", "Swap donor and recipient"
-            ),
-            shiny::p(
-                class = "text-muted",
-                paste(
-                    "Contigs are paired by chromosome group",
-                    "within the selected subgenomes; only paired",
-                    "contigs enter the analysis."
-                )
-            )
-        )
-        if (length(config$assemblies) > 0L) {
-            shiny::tagList(
-                shiny::checkboxInput(
-                    "auto_detect",
-                    "Detect the assembly from the BAM header",
-                    value = FALSE
-                ),
-                shiny::conditionalPanel(
-                    "!input.auto_detect", species_controls
-                )
-            )
-        } else {
-            species_controls
-        }
-    } else {
-        shiny::p(
-            class = "text-muted",
-            paste(
-                "This registry has no species section, so the",
-                "assembly is detected from the BAM header. Add at",
-                "least two species to choose a recipient and a donor."
-            )
-        )
-    }
-    if (example_available) {
-        species_ui <- shiny::conditionalPanel(
-            "!input.example_data", species_ui
-        )
-    }
-
-    advanced_ui <- shiny::tags$details(
-        shiny::tags$summary("Advanced"),
-        shiny::numericInput(
-            "mapq", "Minimum MAPQ",
-            value = defaults$mapq, min = 0, max = 255, step = 1
-        ),
-        shiny::numericInput(
-            "exclude_flags", "Exclude flags (SAM mask)",
-            value = defaults$exclude_flags,
-            min = 0, max = 4095, step = 1
-        ),
-        shiny::numericInput(
-            "cores", "Cores for the GC-bias fit",
-            value = default_cores(), min = 1L, max = bam_max_cores()
-        ),
-        shiny::numericInput(
-            "max_fit_windows", "Max fit windows",
-            value = defaults$max_fit_windows,
-            min = 1, step = 1000
-        )
-    )
-    if (example_available) {
-        advanced_ui <- shiny::conditionalPanel(
-            "!input.example_data", advanced_ui
-        )
-    }
-
-    bslib::page_sidebar(
+    bslib::page_fluid(
         title = "MaMaMIA",
-        ## The results are a long stack of cards. With the default fillable
-        ## page they become flex items and the 420 px plot output is shrunk to
-        ## a few pixels (or zero) before its first render, which makes png()
-        ## fail with "invalid 'height' argument".
-        fillable = FALSE,
-        sidebar = bslib::sidebar(
-            width = 400,
-            shiny::h6("Configuration"),
-            shiny::p(class = "text-muted", bam_config_summary(config)),
-            if (example_available) {
-                shiny::tagList(
-                    shiny::checkboxInput(
-                        "example_data", "Use bundled example data",
-                        value = FALSE
-                    ),
-                    shiny::p(
-                        class = "text-muted small",
-                        paste(
-                            "No upload is required: the example loads a",
-                            "pre-computed result while the normal pipeline",
-                            "stages are reported."
+        theme = bslib::bs_theme(version = 5),
+        shiny::tags$head(
+            shiny::tags$style(shiny::HTML(bam_dashboard_css())),
+            shiny::tags$script(shiny::HTML(
+                paste(
+                    "Shiny.addCustomMessageHandler('mamamia-log-scroll',",
+                    "function(x) {",
+                    "  var el = document.getElementById('calculation_log');",
+                    "  if (el) { el.scrollTop = el.scrollHeight; }",
+                    "});"
+                )
+            ))
+        ),
+        gridlayout::grid_container(
+            id = "mamamia-grid",
+            layout = bam_dashboard_layout(),
+            gridlayout::grid_place(
+                "header",
+                shiny::tags$header(
+                    class = "mamamia-header",
+                    shiny::div(
+                        shiny::h1("MaMaMIA", class = "mamamia-title"),
+                        shiny::p(
+                            class = "mamamia-subtitle",
+                            paste(
+                                "Max Mapping for Meticulous Introgression",
+                                "Analysis"
+                            )
                         )
                     )
                 )
-            },
-            upload_ui,
-            if (example_available) {
-                shiny::conditionalPanel(
-                    "input.example_data",
-                    shiny::p(class = "text-muted", bam_example_note())
-                )
-            },
-            shiny::radioButtons(
-                "resolution", "Resolution",
-                choices = bam_resolution_choices(defaults),
-                selected = bam_default_resolution(defaults)
             ),
-            shiny::uiOutput("reference_ui"),
-            species_ui,
-            advanced_ui,
-            shiny::uiOutput("run_ui"),
-            shiny::p(
-                class = "text-muted",
-                paste(
-                    "The analysis runs in this session's R process and blocks",
-                    "until it finishes. There is no in-app cancel; a disconnect",
-                    "is handled after the current stage returns."
+            gridlayout::grid_place(
+                "sidebar",
+                shiny::tags$div(
+                    class = "mamamia-sidebar",
+                    shiny::selectInput(
+                        "bam_mode", "Input mode",
+                        choices = c(
+                            "Single BAM" = "single",
+                            "Multiple BAMs" = "multi"
+                        ),
+                        selected = "single",
+                        width = "100%"
+                    ),
+                    shiny::uiOutput("bam_mode_note"),
+                    shiny::uiOutput("bam_upload_ui"),
+                    if (example_available) {
+                        shiny::actionButton(
+                            "example_data", "Example data",
+                            class = "btn-outline-secondary btn-sm",
+                            style = "width: 100%"
+                        )
+                    },
+                    shiny::uiOutput("sidebar_recovery"),
+                    shiny::uiOutput("sidebar_body")
                 )
             ),
-            shiny::hr(),
-            shiny::h6("Explorer filters"),
-            explorer_controls_ui("explorer")
-        ),
-        bslib::card(
-            bslib::card_header("Preflight"),
-            shiny::tableOutput("preflight_table")
-        ),
-        bslib::card(
-            bslib::card_header("Detected assembly"),
-            shiny::uiOutput("assembly_summary")
-        ),
-        bslib::card(
-            bslib::card_header("Problems"),
-            shiny::uiOutput("preflight_error"),
-            shiny::uiOutput("candidates_ui"),
-            shiny::uiOutput("run_error_ui")
-        ),
-        shiny::uiOutput("cohort_ui"),
-        explorer_results_ui("explorer")
+            gridlayout::grid_place(
+                "main",
+                shiny::tags$main(
+                    class = "mamamia-main",
+                    shiny::uiOutput("main_status"),
+                    explorer_results_ui("explorer")
+                )
+            ),
+            gridlayout::grid_place(
+                "footer",
+                shiny::tags$footer(
+                    class = "mamamia-footer",
+                    shiny::div(
+                        class = "footer-status",
+                        shiny::uiOutput("footer_status")
+                    ),
+                    shiny::verbatimTextOutput("calculation_log")
+                )
+            )
+        )
     )
 }
 
@@ -1460,35 +1736,146 @@ bam_launcher_server <- function(state, cache = NULL) {
         })
 
         example_available <- bam_example_available()
-        example_mode <- shiny::reactive({
-            isTRUE(example_available) && isTRUE(input$example_data)
+        example_mode <- shiny::reactiveVal(FALSE)
+        sidebar_unlocked <- shiny::reactiveVal(FALSE)
+        upload_epoch <- shiny::reactiveVal(0L)
+
+        result <- shiny::reactiveVal(NULL)
+        last_error <- shiny::reactiveVal(NULL)
+        selection_map <- shiny::reactiveVal(list())
+
+        log_entries <- shiny::reactiveVal(bam_initial_log(config))
+        log_line <- function(...) {
+            entry <- bam_log_entry(paste0(...))
+            if (is.null(entry)) {
+                return(invisible(NULL))
+            }
+            log_entries(c(log_entries(), entry))
+            try(
+                session$sendCustomMessage("mamamia-log-scroll", NULL),
+                silent = TRUE
+            )
+            invisible(NULL)
+        }
+
+        bam_mode <- shiny::reactive({
+            value <- input$bam_mode
+            if (length(value) == 1L && !is.na(value) &&
+                value %in% c("single", "multi")) {
+                return(as.character(value))
+            }
+            "single"
         })
 
-        ## The bundled example ships a finite set of pre-computed resolutions.
-        ## Restrict the radio buttons while it is selected and restore the
-        ## registry resolutions otherwise.
+        output$bam_mode_note <- shiny::renderUI({
+            if (isTRUE(example_mode())) {
+                return(shiny::p(
+                    class = "text-muted small mb-2",
+                    paste(
+                        "Example data: one synthetic sample; normalization",
+                        "is off."
+                    )
+                ))
+            }
+            if (identical(bam_mode(), "multi")) {
+                return(shiny::p(
+                    class = "text-muted small mb-2",
+                    paste(
+                        "Cohort run: choose a reference sample or use median",
+                        "normalization."
+                    )
+                ))
+            }
+            shiny::p(
+                class = "text-muted small mb-2",
+                paste(
+                    "Single-sample run: normalization is off and one BAM",
+                    "is analysed."
+                )
+            )
+        })
+
+        output$bam_upload_ui <- shiny::renderUI({
+            upload_epoch()
+            multi <- identical(bam_mode(), "multi")
+            shiny::fileInput(
+                "bams",
+                if (multi) "BAM files" else "BAM file",
+                multiple = multi,
+                accept = ".bam",
+                width = "100%"
+            )
+        })
+
         shiny::observeEvent(input$example_data, {
             if (!example_available) {
                 return()
             }
-            if (isTRUE(input$example_data)) {
-                shiny::updateRadioButtons(
-                    session, "resolution",
-                    choices = bam_example_resolution_choices(),
-                    selected = bam_example_default_resolution()
+            ## The action button starts at zero. Ignoring that initial value
+            ## (instead of using `ignoreInit`) keeps the observer working when
+            ## the button is the first input a test session receives.
+            if (is.null(input$example_data) ||
+                length(input$example_data) != 1L ||
+                is.na(input$example_data) ||
+                input$example_data < 1) {
+                return()
+            }
+            if (isTRUE(example_mode())) {
+                example_mode(FALSE)
+                sidebar_unlocked(FALSE)
+                result(NULL)
+                last_error(NULL)
+                upload_epoch(upload_epoch() + 1L)
+                shiny::updateActionButton(
+                    session, "example_data", label = "Example data"
                 )
-            } else {
                 shiny::updateRadioButtons(
                     session, "resolution",
                     choices = bam_resolution_choices(config$defaults),
                     selected = bam_default_resolution(config$defaults)
                 )
+                log_line(
+                    "Example data cleared. Upload a BAM to start a new run."
+                )
+                return()
             }
+            example_mode(TRUE)
+            sidebar_unlocked(TRUE)
+            result(NULL)
+            last_error(NULL)
+            upload_epoch(upload_epoch() + 1L)
+            shiny::updateActionButton(
+                session, "example_data", label = "Clear example data"
+            )
+            shiny::updateRadioButtons(
+                session, "resolution",
+                choices = bam_example_resolution_choices(),
+                selected = bam_example_default_resolution()
+            )
+            log_line(bam_example_note())
+            log_line(paste(
+                "Example data selected: the normal pipeline stages are",
+                "replayed from pre-computed tables."
+            ))
+        }, ignoreInit = FALSE)
+
+        shiny::observeEvent(input$bam_mode, {
+            sidebar_unlocked(FALSE)
+            upload_epoch(upload_epoch() + 1L)
+            log_line(sprintf(
+                "Input mode: %s.",
+                if (identical(bam_mode(), "multi")) {
+                    "multiple BAMs"
+                } else {
+                    "single BAM"
+                }
+            ))
         }, ignoreInit = TRUE)
 
-        result <- shiny::reactiveVal(NULL)
-        last_error <- shiny::reactiveVal(NULL)
-        selection_map <- shiny::reactiveVal(list())
+        shiny::observeEvent(input$unlock_setup, {
+            sidebar_unlocked(TRUE)
+            log_line("Setup panels opened after a preflight failure.")
+        }, ignoreInit = TRUE)
 
         uploaded_paths <- shiny::reactive({
             uploads <- input$bams
@@ -1500,10 +1887,34 @@ bam_launcher_server <- function(state, cache = NULL) {
             character()
         })
 
+        shiny::observeEvent(uploaded_paths(), {
+            if (length(uploaded_paths()) > 0L && isTRUE(example_mode())) {
+                example_mode(FALSE)
+                shiny::updateActionButton(
+                    session, "example_data", label = "Example data"
+                )
+                shiny::updateRadioButtons(
+                    session, "resolution",
+                    choices = bam_resolution_choices(config$defaults),
+                    selected = bam_default_resolution(config$defaults)
+                )
+                log_line(
+                    "Uploaded BAM selected; example data is no longer active."
+                )
+            }
+            if (length(uploaded_paths()) == 0L && !isTRUE(example_mode())) {
+                sidebar_unlocked(FALSE)
+            }
+        }, ignoreInit = TRUE, ignoreNULL = FALSE)
+
         selected_paths <- shiny::reactive({
             paths <- uploaded_paths()
             paths <- paths[!is.na(paths) & nzchar(paths)]
-            unique(paths)
+            paths <- unique(paths)
+            if (!identical(bam_mode(), "multi")) {
+                paths <- utils::head(paths, 1L)
+            }
+            paths
         })
 
         staging <- local({
@@ -1819,6 +2230,154 @@ bam_launcher_server <- function(state, cache = NULL) {
             )
         })
 
+        ## The setup controls stay hidden until the first successful
+        ## preflight. A failure can unlock them explicitly through the
+        ## recovery panel, so a wrong species choice can be corrected.
+        shiny::observe({
+            pf <- preflight_state()
+            if (isTRUE(pf$ok) && !isTRUE(sidebar_unlocked())) {
+                sidebar_unlocked(TRUE)
+            }
+        })
+
+        preflight_log_signature <- shiny::reactive({
+            pf <- preflight_state()
+            list(
+                ok = isTRUE(pf$ok),
+                empty = isTRUE(pf$empty),
+                example = isTRUE(pf$example),
+                assembly = pf$assembly,
+                samples = if (is.null(pf$table)) NULL else pf$table$sample,
+                warnings = if (is.null(pf$table)) NULL else pf$table$warnings,
+                error = if (is.null(pf$error)) {
+                    NULL
+                } else {
+                    paste(
+                        pf$error$stage, pf$error$message, pf$error$suggestion
+                    )
+                },
+                candidates = if (is.null(pf$candidates)) {
+                    NULL
+                } else {
+                    pf$candidates$key
+                }
+            )
+        })
+        shiny::observeEvent(preflight_log_signature(), {
+            for (line in bam_preflight_log(preflight_state())) {
+                log_line(line)
+            }
+        }, ignoreInit = FALSE)
+
+        output$sidebar_body <- shiny::renderUI({
+            if (!isTRUE(sidebar_unlocked())) {
+                return(NULL)
+            }
+            bam_sidebar_details_ui(config)
+        })
+
+        output$sidebar_recovery <- shiny::renderUI({
+            if (isTRUE(sidebar_unlocked())) {
+                return(NULL)
+            }
+            pf <- preflight_state()
+            if (isTRUE(pf$empty) || isTRUE(pf$ok)) {
+                return(NULL)
+            }
+            info <- pf$error
+            if (is.null(info)) {
+                return(NULL)
+            }
+            shiny::tagList(
+                shiny::p(
+                    class = "text-danger small mb-1",
+                    sprintf(
+                        "Preflight failed (stage: %s): %s",
+                        info$stage, info$message
+                    )
+                ),
+                shiny::actionButton(
+                    "unlock_setup", "Show setup",
+                    class = "btn-sm btn-outline-secondary"
+                )
+            )
+        })
+
+        output$main_status <- shiny::renderUI({
+            res <- result()
+            if (is.null(res)) {
+                return(shiny::p(
+                    class = "text-muted mb-2",
+                    paste(
+                        "The circos, coverage and segment tabs populate after",
+                        "a successful analysis."
+                    )
+                ))
+            }
+            samples <- bam_sample_choices(res)
+            shiny::p(
+                class = "text-muted mb-2",
+                sprintf(
+                    "%d sample%s loaded: %s",
+                    length(samples),
+                    if (length(samples) == 1L) "" else "s",
+                    paste(samples, collapse = ", ")
+                )
+            )
+        })
+
+        output$footer_status <- shiny::renderUI({
+            pf <- preflight_state()
+            if (isTRUE(pf$ok)) {
+                label <- "Preflight OK"
+                badge <- "text-bg-success"
+                detail <- sprintf(
+                    "%d BAM%s; assembly '%s'; sample%s: %s",
+                    nrow(pf$table),
+                    if (nrow(pf$table) == 1L) "" else "s",
+                    pf$assembly,
+                    if (nrow(pf$table) == 1L) "" else "s",
+                    paste(unique(pf$table$sample), collapse = ", ")
+                )
+            } else if (isTRUE(pf$empty)) {
+                label <- "Waiting"
+                badge <- "text-bg-secondary"
+                detail <- "Upload a BAM or use the example data."
+            } else {
+                label <- "Preflight failed"
+                badge <- "text-bg-danger"
+                detail <- if (is.null(pf$error)) {
+                    "See the calculation log."
+                } else {
+                    sprintf(
+                        "Stage '%s': %s",
+                        pf$error$stage, pf$error$message
+                    )
+                }
+            }
+            if (isTRUE(example_mode())) {
+                detail <- paste("Example data |", detail)
+            }
+            shiny::div(
+                class = "d-flex align-items-center gap-2",
+                shiny::span(class = paste("badge", badge), label),
+                shiny::span(class = "text-truncate", title = detail, detail)
+            )
+        })
+
+        output$calculation_log <- shiny::renderText({
+            paste(log_entries(), collapse = "\n")
+        })
+
+        output$species_ui <- shiny::renderUI({
+            if (isTRUE(example_mode())) {
+                return(shiny::p(
+                    class = "text-muted small", bam_example_note()
+                ))
+            }
+            bam_sidebar_species_ui(config)
+        })
+
         output$preflight_table <- shiny::renderTable({
             pf <- preflight_state()
             if (isTRUE(pf$empty)) {
@@ -1832,7 +2391,7 @@ bam_launcher_server <- function(state, cache = NULL) {
             }
             if (!isTRUE(pf$ok)) {
                 return(data.frame(
-                    status = "Preflight failed; see the problems card below.",
+                    status = "Preflight failed; see the calculation log.",
                     stringsAsFactors = FALSE
                 ))
             }
@@ -1856,7 +2415,7 @@ bam_launcher_server <- function(state, cache = NULL) {
             if (!isTRUE(pf$ok)) {
                 return(shiny::p(
                     class = "text-muted",
-                    "No assembly was detected. See the problems card below."
+                    "No assembly was detected. See the calculation log."
                 ))
             }
             assembly <- pf$assembly_config
@@ -1895,71 +2454,10 @@ bam_launcher_server <- function(state, cache = NULL) {
             )
         })
 
-        output$preflight_error <- shiny::renderUI({
-            pf <- preflight_state()
-            if (isTRUE(pf$empty)) {
-                return(NULL)
-            }
-            if (isTRUE(pf$ok)) {
-                return(shiny::p(
-                    class = "text-muted", "No preflight problems detected."
-                ))
-            }
-            info <- pf$error
-            file_label <- bam_error_file_label(info$files)
-            shiny::tagList(
-                shiny::h6(paste0("Stage: ", info$stage)),
-                shiny::p(info$message),
-                if (!is.null(file_label)) {
-                    shiny::p(class = "text-muted", file_label)
-                },
-                shiny::p(
-                    class = "text-muted",
-                    paste0("Suggested fix: ", info$suggestion)
-                )
-            )
-        })
-
-        output$run_error_ui <- shiny::renderUI({
-            info <- last_error()
-            if (is.null(info)) {
-                return(NULL)
-            }
-            file_label <- bam_error_file_label(info$files)
-            shiny::tagList(
-                shiny::hr(),
-                shiny::h6(paste0("Last run error (stage: ", info$stage, ")")),
-                shiny::p(info$message),
-                if (!is.null(file_label)) {
-                    shiny::p(class = "text-muted", file_label)
-                },
-                shiny::p(
-                    class = "text-muted",
-                    paste0("Suggested fix: ", info$suggestion)
-                )
-            )
-        })
-
-        output$candidates_ui <- shiny::renderUI({
-            pf <- preflight_state()
-            if (is.null(pf$candidates)) {
-                return(NULL)
-            }
-            shiny::tagList(
-                shiny::h6("Assembly candidates"),
-                shiny::tableOutput("candidate_table")
-            )
-        })
-
-        output$candidate_table <- shiny::renderTable({
-            pf <- preflight_state()
-            bam_candidate_display(pf$candidates)
-        },
-        striped = TRUE, bordered = TRUE, spacing = "xs",
-        rownames = FALSE
-        )
-
         output$reference_ui <- shiny::renderUI({
+            if (!identical(bam_mode(), "multi")) {
+                return(NULL)
+            }
             pf <- preflight_state()
             if (isTRUE(pf$example) || !isTRUE(pf$ok) || nrow(pf$table) < 2L) {
                 return(NULL)
@@ -2028,6 +2526,7 @@ bam_launcher_server <- function(state, cache = NULL) {
         ## one, so a stale BEDPE can never be downloaded for a different input.
         run_key <- shiny::reactive({
             list(
+                mode = bam_mode(),
                 example = example_mode(),
                 paths = selected_paths(),
                 resolution = input$resolution,
@@ -2083,6 +2582,10 @@ bam_launcher_server <- function(state, cache = NULL) {
         shiny::observeEvent(input$run, {
             pf <- preflight_state()
             if (!isTRUE(pf$ok)) {
+                log_line(paste(
+                    "Run refused: preflight is not ready.",
+                    "Fix the problems reported in this log first."
+                ))
                 shiny::showNotification(
                     "Fix the preflight problems before running the analysis.",
                     type = "warning", duration = 8
@@ -2099,6 +2602,11 @@ bam_launcher_server <- function(state, cache = NULL) {
                     params, files = pf$table$source, table = pf$table
                 )
                 last_error(info)
+                log_line(sprintf(
+                    "Run parameters rejected at stage '%s': %s",
+                    info$stage, info$message
+                ))
+                log_line(sprintf("Suggested fix: %s", info$suggestion))
                 shiny::showNotification(
                     bam_error_text(info),
                     type = "error", duration = 12
@@ -2122,6 +2630,10 @@ bam_launcher_server <- function(state, cache = NULL) {
                     files = pf$table$source, table = pf$table
                 )
                 last_error(info)
+                log_line(sprintf(
+                    "Run refused at stage '%s': %s",
+                    info$stage, info$message
+                ))
                 shiny::showNotification(
                     bam_error_text(info),
                     type = "error", duration = 12
@@ -2130,9 +2642,25 @@ bam_launcher_server <- function(state, cache = NULL) {
             }
 
             previous <- result()
-            progress <- bam_progress_callback(
+            log_line(sprintf(
+                "Starting analysis: %d sample%s, %s windows/chromosome, normalization '%s'%s.",
+                length(samples),
+                if (length(samples) == 1L) "" else "s",
+                format(params$resolution, big.mark = ",", scientific = FALSE),
+                params$normalization,
+                if (!is.null(params$reference_sample)) {
+                    sprintf(", reference '%s'", params$reference_sample)
+                } else {
+                    ""
+                }
+            ))
+            raw_progress <- bam_progress_callback(
                 length(samples), params$normalization
             )
+            progress <- function(stage, detail = list()) {
+                log_line(bam_progress_label(stage, detail))
+                raw_progress(stage, detail)
+            }
             new_result <- tryCatch(
                 shiny::withProgress(
                     message = "MaMaMIA analysis", value = 0,
@@ -2168,6 +2696,11 @@ bam_launcher_server <- function(state, cache = NULL) {
                         e, files = pf$table$source, table = pf$table
                     )
                     last_error(info)
+                    log_line(sprintf(
+                        "Run failed at stage '%s': %s",
+                        info$stage, info$message
+                    ))
+                    log_line(sprintf("Suggested fix: %s", info$suggestion))
                     shiny::showNotification(
                         bam_error_text(info),
                         type = "error", duration = 20
@@ -2181,6 +2714,12 @@ bam_launcher_server <- function(state, cache = NULL) {
             }
             last_error(NULL)
             result(new_result)
+            log_line(sprintf(
+                "Analysis finished: %d sample(s), %d segment(s), %d putative introgression(s).",
+                length(new_result$isa),
+                sum(new_result$samples$n_segments),
+                sum(new_result$samples$n_putative_introgressions)
+            ))
             shiny::showNotification(
                 sprintf(
                     "%d sample(s), %d segment(s), %d putative introgression(s)",
@@ -2191,6 +2730,9 @@ bam_launcher_server <- function(state, cache = NULL) {
                 type = "message", duration = 6
             )
             coverage <- bam_coverage_warnings(new_result)
+            for (warning in coverage) {
+                log_line(paste("Coverage warning:", warning))
+            }
             if (length(coverage) > 0L) {
                 shiny::showNotification(
                     paste(coverage, collapse = "\n"),
@@ -2202,36 +2744,46 @@ bam_launcher_server <- function(state, cache = NULL) {
         output$cohort_ui <- shiny::renderUI({
             res <- result()
             if (is.null(res)) {
-                return(NULL)
+                return(shiny::p(
+                    class = "text-muted small",
+                    "Run the analysis to enable the exports."
+                ))
             }
             samples <- bam_sample_choices(res)
             warnings <- bam_coverage_warnings(res)
-            bslib::card(
-                bslib::card_header("Cohort"),
-                if (length(samples) > 1L) {
+            multi <- identical(bam_mode(), "multi")
+            shiny::tagList(
+                if (multi && length(samples) > 1L) {
                     shiny::selectInput(
                         "result_sample", "Sample",
                         choices = samples,
                         selected = shiny::isolate(result_sample())
                     )
                 },
-                shiny::tableOutput("cohort_table"),
+                shiny::div(
+                    class = "table-responsive",
+                    shiny::tableOutput("cohort_table")
+                ),
                 if (length(warnings) > 0L) {
                     shiny::div(
-                        class = "alert alert-warning",
+                        class = "alert alert-warning small",
                         shiny::tags$ul(lapply(warnings, shiny::tags$li))
                     )
                 },
                 shiny::div(
-                    class = "d-flex flex-wrap gap-2",
+                    class = "d-flex flex-column gap-1",
                     shiny::downloadButton(
                         "download_sample",
-                        "Download BEDPE (current sample)"
+                        "Download BEDPE (current sample)",
+                        class = "btn-sm"
                     ),
-                    shiny::downloadButton(
-                        "download_cohort",
-                        "Download selected BEDPE (all samples)"
-                    )
+                    if (multi && length(samples) > 1L) {
+                        shiny::downloadButton(
+                            "download_cohort",
+                            "Download selected BEDPE (all samples)",
+                            class = "btn-sm"
+                        )
+                    }
                 ),
                 shiny::p(
                     class = "text-muted small",

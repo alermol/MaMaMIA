@@ -2,7 +2,7 @@
 ## filters, the segment table and the BEDPE export, plus the
 ## `exploreIntrogressions()` launcher around it.
 
-dashboard_packages <- c("bslib", "DT", "shiny", "shinyWidgets")
+dashboard_packages <- c("bslib", "DT", "gridlayout", "shiny", "shinyWidgets")
 
 ## The mirror plot draws two points per window, so a high-resolution run has
 ## hundreds of thousands of them. The dashboard thins the drawn points to this
@@ -11,15 +11,31 @@ dashboard_max_plot_points <- 20000L
 
 require_dashboard_packages <- function() {
     missing <- dashboard_packages[!vapply(dashboard_packages, requireNamespace, logical(1), quietly = TRUE)]
-    if (length(missing) > 0L) {
-        stop(
-            "Install dashboard dependencies first: install.packages(c(",
-            paste(sprintf('"%s"', missing), collapse = ", "),
-            "))",
-            call. = FALSE
+    if (length(missing) == 0L) {
+        return(invisible(TRUE))
+    }
+    cran <- setdiff(missing, "gridlayout")
+    instructions <- character()
+    if (length(cran) > 0L) {
+        instructions <- c(
+            instructions,
+            sprintf(
+                "install.packages(c(%s))",
+                paste(sprintf('"%s"', cran), collapse = ", ")
+            )
         )
     }
-    invisible(TRUE)
+    if ("gridlayout" %in% missing) {
+        instructions <- c(
+            instructions,
+            "remotes::install_github(\"rstudio/gridlayout\")"
+        )
+    }
+    stop(
+        "Install dashboard dependencies first: ",
+        paste(instructions, collapse = "; "),
+        call. = FALSE
+    )
 }
 
 isa_dashboard_segments <- function(ISA) {
@@ -155,22 +171,23 @@ explorer_controls_ui <- function(id) {
 
 explorer_results_ui <- function(id) {
     ns <- shiny::NS(id)
-    shiny::tagList(
-        bslib::card(
-            bslib::card_header("Introgression circos"),
-            isa_dashboard_circos_output(ns("circos"), height = "650px")
+    bslib::navset_card_tab(
+        id = ns("tabs"),
+        bslib::nav_panel(
+            "Introgression circos",
+            isa_dashboard_circos_output(ns("circos"), height = "640px")
         ),
-        bslib::card(
-            bslib::card_header("Introgression plot"),
+        bslib::nav_panel(
+            "Coverage / dosage",
             shiny::radioButtons(
                 ns("plot_type"), "Plot",
                 choices = c("Mirror" = "mirror", "Difference" = "diff"),
                 inline = TRUE
             ),
-            shiny::plotOutput(ns("isa_plot"), height = "420px")
+            shiny::plotOutput(ns("isa_plot"), height = "520px")
         ),
-        bslib::card(
-            bslib::card_header("Segments"),
+        bslib::nav_panel(
+            "Segments",
             DT::DTOutput(ns("segments"))
         )
     )
@@ -469,8 +486,8 @@ explorer_server <- function(id, ISA, chr_ids = NULL, sample = NULL,
 #' [runMaMaMIA()].
 #'
 #' Dashboard packages are optional MaMaMIA dependencies. Install them with
-#' `install.packages(c("shiny", "bslib", "shinyWidgets", "DT"))`
-#' before calling this function.
+#' `install.packages(c("shiny", "bslib", "shinyWidgets", "DT"))` and
+#' `remotes::install_github("rstudio/gridlayout")` before calling this function.
 #'
 #' @param ISA An object of class `ISA`, as returned by [segments()].
 #' @param chr_ids Optional chromosome IDs to select initially. Defaults to

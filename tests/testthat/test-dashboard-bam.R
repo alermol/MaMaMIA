@@ -1,7 +1,7 @@
 ## T6.1-T6.4: BAM-first Shiny application.
 
 skip_if_no_dashboard <- function() {
-    for (package in c("shiny", "bslib", "DT", "shinyWidgets")) {
+    for (package in c("shiny", "bslib", "DT", "gridlayout", "shinyWidgets")) {
         testthat::skip_if_not_installed(package)
     }
 }
@@ -14,6 +14,7 @@ app_state <- function(fixture) {
 
 app_inputs <- function(...) {
     defaults <- list(
+        bam_mode = "single",
         resolution = "100",
         reference_sample = "",
         mapq = 20,
@@ -600,12 +601,33 @@ test_that("the app shows preflight, assembly and a disabled run button", {
         expect_match(output$preflight_table, "synthetic.bam")
         expect_match(output_html(output$assembly_summary), "Variable-GC")
         expect_match(output_html(output$assembly_summary), "d1 \\(1D\\)")
-        expect_match(output_html(output$preflight_error), "No preflight problems")
+        expect_match(
+            paste(bam_preflight_log(pf), collapse = "\n"),
+            "Preflight OK"
+        )
         expect_false(grepl("disabled", output_html(output$run_ui)))
     })
 })
 
-test_that("the launcher page scrolls instead of shrinking the result cards", {
+test_that("the initial calculation log is built without a reactive context", {
+    skip_if_no_dashboard()
+    skip_if_no_samtools()
+    fixture <- variable_gc_fixture()
+    on.exit(unlink(fixture$directory, recursive = TRUE), add = TRUE)
+    state <- app_state(fixture)
+
+    time <- as.POSIXct("2026-01-02 03:04:05", tz = "UTC")
+    entries <- bam_initial_log(state$config, time = time)
+    expect_length(entries, 3L)
+    expect_match(
+        entries[[1L]],
+        "^\\[03:04:05\\] MaMaMIA session started\\.$"
+    )
+    expect_match(entries[[2L]], "species|assembl")
+    expect_match(entries[[3L]], "Input mode: single BAM", fixed = TRUE)
+})
+
+test_that("the launcher uses the grid layout with header, sidebar, main and footer", {
     skip_if_no_dashboard()
     skip_if_no_samtools()
     fixture <- variable_gc_fixture()
@@ -613,9 +635,71 @@ test_that("the launcher page scrolls instead of shrinking the result cards", {
     state <- app_state(fixture)
 
     html <- paste(as.character(bam_launcher_ui(state)), collapse = "")
-    main <- regmatches(html, regexpr("<main[^>]*>", html))
-    expect_false(grepl("html-fill-container", main, fixed = TRUE))
-    expect_match(html, 'id="explorer-isa_plot"[^>]*height:420px', perl = TRUE)
+    layout <- bam_dashboard_layout()
+    expect_match(html, 'id="mamamia-grid"', fixed = TRUE)
+    expect_match(html, 'data-gridlayout-area="header"', fixed = TRUE)
+    expect_match(html, 'data-gridlayout-area="sidebar"', fixed = TRUE)
+    expect_match(html, 'data-gridlayout-area="main"', fixed = TRUE)
+    expect_match(html, 'data-gridlayout-area="footer"', fixed = TRUE)
+    expect_match(layout, "|2rem  |200px   |1fr      |", fixed = TRUE)
+    expect_match(layout, "|150px |header  |header   |", fixed = TRUE)
+    expect_match(layout, "|1fr   |sidebar |main     |", fixed = TRUE)
+    expect_match(layout, "|120px |footer  |footer   |", fixed = TRUE)
+    expect_match(html, "mamamia-header", fixed = TRUE)
+    expect_match(html, "mamamia-sidebar", fixed = TRUE)
+    expect_match(html, "mamamia-main", fixed = TRUE)
+    expect_match(html, "mamamia-footer", fixed = TRUE)
+    expect_match(html, "MaMaMIA</h1>", fixed = TRUE)
+    expect_match(html, "Single BAM", fixed = TRUE)
+    expect_match(html, "Multiple BAMs", fixed = TRUE)
+    expect_match(html, "Example data", fixed = TRUE)
+    expect_match(html, 'id="explorer-isa_plot"[^>]*height:520px', perl = TRUE)
+})
+
+test_that("single and multi modes expose different upload controls", {
+    skip_if_no_dashboard()
+    skip_if_no_samtools()
+    fixture <- variable_gc_fixture()
+    on.exit(unlink(fixture$directory, recursive = TRUE), add = TRUE)
+    state <- app_state(fixture)
+
+    shiny::testServer(bam_launcher_server(state, cache = FALSE), {
+        single <- output_html(output$bam_upload_ui)
+        expect_match(single, "BAM file")
+        expect_false(grepl("multiple=\"multiple\"", single, fixed = TRUE))
+        expect_match(output_html(output$bam_mode_note), "Single-sample run")
+
+        session$setInputs(bam_mode = "multi")
+        multi <- output_html(output$bam_upload_ui)
+        expect_match(multi, "BAM files")
+        expect_match(multi, "multiple=\"multiple\"", fixed = TRUE)
+        expect_match(output_html(output$bam_mode_note), "Cohort run")
+    })
+})
+
+test_that("the setup appears as single-open spoilers after preflight", {
+    skip_if_no_dashboard()
+    skip_if_no_samtools()
+    fixture <- variable_gc_fixture()
+    on.exit(unlink(fixture$directory, recursive = TRUE), add = TRUE)
+    state <- app_state(fixture)
+
+    shiny::testServer(bam_launcher_server(state, cache = FALSE), {
+        expect_false(sidebar_unlocked())
+        expect_null(output$sidebar_body)
+
+        set_app_inputs(session, bams = upload_input(fixture$bam_path))
+        expect_true(preflight_state()$ok)
+        expect_true(sidebar_unlocked())
+
+        sidebar <- output_html(output$sidebar_body)
+        expect_match(sidebar, "accordion autoclose", fixed = TRUE)
+        expect_match(sidebar, "Analysis")
+        expect_match(sidebar, "Assembly")
+        expect_match(sidebar, "Advanced")
+        expect_match(sidebar, "Filters")
+        expect_match(sidebar, "Export")
+    })
 })
 
 test_that("the swap button exchanges donor and recipient species", {
@@ -625,7 +709,10 @@ test_that("the swap button exchanges donor and recipient species", {
     on.exit(unlink(fixture$directory, recursive = TRUE), add = TRUE)
     state <- app_state(fixture)
 
-    html <- paste(as.character(bam_launcher_ui(state)), collapse = "")
+    html <- paste(
+        as.character(bam_sidebar_species_ui(state$config)),
+        collapse = ""
+    )
     expect_match(html, "Swap donor and recipient")
     expect_false(grepl("Detect the assembly from the BAM header", html))
 
@@ -669,7 +756,10 @@ test_that("auto-detection is an option but not an assembly selector", {
     )
     state$config <- resolved$config
 
-    html <- paste(as.character(bam_launcher_ui(state)), collapse = "")
+    html <- paste(
+        as.character(bam_sidebar_species_ui(state$config)),
+        collapse = ""
+    )
     expect_match(html, "Detect the assembly from the BAM header")
     expect_false(grepl("Predefined assembly", html, fixed = TRUE))
 
@@ -698,10 +788,13 @@ test_that("a species-only registry exposes species selectors and runs", {
     on.exit(unlink(fixture$directory, recursive = TRUE), add = TRUE)
     state <- app_state(fixture)
 
-    html <- paste(as.character(bam_launcher_ui(state)), collapse = "")
+    html <- paste(
+        as.character(bam_sidebar_species_ui(state$config)),
+        collapse = ""
+    )
     expect_match(html, "Recipient species")
     expect_match(html, "Donor species")
-    expect_false(grepl("Auto-detect", html, fixed = TRUE))
+    expect_false(grepl("Detect the assembly from the BAM header", html))
     expect_false(grepl("Predefined assembly", html, fixed = TRUE))
 
     ## Even when the registry also declares a preset, the UI offers no
@@ -711,9 +804,12 @@ test_that("a species-only registry exposes species selectors and runs", {
     )
     with_preset <- state
     with_preset$config <- resolved$config
-    preset_html <- paste(as.character(bam_launcher_ui(with_preset)), collapse = "")
+    preset_html <- paste(
+        as.character(bam_sidebar_species_ui(with_preset$config)),
+        collapse = ""
+    )
     expect_false(grepl("Predefined assembly", preset_html, fixed = TRUE))
-    expect_false(grepl("Auto-detect", preset_html, fixed = TRUE))
+    expect_match(preset_html, "Detect the assembly from the BAM header")
 
     shiny::testServer(bam_launcher_server(state, cache = FALSE), {
         session$setInputs(
@@ -758,7 +854,8 @@ test_that("an invalid species pair is shown before any BAM is read", {
         pf <- preflight_state()
         expect_false(pf$ok)
         expect_match(pf$error$message, "two different species")
-        expect_match(output_html(output$preflight_error), "two different species")
+        log <- paste(bam_preflight_log(pf), collapse = "\n")
+        expect_match(log, "two different species")
         expect_match(output_html(output$run_ui), "disabled")
     })
 })
@@ -814,14 +911,14 @@ test_that("an assembly mismatch shows candidate scores", {
         expect_true("variable" %in% pf$candidates$key)
         expect_true(any(pf$candidates$n_length_mismatches > 0L))
 
-        error_html <- output_html(output$preflight_error)
-        expect_match(error_html, "Stage: assembly")
-        expect_match(error_html, "Suggested fix")
-        expect_match(error_html, "File:")
-        expect_match(error_html, "bad\\.bam")
-        expect_match(output_html(output$candidates_ui), "Assembly candidates")
-        expect_match(output$candidate_table, "variable")
-        expect_match(output$candidate_table, "50.0%")
+        error_log <- paste(bam_preflight_log(pf), collapse = "\n")
+        expect_match(error_log, "Preflight failed at stage 'assembly'")
+        expect_match(error_log, "Suggested fix")
+        expect_match(error_log, "File:")
+        expect_match(error_log, "bad\\.bam")
+        expect_match(error_log, "Assembly candidates")
+        expect_match(error_log, "variable")
+        expect_match(error_log, "50.0%")
         expect_match(output_html(output$run_ui), "disabled")
     })
 })
@@ -841,7 +938,10 @@ test_that("missing BAMs and server limits fail without crashing the session", {
         pf <- preflight_state()
         expect_false(pf$ok)
         expect_identical(pf$error$stage, "BAM")
-        expect_match(output_html(output$preflight_error), "Suggested fix")
+        expect_match(
+            paste(bam_preflight_log(pf), collapse = "\n"),
+            "Suggested fix"
+        )
         expect_match(output_html(output$run_ui), "disabled")
     })
 
@@ -853,11 +953,17 @@ test_that("missing BAMs and server limits fail without crashing the session", {
     expect_true(limited$ok)
 
     shiny::testServer(bam_launcher_server(limited, cache = FALSE), {
-        session$setInputs(bams = upload_input(c(fixture$bam_path, second)))
+        session$setInputs(
+            bam_mode = "multi",
+            bams = upload_input(c(fixture$bam_path, second))
+        )
         pf <- preflight_state()
         expect_false(pf$ok)
         expect_identical(pf$error$stage, "limits")
-        expect_match(output_html(output$preflight_error), "Too many BAM files")
+        expect_match(
+            paste(bam_preflight_log(pf), collapse = "\n"),
+            "Too many BAM files"
+        )
         expect_match(output_html(output$run_ui), "disabled")
     })
 
@@ -873,7 +979,10 @@ test_that("missing BAMs and server limits fail without crashing the session", {
         pf <- preflight_state()
         expect_false(pf$ok)
         expect_identical(pf$error$stage, "limits")
-        expect_match(output_html(output$preflight_error), "exceeds")
+        expect_match(
+            paste(bam_preflight_log(pf), collapse = "\n"),
+            "exceeds"
+        )
         expect_match(output_html(output$run_ui), "disabled")
     })
 })
@@ -967,7 +1076,11 @@ test_that("a cohort shows a selector and exports a combined BEDPE", {
     on.exit(unlink(sample_target), add = TRUE)
 
     shiny::testServer(bam_launcher_server(state, cache = FALSE), {
-        set_app_inputs(session, bams = upload_input(c(first, second)))
+        set_app_inputs(
+            session,
+            bam_mode = "multi",
+            bams = upload_input(c(first, second))
+        )
         expect_true(preflight_state()$ok)
         expect_match(
             output_html(output$reference_ui),
@@ -1055,7 +1168,11 @@ test_that("a three-sample cohort exports each sample and the cohort BEDPE", {
     on.exit(unlink(c(per_sample, cohort_target)), add = TRUE)
 
     shiny::testServer(bam_launcher_server(state, cache = FALSE), {
-        set_app_inputs(session, bams = upload_input(bams))
+        set_app_inputs(
+            session,
+            bam_mode = "multi",
+            bams = upload_input(bams)
+        )
         expect_true(preflight_state()$ok)
 
         session$setInputs(reference_sample = "")
@@ -1147,19 +1264,23 @@ test_that("a failing run reports the stage and keeps the session alive", {
         ## fails inside the correction stage. The handler must catch it.
         suppressWarnings(session$setInputs(run = 1L))
         expect_null(result())
-        expect_null(output$cohort_ui)
+        expect_match(
+            output_html(output$cohort_ui),
+            "Run the analysis to enable the exports"
+        )
         info <- last_error()
         expect_false(is.null(info))
         expect_identical(info$stage, "correction")
         expect_true(length(info$files) > 0L)
         expect_match(
-            output_html(output$run_error_ui),
-            "Last run error \\(stage: correction\\)"
+            output$calculation_log,
+            "Run failed at stage 'correction'",
+            fixed = TRUE
         )
         expect_true(preflight_state()$ok)
         expect_match(
-            output_html(output$preflight_error),
-            "No preflight problems"
+            paste(bam_preflight_log(preflight_state()), collapse = "\n"),
+            "Preflight OK"
         )
     })
 })
@@ -1247,8 +1368,8 @@ test_that("every error category is reported without escaping the server", {
             expect_true(nzchar(info$suggestion), info = stage)
             expect_true(length(info$files) > 0L, info = stage)
             expect_match(
-                output_html(output$run_error_ui),
-                paste0("stage: ", stage),
+                output$calculation_log,
+                paste0("stage '", stage, "'"),
                 fixed = TRUE,
                 info = stage
             )
@@ -1272,6 +1393,7 @@ test_that("invalid reference selection is reported before the analysis", {
     shiny::testServer(bam_launcher_server(state, cache = FALSE), {
         set_app_inputs(
             session,
+            bam_mode = "multi",
             bams = upload_input(c(fixture$bam_path, second)),
             reference_sample = "nope"
         )
@@ -1281,7 +1403,11 @@ test_that("invalid reference selection is reported before the analysis", {
         info <- last_error()
         expect_identical(info$stage, "normalization")
         expect_match(info$message, "Reference sample 'nope'", fixed = TRUE)
-        expect_match(output_html(output$run_error_ui), "Suggested fix")
+        expect_match(
+            output$calculation_log,
+            "Run parameters rejected at stage 'normalization'",
+            fixed = TRUE
+        )
         expect_null(result())
     })
 })

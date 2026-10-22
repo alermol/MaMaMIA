@@ -4,6 +4,7 @@ skip_if_no_example <- function() {
     testthat::skip_if_not_installed("shiny")
     testthat::skip_if_not_installed("bslib")
     testthat::skip_if_not_installed("DT")
+    testthat::skip_if_not_installed("gridlayout")
     testthat::skip_if_not_installed("shinyWidgets")
     if (!MaMaMIA:::bam_example_available()) {
         testthat::skip("bundled example data is not installed")
@@ -15,8 +16,13 @@ demo_config_path <- function() {
     file.path(demo, "assemblies.yml")
 }
 
+output_html <- function(output) {
+    paste(as.character(output), collapse = "")
+}
+
 example_inputs <- function(...) {
     defaults <- list(
+        bam_mode = "single",
         resolution = "100",
         reference_sample = "",
         mapq = 20,
@@ -104,7 +110,9 @@ test_that("the server runs the bundled example without an upload", {
     expect_true(state$ok)
 
     shiny::testServer(MaMaMIA:::bam_launcher_server(state, cache = FALSE), {
-        do.call(session$setInputs, example_inputs(example_data = TRUE))
+        do.call(session$setInputs, example_inputs(example_data = 1L))
+        expect_true(example_mode())
+        expect_true(sidebar_unlocked())
         pf <- preflight_state()
         expect_true(pf$ok)
         expect_true(pf$example)
@@ -119,6 +127,40 @@ test_that("the server runs the bundled example without an upload", {
         expect_identical(result$windows$n_per_chromosome, 100L)
         expect_match(output$cohort_table, "demo-sample")
         expect_match(output$cohort_table, "none")
+        log <- output$calculation_log
+        expect_match(log, "Counting reads for demo-sample", fixed = TRUE)
+        expect_match(log, "Analysis finished", fixed = TRUE)
+    })
+})
+
+test_that("the Example data button unlocks the setup and writes the footer log", {
+    skip_if_no_example()
+    state <- MaMaMIA:::bam_launcher_state(demo_config_path())
+
+    shiny::testServer(MaMaMIA:::bam_launcher_server(state, cache = FALSE), {
+        expect_false(sidebar_unlocked())
+        expect_null(output$sidebar_recovery)
+
+        session$setInputs(example_data = 1L)
+        expect_true(example_mode())
+        expect_true(sidebar_unlocked())
+        expect_true(preflight_state()$ok)
+
+        sidebar <- output_html(output$sidebar_body)
+        expect_match(sidebar, "Analysis")
+        expect_match(sidebar, "Assembly")
+        expect_match(sidebar, "Advanced")
+        expect_match(sidebar, "Filters")
+        expect_match(sidebar, "Export")
+
+        log <- output$calculation_log
+        expect_match(log, "Example data loaded", fixed = TRUE)
+        expect_match(log, "Preflight OK", fixed = TRUE)
+        expect_match(log, "Detected assembly", fixed = TRUE)
+
+        session$setInputs(example_data = 2L)
+        expect_false(example_mode())
+        expect_false(sidebar_unlocked())
     })
 })
 
@@ -127,7 +169,7 @@ test_that("the example resolution guard disables unsupported runs", {
     state <- MaMaMIA:::bam_launcher_state(demo_config_path())
 
     shiny::testServer(MaMaMIA:::bam_launcher_server(state, cache = FALSE), {
-        do.call(session$setInputs, example_inputs(example_data = TRUE))
+        do.call(session$setInputs, example_inputs(example_data = 1L))
         expect_true(preflight_state()$ok)
         session$setInputs(resolution = "10000")
 

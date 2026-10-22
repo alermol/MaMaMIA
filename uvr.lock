@@ -1,4 +1,4 @@
-manifest_fingerprint = "sha256:19cdaf0e2693d5eea4a52ceac72f6d7d3f079aa1230485529e4ffb3408e69e2d"
+manifest_fingerprint = "sha256:d190726c0b8c502219cf7bcbd0054efd2c40cfb302d495cb038e70af3099d5cc"
 
 [r]
 version = "4.6.1"
@@ -647,6 +647,7 @@ requires = [
     "rlang",
     "lifecycle",
 ]
+dev = true
 
 [[package]]
 name = "gtable"

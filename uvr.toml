@@ -24,11 +24,11 @@ tools = "*"
 utils = "*"
 yaml = ">=2.3.12"
 interacCircos = { bioc = true }
-gridlayout = { git = "rstudio/gridlayout" }
 
 [dev-dependencies]
 DT = "*"
 bslib = "*"
+gridlayout = { git = "rstudio/gridlayout" }
 htmltools = "*"
 knitr = ">=1.51"
 rmarkdown = ">=2.31"
