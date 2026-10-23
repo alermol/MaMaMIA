@@ -898,7 +898,9 @@ combined BEDPE downloads live in **Export**. The footer holds
 `verbatimTextOutput("calculation_log")`, a timestamped log that reports
 preflight status, the detected assembly, assembly candidates, problems with
 suggested fixes, and every pipeline progress stage. The log autoscrolls to new
-entries. The status line above the log reports only the number of BAM files;
+entries. **Hide log** collapses the footer to its status line and gives the
+freed height to the sidebar, circos and coverage plot; **Show log** expands it
+again. The status line above the log reports only the number of BAM files;
 sample names and the assembly key are reported in the log, not in that line.
 Candidate scores use the same `.match_candidate()`/`.candidate_table()` helpers
 as `matchAssembly()`, so they are available even for header-length mismatches
@@ -941,7 +943,11 @@ calculation log. A `MaMaMIASampleError` is mapped back to its source BAM through
 the preflight table, so the notification names the file the user supplied
 rather than the staged session copy. The result is invalidated when the BAM
 selection, resolution, assembly or reference changes, so a stale BEDPE cannot
-be downloaded for different inputs.
+be downloaded for different inputs. A completed analysis is kept in a
+session cache keyed by the resolved assembly, staged BAM paths, resolution,
+reference and result-affecting registry defaults; returning to a combination
+that was already run restores its result instead of clearing it. The cache
+holds at most three analyses and never crosses sessions.
 
 `bam_resolution_problem()` mirrors the `makeAnalysisWindows()` length check
 before the run starts. A configured contig shorter than the selected resolution
@@ -950,7 +956,7 @@ inside the handler as defense in depth. The registry validator rejects such a
 configuration at startup, so this guard only matters when a server reuses a
 validated configuration whose allowed set changed. After a successful run,
 zero or near-zero coverage on a side and all-zero windows in a reference sample
-are shown both in the cohort card and as a warning notification.
+are shown in the cohort card and written to the calculation log.
 
 `session$onSessionEnded()` removes the session directory, including every
 staged BAM and generated CSI index. The upload directory is never written to
@@ -1060,7 +1066,7 @@ Pathological inputs are handled as follows:
 |---|---|
 | Contig shorter than the selected resolution | `makeAnalysisWindows()` stops with `MaMaMIAWindowError`; the dashboard disables Run before the analysis through `bam_resolution_problem()`. Config validation rejects such a registry at startup. |
 | Fewer than 2 valid or 10 ideal windows | `correctReadCounts()` stops; `analyzeBamInput()` wraps it as `MaMaMIASampleError` with the `GC correction` stage; the app maps it to `correction` and suggests a lower resolution or a larger fit cap. |
-| Zero or near-zero reads on a side | Normalization uses the pseudocount dosage rule and completes; the cohort card and a warning notification name the sample and side. |
+| Zero or near-zero reads on a side | Normalization uses the pseudocount dosage rule and completes; the cohort card names the sample and side, and the calculation log records a coverage warning. |
 | All-zero reference windows | `(0 + eps) / (0 + eps) = 1` by the frozen D5 rule; the cohort warning reports the all-zero window count for the reference sample. |
 
 No background process or wall-clock timeout is used: the analysis runs in the
@@ -1237,8 +1243,10 @@ subgenome selectors only where a species has more than one subgenome. A
 "Swap donor and recipient" button exchanges the two selections and keeps each
 species' subgenome choice. The predefined-assembly selector has been removed;
 when the registry also declares named assemblies, a checkbox enables
-BAM-header auto-detection instead. The selected pair invalidates any previous
-result, exactly like a change of BAM or resolution.
+BAM-header auto-detection instead. A selected pair invalidates a result that
+was computed for a different assembly; the result of a pair that was already
+analysed is restored from the session cache without rerunning the samples. The
+cache holds at most three completed analyses.
 
 ---
 

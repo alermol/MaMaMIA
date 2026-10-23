@@ -1286,6 +1286,100 @@ bam_coverage_warnings <- function(result, near_zero = 1) {
     warnings
 }
 
+#' Cache completed analyses for one Shiny session
+#'
+#' Switching a subgenome back to one that was already analysed should reuse
+#' that result instead of repeating the whole pipeline for every sample. The
+#' cache is deliberately small: complete results hold count matrices and ISA
+#' tables, and a session only needs the combinations the user is comparing.
+#' `get()` returns `NULL` on a miss; `set()` evicts the oldest entry once
+#' `max_entries` is reached.
+#'
+#' @noRd
+bam_result_cache <- function(max_entries = 3L) {
+    max_entries <- max(1L, as.integer(max_entries))
+    store <- new.env(parent = emptyenv())
+    order <- character()
+
+    valid_key <- function(key) {
+        length(key) == 1L && !is.na(key) && nzchar(key)
+    }
+
+    list(
+        get = function(key) {
+            if (!valid_key(key) ||
+                !exists(key, envir = store, inherits = FALSE)) {
+                return(NULL)
+            }
+            get(key, envir = store, inherits = FALSE)
+        },
+        set = function(key, value) {
+            if (!valid_key(key) || is.null(value)) {
+                return(invisible(NULL))
+            }
+            assign(key, value, envir = store)
+            order <<- c(order[order != key], key)
+            while (length(order) > max_entries) {
+                oldest <- order[[1L]]
+                if (exists(oldest, envir = store, inherits = FALSE)) {
+                    rm(list = oldest, envir = store)
+                }
+                order <<- order[-1L]
+            }
+            invisible(NULL)
+        },
+        size = function() length(order)
+    )
+}
+
+#' Key for a completed analysis
+#'
+#' Use the resolved assembly key rather than the raw species/subgenome
+#' widgets: an invalid widget value that falls back to the species default
+#' must not invalidate a result that is still valid. The key also covers the
+#' staged BAM paths, sample names and every registry default that reaches
+#' [analyzeBamInput()] and changes the result.
+#'
+#' @noRd
+bam_analysis_key <- function(preflight, resolution, reference_sample) {
+    if (!isTRUE(preflight$ok) || is.null(preflight$table) ||
+        !all(c("path", "sample") %in% names(preflight$table))) {
+        return(NULL)
+    }
+    defaults <- preflight$config$defaults
+    if (is.null(defaults)) {
+        defaults <- list()
+    }
+    samples <- unique(as.character(preflight$table$sample))
+    ## Normalize to the value the run will actually use. A radio input can
+    ## briefly arrive as "" or as a character/numeric variant; both must map to
+    ## the same cache entry as the completed run.
+    resolution_key <- tryCatch(
+        as.character(bam_resolution_value(resolution, defaults)),
+        error = function(e) as.character(resolution)
+    )
+    reference <- if (length(samples) > 1L &&
+        length(reference_sample) == 1L &&
+        !is.na(reference_sample) &&
+        nzchar(reference_sample)) {
+        as.character(reference_sample)
+    } else {
+        NULL
+    }
+    hash_object(list(
+        example = isTRUE(preflight$example),
+        paths = unique(as.character(preflight$table$path)),
+        samples = samples,
+        assembly = as.character(preflight$assembly),
+        resolution = resolution_key,
+        reference = reference,
+        mapq = as.integer(defaults$mapq),
+        exclude_flags = as.integer(defaults$exclude_flags),
+        max_fit_windows = as.numeric(defaults$max_fit_windows),
+        normalization_by_side = isTRUE(defaults$normalization_by_side)
+    ))
+}
+
 #' @noRd
 bam_selection_map <- function(result) {
     samples <- bam_sample_choices(result)
@@ -1458,9 +1552,44 @@ bam_dashboard_css <- function() {
     }
 
     .mamamia-footer .footer-status {
+        display: flex;
+        flex: 0 0 auto;
+        align-items: center;
+        gap: .4rem;
         font-size: .74rem;
         line-height: 1.2;
         min-height: 1.1rem;
+    }
+
+    .mamamia-footer .mamamia-footer-status {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
+
+    .mamamia-footer .mamamia-footer-toggle {
+        flex: 0 0 auto;
+        padding: .1rem .45rem;
+        font-size: .7rem;
+        line-height: 1.2;
+    }
+
+    /* Collapsing the log gives its height back to the sidebar and main area. */
+    #mamamia-grid.mamamia-footer-collapsed {
+        grid-template-rows: 75px 1fr 2.25rem;
+    }
+    #mamamia-grid.mamamia-footer-collapsed .mamamia-footer .shiny-text-output {
+        display: none;
+    }
+    #mamamia-grid.mamamia-footer-collapsed #explorer-circos {
+        height: calc(100vh - 271px) !important;
+    }
+    #mamamia-grid.mamamia-footer-collapsed #explorer-isa_plot {
+        height: calc(100vh - 341px) !important;
+    }
+    @media (max-width: 500px) {
+        #mamamia-grid.mamamia-footer-collapsed {
+            grid-template-rows: 85px 350px 2.25rem 350px;
+        }
     }
 
     .mamamia-sidebar .shiny-input-container {
@@ -1801,6 +1930,29 @@ bam_launcher_ui <- function(state) {
                     "  }, 0);",
                     "});"
                 )
+            )),
+            shiny::tags$script(shiny::HTML(
+                paste(
+                    "$(document).on('click', '#footer_toggle', function() {",
+                    "  var grid = document.getElementById('mamamia-grid');",
+                    "  if (!grid) return;",
+                    "  var collapsed =",
+                    "    grid.classList.toggle('mamamia-footer-collapsed');",
+                    "  this.setAttribute(",
+                    "    'aria-expanded', collapsed ? 'false' : 'true');",
+                    "  this.textContent = collapsed ? 'Show log' : 'Hide log';",
+                    "  this.setAttribute(",
+                    "    'title',",
+                    "    collapsed ?",
+                    "      'Expand the calculation log' :",
+                    "      'Collapse the calculation log');",
+                    "  var log = document.getElementById('calculation_log');",
+                    "  if (!collapsed && log) { log.scrollTop = log.scrollHeight; }",
+                    "  setTimeout(function() {",
+                    "    window.dispatchEvent(new Event('resize'));",
+                    "  }, 0);",
+                    "});"
+                )
             ))
         ),
         gridlayout::grid_container(
@@ -1852,7 +2004,22 @@ bam_launcher_ui <- function(state) {
                     class = "mamamia-footer",
                     shiny::div(
                         class = "footer-status",
-                        shiny::uiOutput("footer_status")
+                        shiny::div(
+                            class = "mamamia-footer-status",
+                            shiny::uiOutput("footer_status")
+                        ),
+                        shiny::tags$button(
+                            id = "footer_toggle",
+                            type = "button",
+                            class = paste(
+                                "btn btn-sm btn-outline-secondary",
+                                "mamamia-footer-toggle"
+                            ),
+                            `aria-expanded` = "true",
+                            `aria-controls` = "calculation_log",
+                            title = "Collapse the calculation log",
+                            "Hide log"
+                        )
                     ),
                     shiny::verbatimTextOutput("calculation_log")
                 )
@@ -1886,6 +2053,8 @@ bam_launcher_server <- function(state, cache = NULL) {
         result <- shiny::reactiveVal(NULL)
         last_error <- shiny::reactiveVal(NULL)
         selection_map <- shiny::reactiveVal(list())
+        result_cache <- bam_result_cache()
+        active_key <- shiny::reactiveVal(NULL)
 
         log_entries <- shiny::reactiveVal(bam_initial_log(config))
         log_line <- function(...) {
@@ -2632,23 +2801,41 @@ bam_launcher_server <- function(state, cache = NULL) {
             )
         })
 
-        ## Changing any input that affects the result invalidates the previous
-        ## one, so a stale BEDPE can never be downloaded for a different input.
-        run_key <- shiny::reactive({
-            list(
-                example = example_mode(),
-                paths = selected_paths(),
+        ## A completed analysis is cached under its resolved assembly and run
+        ## parameters. Switching back to a subgenome that was already analysed
+        ## restores that result instead of clearing it and recomputing every
+        ## sample. A combination that has never been run still needs one run.
+        analysis_key <- shiny::reactive({
+            bam_analysis_key(
+                preflight_state(),
                 resolution = input$resolution,
-                recipient_species = recipient_species(),
-                donor_species = donor_species(),
-                recipient_subgenome = effective_subgenome("recipient"),
-                donor_subgenome = effective_subgenome("donor"),
-                reference = input$reference_sample
+                reference_sample = input$reference_sample
             )
         })
-        shiny::observeEvent(run_key(), {
+
+        shiny::observeEvent(analysis_key(), {
+            key <- analysis_key()
+            cached <- result_cache$get(key)
+            if (!is.null(cached)) {
+                active_key(key)
+                result(cached)
+                last_error(NULL)
+                log_line(
+                    "Restored a cached analysis result for these inputs; ",
+                    "no recalculation was needed."
+                )
+                return()
+            }
+            had_result <- !is.null(result())
+            active_key(NULL)
             result(NULL)
             last_error(NULL)
+            if (had_result) {
+                log_line(
+                    "Analysis inputs changed; the previous result was cleared. ",
+                    "Run the analysis for the new inputs."
+                )
+            }
         }, ignoreInit = TRUE)
 
         shiny::observeEvent(result(), {
@@ -2776,6 +2963,24 @@ bam_launcher_server <- function(state, cache = NULL) {
             }
 
             previous <- result()
+            key <- analysis_key()
+            cached <- result_cache$get(key)
+            if (!is.null(cached)) {
+                if (!identical(active_key(), key)) {
+                    log_line(
+                        "Using the cached analysis result; no recalculation ",
+                        "was needed."
+                    )
+                    shiny::showNotification(
+                        "Using the cached analysis result for these inputs.",
+                        type = "message", duration = 5
+                    )
+                    active_key(key)
+                    result(cached)
+                }
+                last_error(NULL)
+                return()
+            }
             log_line(sprintf(
                 "Starting analysis: %d sample%s, %s windows/chromosome, normalization '%s'%s.",
                 length(samples),
@@ -2847,6 +3052,8 @@ bam_launcher_server <- function(state, cache = NULL) {
                 return()
             }
             last_error(NULL)
+            result_cache$set(key, new_result)
+            active_key(key)
             result(new_result)
             log_line(sprintf(
                 "Analysis finished: %d sample(s), %d segment(s), %d putative introgression(s).",
@@ -2866,12 +3073,6 @@ bam_launcher_server <- function(state, cache = NULL) {
             coverage <- bam_coverage_warnings(new_result)
             for (warning in coverage) {
                 log_line(paste("Coverage warning:", warning))
-            }
-            if (length(coverage) > 0L) {
-                shiny::showNotification(
-                    paste(coverage, collapse = "\n"),
-                    type = "warning", duration = 15
-                )
             }
         })
 

@@ -131,6 +131,11 @@ auto-detection checkbox: contigs are paired by chromosome group (the optional
 BAM processing uses the MAPQ, flag mask, fit cap and core count from the
 validated registry; those controls are not exposed in the interface.
 
+A completed analysis is cached for the session. Returning to a
+species/subgenome pair, resolution or reference that was already analysed
+restores its result without recalculating every sample; a new combination
+still needs one **Run analysis** click.
+
 Upload one BAM, choose a resolution and, for several samples, a reference
 sample or median normalization. BAMs are accepted only through the upload
 control; the container does not mount a BAM directory. A shared filter bar above
@@ -145,7 +150,9 @@ plot. Call threshold, minimum segment width and row selection sit in
 **Segments**; cohort summaries and the per-sample and combined BEDPE downloads
 live in **Export**. Preflight status, detected assemblies, problems and every
 pipeline stage are written to the calculation log in the footer. The line above
-the log reports only the number of BAM files. The app keeps table selections
+the log reports only the number of BAM files. **Hide log** collapses the footer
+to that status line and gives the freed height to the sidebar, circos and
+coverage plot; **Show log** restores it. The app keeps table selections
 per sample and exports a per-sample BEDPE or a combined BEDPE with a `sample`
 column. Uploaded BAMs are staged into a private session directory and removed on
 session end.

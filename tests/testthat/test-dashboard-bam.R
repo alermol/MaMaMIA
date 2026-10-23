@@ -647,9 +647,26 @@ test_that("the launcher uses the grid layout with header, sidebar, main and foot
     expect_match(html, "mamamia-sidebar", fixed = TRUE)
     expect_match(html, "mamamia-main", fixed = TRUE)
     expect_match(html, "mamamia-footer", fixed = TRUE)
+    expect_match(html, 'id="footer_toggle"', fixed = TRUE)
+    expect_match(html, "Hide log", fixed = TRUE)
     expect_match(html, "MaMaMIA</h1>", fixed = TRUE)
     expect_match(html, "Example data", fixed = TRUE)
     expect_match(html, 'id="explorer-isa_plot"', fixed = TRUE)
+})
+
+test_that("collapsing the footer returns its height to the results area", {
+    css <- bam_dashboard_css()
+    expect_match(
+        css, "#mamamia-grid.mamamia-footer-collapsed", fixed = TRUE
+    )
+    expect_match(
+        css, "grid-template-rows: 75px 1fr 2.25rem", fixed = TRUE
+    )
+    expect_match(
+        css, "grid-template-rows: 85px 350px 2.25rem 350px", fixed = TRUE
+    )
+    expect_match(css, "height: calc(100vh - 271px) !important", fixed = TRUE)
+    expect_match(css, "height: calc(100vh - 341px) !important", fixed = TRUE)
 })
 
 test_that("one upload control auto-detects the sample count", {
@@ -1288,6 +1305,116 @@ test_that("the cohort card shows zero-coverage warnings", {
             output_html(output$cohort_ui),
             "no reads on the donor"
         )
+    })
+})
+
+test_that("analysis keys follow the resolved assembly and the cache is bounded", {
+    preflight <- list(
+        ok = TRUE,
+        example = FALSE,
+        assembly = "triticum_A__secale_R",
+        table = data.frame(
+            path = "sample.bam", sample = "A", stringsAsFactors = FALSE
+        ),
+        config = list(defaults = list(
+            mapq = 20L,
+            exclude_flags = 2308L,
+            max_fit_windows = 1000L,
+            normalization_by_side = TRUE
+        ))
+    )
+    key_a <- bam_analysis_key(preflight, 100, NULL)
+    key_a_again <- bam_analysis_key(preflight, 100, NULL)
+    expect_identical(key_a, key_a_again)
+
+    preflight$assembly <- "triticum_B__secale_R"
+    key_b <- bam_analysis_key(preflight, 100, NULL)
+    expect_false(identical(key_a, key_b))
+
+    preflight$ok <- FALSE
+    expect_null(bam_analysis_key(preflight, 100, NULL))
+
+    cache <- bam_result_cache(2L)
+    cache$set("a", 1L)
+    cache$set("b", 2L)
+    expect_identical(cache$get("a"), 1L)
+    cache$set("c", 3L)
+    expect_null(cache$get("a"))
+    expect_identical(cache$get("b"), 2L)
+    expect_identical(cache$get("c"), 3L)
+    expect_identical(cache$size(), 2L)
+})
+
+test_that("coverage warnings are written to the calculation log", {
+    skip_if_no_dashboard()
+    skip_if_no_samtools()
+    fixture <- variable_gc_fixture()
+    on.exit(unlink(fixture$directory, recursive = TRUE), add = TRUE)
+    state <- app_state(fixture)
+    fake <- fake_bam_result(
+        "A",
+        counts = list(
+            donor = matrix(0, 60L, 1L, dimnames = list(NULL, "A")),
+            recipient = matrix(10, 60L, 1L, dimnames = list(NULL, "A"))
+        )
+    )
+    testthat::local_mocked_bindings(
+        analyzeBamInput = function(...) fake,
+        .package = "MaMaMIA"
+    )
+
+    shiny::testServer(bam_launcher_server(state, cache = FALSE), {
+        set_app_inputs(session, bams = upload_input(fixture$bam_path))
+        expect_true(preflight_state()$ok)
+
+        suppressWarnings(session$setInputs(run = 1L))
+        expect_identical(result(), fake)
+        expect_match(
+            output$calculation_log,
+            "Coverage warning: Sample 'A' has no reads on the donor targets.",
+            fixed = TRUE
+        )
+    })
+})
+
+test_that("a completed analysis is restored when its inputs return", {
+    skip_if_no_dashboard()
+    skip_if_no_samtools()
+    fixture <- variable_gc_fixture()
+    on.exit(unlink(fixture$directory, recursive = TRUE), add = TRUE)
+    state <- app_state(fixture)
+    fake <- fake_bam_result("A")
+    calls <- 0L
+    testthat::local_mocked_bindings(
+        analyzeBamInput = function(...) {
+            calls <<- calls + 1L
+            fake
+        },
+        .package = "MaMaMIA"
+    )
+
+    shiny::testServer(bam_launcher_server(state, cache = FALSE), {
+        set_app_inputs(
+            session,
+            bams = upload_input(fixture$bam_path),
+            resolution = 100
+        )
+        expect_true(preflight_state()$ok)
+        suppressWarnings(session$setInputs(run = 1L))
+        expect_identical(result(), fake)
+        expect_identical(calls, 1L)
+
+        session$setInputs(resolution = 1000)
+        expect_null(result())
+        suppressWarnings(session$setInputs(run = 1L))
+        expect_identical(calls, 2L)
+
+        session$setInputs(resolution = 100)
+        expect_identical(result(), fake)
+        expect_identical(calls, 2L)
+
+        suppressWarnings(session$setInputs(run = 1L))
+        expect_identical(calls, 2L)
     })
 })
 

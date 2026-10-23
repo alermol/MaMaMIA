@@ -38,10 +38,17 @@
 * Multi-sample BAMs now show a **Sample** selector in the main filter bar. It
   switches the circos, coverage plot, segment table and per-sample export
   together; single-sample runs do not show it.
+* Completed analyses are cached for the session. Returning to a previously
+  analysed species/subgenome pair, resolution or reference restores that
+  result without recalculating every sample; a combination that has never been
+  run still needs one **Run analysis** click.
 * The circos view is zoomable (scroll to zoom, drag to pan), uses the
   chromosome names from the registry instead of contig IDs, and hides hover
   tooltips when the pointer leaves the plot or a stale widget render leaves a
   tooltip behind.
+* The footer calculation log can be collapsed with **Hide log**. The footer
+  shrinks to its status line, and the sidebar, circos and coverage plot take the
+  freed height; **Show log** restores the log.
 * A single BAM may contain one or several samples. Samples are read from
   `@RG SM` tags and read groups from `@RG ID`; incomplete or duplicate read
   groups are rejected, and reads are counted per read group for multi-sample
@@ -233,7 +240,7 @@
   than the selected resolution. The same guard runs inside the handler, and the
   small correction/GC failure and zero-coverage paths remain actionable
   (`Fewer than N ideal windows`, no reads on a side, all-zero reference
-  windows). Zero/near-zero coverage warnings are repeated as a notification
+  windows). Zero/near-zero coverage warnings are written to the calculation log
   after a successful run.
 * Invalid run controls (resolution, MAPQ, exclude flags, cores, fit cap,
   reference sample) are now MaMaMIA conditions, so they use the same
