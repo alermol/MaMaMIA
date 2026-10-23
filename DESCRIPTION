@@ -12,7 +12,6 @@ BugReports: https://github.com/alermol/MaMaMIA/issues
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
 Imports:
-    bamsignals (>= 1.44.0),
     DNAcopy (>= 1.86.0),
     dplyr (>= 1.2.1),
     GenomicRanges (>= 1.64.0),

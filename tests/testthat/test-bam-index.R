@@ -7,17 +7,16 @@ copy_tiny_bam <- function(directory) {
     path
 }
 
-bamsignal_counts <- function(path) {
+count_tiny_bam <- function(path) {
     gr <- GenomicRanges::GRanges(
         c("d1", "r1"),
-        IRanges::IRanges(c(1L, 1L), c(20000L, 20000L))
+        IRanges::IRanges(c(1L, 1L), c(20000L, 20000L)),
+        seqlengths = c(d1 = 20000L, r1 = 20000L)
     )
-    as.integer(bamsignals::bamCount(
-        path, gr, mapqual = 20, filteredFlag = -1, verbose = FALSE
-    ))
+    countReads(path, gr, mapq = 20L, exclude_flags = 0L)
 }
 
-test_that("ensureBamIndex() builds a CSI index and bamsignals reads it", {
+test_that("ensureBamIndex() builds a CSI index and countReads() reads it", {
     skip_if_no_tiny_fixtures()
     directory <- tempfile("bam-index-")
     on.exit(unlink(directory, recursive = TRUE), add = TRUE)
@@ -28,7 +27,7 @@ test_that("ensureBamIndex() builds a CSI index and bamsignals reads it", {
     expect_true(file.exists(index))
     expect_gt(file.info(index)$size, 0)
     expect_true(MaMaMIA:::.bam_index_magic(index))
-    expect_identical(bamsignal_counts(bam), c(8L, 5L))
+    expect_identical(count_tiny_bam(bam), c(8L, 5L))
 })
 
 test_that("ensureBamIndex() reuses a current index and rebuilds a stale one", {
@@ -46,7 +45,7 @@ test_that("ensureBamIndex() reuses a current index and rebuilds a stale one", {
     stale_mtime <- file.info(index)$mtime
     expect_identical(ensureBamIndex(bam), index)
     expect_gt(as.numeric(file.info(index)$mtime), as.numeric(stale_mtime))
-    expect_identical(bamsignal_counts(bam), c(8L, 5L))
+    expect_identical(count_tiny_bam(bam), c(8L, 5L))
 })
 
 test_that("ensureBamIndex() replaces corrupt or empty CSI files", {
@@ -63,7 +62,7 @@ test_that("ensureBamIndex() replaces corrupt or empty CSI files", {
     file.create(index)
     expect_identical(ensureBamIndex(bam), index)
     expect_true(MaMaMIA:::.bam_index_magic(index))
-    expect_identical(bamsignal_counts(bam), c(8L, 5L))
+    expect_identical(count_tiny_bam(bam), c(8L, 5L))
 })
 
 test_that("ensureBamIndex() refuses a read-only BAM directory", {
@@ -109,7 +108,7 @@ test_that("stageBam() indexes a symlinked BAM in session temp", {
     expect_identical(index, paste0(staged, ".csi"))
     expect_true(file.exists(index))
     expect_false(file.exists(paste0(bam, ".csi")))
-    expect_identical(bamsignal_counts(staged), c(8L, 5L))
+    expect_identical(count_tiny_bam(staged), c(8L, 5L))
 })
 
 test_that("ensureBamIndex() ignores a BAI sibling and only returns CSI", {
@@ -159,12 +158,18 @@ test_that("ensureBamIndex() builds a CSI for the real long-contig BAM", {
     expect_true(file.exists(index))
     expect_true(MaMaMIA:::.bam_index_magic(index))
 
+    header <- bamHeaderInfo(staged)
+    contig <- "CP155614.1"
+    contig_length <- header$targets$length[
+        match(contig, header$targets$name)
+    ]
     gr <- GenomicRanges::GRanges(
-        "CP155614.1", IRanges::IRanges(1L, 1000L)
+        contig, IRanges::IRanges(1L, 1000L),
+        seqlengths = stats::setNames(contig_length, contig)
     )
-    counts <- bamsignals::bamCount(
-        staged, gr, mapqual = 20, filteredFlag = -1, verbose = FALSE
+    counts <- countReads(
+        staged, gr, mapq = 20L, exclude_flags = 0L
     )
     expect_length(counts, 1L)
-    expect_gte(counts[[1L]], 0)
+    expect_gte(counts[[1L]], 0L)
 })

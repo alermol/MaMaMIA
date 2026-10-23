@@ -417,7 +417,8 @@ check(
 check(
     "single", "provenance records the frozen semantics",
     identical(r$provenance$normalization_mode, "none") &&
-        identical(r$provenance$count_semantics, "bamsignals_start_based") &&
+        identical(r$provenance$count_backend, "htslib") &&
+        identical(r$provenance$count_semantics, "five_prime_start_based") &&
         identical(r$provenance$gc_source, "gcrank") &&
         isTRUE(all.equal(
             as.numeric(r$provenance$max_fit_windows), max_fit_windows

@@ -270,14 +270,16 @@ from the number of workers. The overview vignette has the full guidance.
 
 ## Counting semantics and verification
 
-Reads are counted with `bamsignals` at their 5' end: a forward-strand read
-belongs to the window containing its leftmost coordinate, a reverse-strand read
-to the window containing the alignment end. This is **start-based**, not
+Reads are counted with the htslib backend at their 5' end: a forward-strand
+read belongs to the window containing its leftmost coordinate, a reverse-strand
+read to the window containing the alignment end. This is **start-based**, not
 overlap-based. `bedtools coverage -counts`, used by the legacy workflow, counts
 a read in every window it overlaps, so the two can differ by the few reads
 whose alignment spans a window boundary while their 5' end is outside the
 window. The difference is confined to those boundary-crossing reads and is
-expected, not a counting bug.
+expected, not a counting bug. Both `countReads()` and `analyzeBamInput()` use
+the package's htslib counter; there is no bamsignals dependency. The pipeline
+counts every BAM, one sample or several, with the same flag and boundary rules.
 
 Both MAPQ and flag filtering follow `samtools`:
 

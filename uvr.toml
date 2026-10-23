@@ -9,7 +9,6 @@ GenomicRanges = { bioc = true, version = ">=1.64.0" }
 IRanges = { bioc = true, version = ">=2.46.0" }
 Rcpp = ">=1.1.2"
 Rhtslib = { bioc = true, version = ">=3.8.0" }
-bamsignals = { bioc = true, version = ">=1.44.0" }
 dplyr = ">=1.2.1"
 ggnewscale = ">=0.5.2"
 ggplot2 = ">=4.0.3"

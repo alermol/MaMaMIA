@@ -33,7 +33,11 @@ bam_index_build_cpp <- function(path, index_path, min_shift = 14L, threads = 1L)
     .Call(`_MaMaMIA_bam_index_build_cpp`, path, index_path, min_shift, threads)
 }
 
-bam_count_rg_cpp <- function(path, contig_names, contig_lengths, n_per_chromosome, read_group_ids, sample_index, sample_names, mapq, exclude_flags, allow_missing_rg) {
-    .Call(`_MaMaMIA_bam_count_rg_cpp`, path, contig_names, contig_lengths, n_per_chromosome, read_group_ids, sample_index, sample_names, mapq, exclude_flags, allow_missing_rg)
+bam_count_rg_cpp <- function(path, contig_names, contig_lengths, n_per_chromosome, read_group_ids, sample_index, sample_names, mapq, exclude_flags) {
+    .Call(`_MaMaMIA_bam_count_rg_cpp`, path, contig_names, contig_lengths, n_per_chromosome, read_group_ids, sample_index, sample_names, mapq, exclude_flags)
+}
+
+bam_count_ranges_cpp <- function(path, contig_names, contig_lengths, range_contig, range_start, range_end, mapq, exclude_flags) {
+    .Call(`_MaMaMIA_bam_count_ranges_cpp`, path, contig_names, contig_lengths, range_contig, range_start, range_end, mapq, exclude_flags)
 }
 

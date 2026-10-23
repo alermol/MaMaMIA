@@ -66,10 +66,10 @@ A \code{BamAnalysisResult} list with \code{assembly}, \code{config}, \code{bams}
 \description{
 Reads BAM headers, matches them to a configured assembly, ensures CSI
 indexes, generates exact-N analysis windows, extracts GC content from the
-configured gcrank indexes, counts reads with \code{\link[=countReads]{countReads()}}, builds the
+configured gcrank indexes, counts reads with the htslib backend, builds the
 per-sample tables with \code{\link[=buildSampleTables]{buildSampleTables()}}, corrects GC bias with
 \code{\link[=correctReadCounts]{correctReadCounts()}} and segments the pairwise coverage differences with
-\code{\link[=segments]{segments()}}.
+\code{\link[=segments]{segments()}}. A one-sample BAM counts every read; a BAM with several \verb{@RG SM} samples is counted per read group in one pass over the file.
 }
 \details{
 For a single BAM the normalization mode is always \code{"none"}; segmentation

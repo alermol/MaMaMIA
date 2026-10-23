@@ -1,4 +1,4 @@
-manifest_fingerprint = "sha256:d190726c0b8c502219cf7bcbd0054efd2c40cfb302d495cb038e70af3099d5cc"
+manifest_fingerprint = "sha256:7dbe329334dcf284580fba2bc5f87e48ef5477d2bd17ff7a9cd2b242128c5345"
 
 [r]
 version = "4.6.1"
@@ -227,22 +227,6 @@ source = "cran"
 raw_version = "1.5.1"
 url = "https://cran.r-project.org/src/contrib/backports_1.5.1.tar.gz"
 checksum = "md5:f23f63d1a2a739db18644dfa8c1de7ec"
-
-[[package]]
-name = "bamsignals"
-version = "1.44.1"
-source = "bioconductor"
-raw_version = "1.44.1"
-url = "https://bioconductor.org/packages/3.23/bioc/src/contrib/bamsignals_1.44.1.tar.gz"
-checksum = "md5:db203e7610e228772773a5d991e7f315"
-requires = [
-    "BiocGenerics",
-    "Rcpp",
-    "IRanges",
-    "GenomicRanges",
-    "Rcpp",
-    "Rhtslib",
-]
 
 [[package]]
 name = "base64enc"

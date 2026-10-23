@@ -2,7 +2,7 @@
 % Please edit documentation in R/counts.R
 \name{countReads}
 \alias{countReads}
-\title{Count reads in genomic windows}
+\title{Count reads in genomic ranges}
 \usage{
 countReads(bam_path, gr, mapq = 20L, exclude_flags = 2308L, verbose = FALSE)
 }
@@ -15,35 +15,37 @@ every seqname.}
 \item{mapq}{Minimum mapping quality (0-255).}
 
 \item{exclude_flags}{SAM flag mask; a read is excluded when any bit is set
-(0-4095, at most six bits).}
+(0-4095).}
 
-\item{verbose}{Print bamsignals progress messages.}
+\item{verbose}{Print a start message. Accepted for compatibility with the
+previous backend.}
 }
 \value{
 An integer vector aligned to \code{gr}.
 }
 \description{
-Counts reads whose 5' end falls inside each window using
-\code{\link[bamsignals:bamCount]{bamsignals::bamCount()}}. A valid CSI index is ensured first.
+Counts reads whose 5' end falls inside each range using the package's
+htslib iterator. A valid CSI index is ensured first. This is the public
+helper for arbitrary \code{GRanges}; \code{\link[=analyzeBamInput]{analyzeBamInput()}} uses the same htslib
+rules through \code{.count_reads_by_sample()}.
 }
 \details{
 \code{exclude_flags} follows \verb{samtools view -F}: a read is excluded when \strong{any}
-bit in the mask is set. bamsignals excludes a read only when \strong{all} bits are
-set, so a combined mask is decomposed with inclusion-exclusion. The default
+bit in the mask is set. The default
 \code{2308 = 0x904 = unmapped + secondary + supplementary} matches the legacy
 \verb{samtools view -F 2308} filter.
 
-Counting is 5'-end based: bamsignals assigns a forward-strand read to the
-window containing its leftmost coordinate and a reverse-strand read to the
-window containing its rightmost coordinate (the alignment end). A reverse
-read can therefore belong to the window after the one containing its SAM
-\code{POS}. This differs from \verb{bedtools coverage -counts}, which counts a read in
-every window it overlaps; the difference is confined to reads whose 5' end
-lies outside the window while the alignment span overlaps it.
+Counting is 5'-end based: a forward-strand read belongs to the range
+containing its leftmost coordinate and a reverse-strand read to the range
+containing its rightmost coordinate (the alignment end). A reverse read can
+therefore belong to the range after the one containing its SAM \code{POS}. This
+differs from \verb{bedtools coverage -counts}, which counts a read in every range
+it overlaps; the difference is confined to reads whose 5' end lies outside
+the range while the alignment span overlaps it.
 
-For very large window sets, the option \code{MaMaMIA.count_chunk_size} splits the
-GRanges into chunks before counting. It is disabled (\code{0}) by default; each
-chunk repeats the bamsignals passes, so enable it only to bound memory.
+For very large range sets, the option \code{MaMaMIA.count_chunk_size} splits the
+GRanges into chunks before counting. It is disabled (\code{0}) by default and is
+only useful to bound the size of the returned count vector.
 }
 \examples{
 demo <- system.file("extdata", "bam-demo", package = "MaMaMIA")

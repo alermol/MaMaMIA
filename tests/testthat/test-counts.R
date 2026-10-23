@@ -1,4 +1,5 @@
-## T3.1: samtools-compatible counting through bamsignals.
+## T3.1: samtools-compatible counting in the countReads() helper and the
+## unified htslib pipeline backend.
 
 count_test_bam <- function() {
     skip_if_no_tiny_fixtures()
@@ -40,8 +41,7 @@ test_that("countReads() matches samtools -F semantics on the tiny fixture", {
         c(5L, 8L))
 
     ## Correct samtools semantics remove the secondary and supplementary
-    ## reads. A direct filteredFlag = 2308 call would keep both (c(5, 8)),
-    ## because bamsignals filters only when all bits are set.
+    ## reads: combined masks are applied with any-bit semantics.
     expect_identical(countReads(fixture$path, gr, exclude_flags = 2308L),
         c(5L, 6L))
     expect_identical(
@@ -228,10 +228,9 @@ test_that("countReads() validates its inputs", {
         "exclude_flags",
         class = "MaMaMIACountError"
     )
-    expect_error(
+    expect_identical(
         countReads(fixture$path, gr, exclude_flags = 4095L),
-        "supports at most 6 bits",
-        class = "MaMaMIACountError"
+        c(4L, 6L)
     )
     expect_error(
         countReads(fixture$path, gr, verbose = NA),
@@ -325,7 +324,7 @@ test_that("countReads() matches legacy tables within boundary effects", {
     expect_lt(sum(abs(delta)) / sum(expected), 0.001)
 })
 
-test_that(".count_reads_by_sample() matches bamsignals on a one-sample BAM", {
+test_that("countReads() and .count_reads_by_sample() agree on a one-sample BAM", {
     skip_if_no_samtools()
     demo <- system.file("extdata", "bam-demo", package = "MaMaMIA")
     if (!nzchar(demo) || !file.exists(file.path(demo, "demo.bam"))) {
@@ -352,4 +351,95 @@ test_that(".count_reads_by_sample() matches bamsignals on a one-sample BAM", {
     expect_identical(dim(observed), c(1L, nrow(windows$table)))
     expect_identical(as.integer(observed[1L, ]), expected)
     expect_identical(rownames(observed), "demo-sample")
+})
+
+test_that(".count_reads_by_sample() assigns boundary reads to the next window", {
+    skip_if_no_samtools()
+    directory <- tempfile("boundary-cpp-")
+    dir.create(directory)
+    on.exit(unlink(directory, recursive = TRUE), add = TRUE)
+    path <- file.path(directory, "boundary.bam")
+    write_test_bam(
+        c(
+            "@HD\tVN:1.6\tSO:coordinate",
+            "@SQ\tSN:chr1\tLN:10",
+            ## 0-based 5' end 3 is the first base of window 2.
+            "forward\t0\tchr1\t4\t60\t1M\t*\t0\t0\tA\tI",
+            ## Reverse read ends at 0-based 6, the first base of window 3.
+            "reverse\t16\tchr1\t7\t60\t1M\t*\t0\t0\tA\tI"
+        ),
+        path,
+        index = TRUE
+    )
+
+    table <- data.frame(
+        chr_id = rep("chr1", 3L),
+        start = c(0L, 3L, 6L),
+        stop = c(3L, 6L, 10L),
+        stringsAsFactors = FALSE
+    )
+    gr <- GenomicRanges::GRanges(
+        "chr1",
+        IRanges::IRanges(c(1L, 4L, 7L), c(3L, 6L, 10L)),
+        seqlengths = c(chr1 = 10)
+    )
+    windows <- list(gr = gr, table = table, n_per_chromosome = 3L)
+
+    observed <- MaMaMIA:::.count_reads_by_sample(
+        path,
+        windows,
+        samples = "s",
+        read_groups = data.frame(id = "fake", sample = "s"),
+        mapq = 0L,
+        exclude_flags = 0L
+    )
+    expect_identical(as.integer(observed[1L, ]), c(0L, 1L, 1L))
+    expect_identical(
+        as.integer(observed[1L, ]),
+        countReads(path, gr, mapq = 0L, exclude_flags = 0L)
+    )
+})
+
+test_that(".count_reads_by_sample() counts a one-sample BAM without @RG", {
+    skip_if_no_samtools()
+    directory <- tempfile("no-rg-")
+    dir.create(directory)
+    on.exit(unlink(directory, recursive = TRUE), add = TRUE)
+    path <- file.path(directory, "no-rg.bam")
+    write_test_bam(
+        c(
+            "@HD\tVN:1.6\tSO:coordinate",
+            "@SQ\tSN:chr1\tLN:10",
+            "read\t0\tchr1\t4\t60\t1M\t*\t0\t0\tA\tI"
+        ),
+        path,
+        index = TRUE
+    )
+    header <- bamHeaderInfo(path)
+    table <- data.frame(
+        chr_id = "chr1", start = 0L, stop = 10L,
+        stringsAsFactors = FALSE
+    )
+    windows <- list(
+        gr = GenomicRanges::GRanges(
+            "chr1", IRanges::IRanges(1L, 10L), seqlengths = c(chr1 = 10)
+        ),
+        table = table,
+        n_per_chromosome = 1L
+    )
+
+    ## A one-sample BAM does not need an RG mapping at all.
+    observed <- MaMaMIA:::.count_reads_by_sample(
+        path,
+        windows,
+        samples = header$samples,
+        read_groups = data.frame(
+            id = character(), sample = character(),
+            stringsAsFactors = FALSE
+        ),
+        mapq = 0L,
+        exclude_flags = 0L
+    )
+    expect_identical(dim(observed), c(1L, 1L))
+    expect_identical(as.integer(observed[1L, 1L]), 1L)
 })

@@ -67,7 +67,7 @@ test_that("uvr.toml mirrors the DESCRIPTION dependency sets", {
 test_that("Bioconductor packages are declared as such in uvr.toml", {
     root <- package_root()
     lines <- readLines(file.path(root, "uvr.toml"), warn = FALSE)
-    bioc <- c("bamsignals", "DNAcopy", "GenomicRanges", "IRanges", "Rhtslib")
+    bioc <- c("DNAcopy", "GenomicRanges", "IRanges", "Rhtslib")
     for (package in bioc) {
         line <- lines[grepl(
             paste0("^\\s*", package, "\\s*="),

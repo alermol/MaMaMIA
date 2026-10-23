@@ -289,7 +289,6 @@
         package_version = .safe_package_version("MaMaMIA"),
         r_version = as.character(getRversion()),
         dependency_versions = c(
-            bamsignals = .safe_package_version("bamsignals"),
             Rhtslib = .safe_package_version("Rhtslib"),
             GenomicRanges = .safe_package_version("GenomicRanges"),
             DNAcopy = .safe_package_version("DNAcopy"),
@@ -324,7 +323,8 @@
         normalization_mode = normalization$mode,
         normalization_by_side = normalization$by_side,
         pseudocount = normalization$pseudocount,
-        count_semantics = "bamsignals_start_based",
+        count_backend = "htslib",
+        count_semantics = "five_prime_start_based",
         gc_source = "gcrank",
         cache = if (is.null(cache)) NA_character_ else cache,
         started_at = format(started_at, "%Y-%m-%dT%H:%M:%S%z"),
@@ -338,10 +338,11 @@
 #'
 #' Reads BAM headers, matches them to a configured assembly, ensures CSI
 #' indexes, generates exact-N analysis windows, extracts GC content from the
-#' configured gcrank indexes, counts reads with [countReads()], builds the
+#' configured gcrank indexes, counts reads with the htslib backend, builds the
 #' per-sample tables with [buildSampleTables()], corrects GC bias with
 #' [correctReadCounts()] and segments the pairwise coverage differences with
-#' [segments()].
+#' [segments()]. A one-sample BAM counts every read; a BAM with several `@RG
+#' SM` samples is counted per read group in one pass over the file.
 #'
 #' For a single BAM the normalization mode is always `"none"`; segmentation
 #' therefore consumes `cor.gc` (D7). For several BAMs, `normalization = "median"`
@@ -553,9 +554,9 @@ analyzeBamInput <- function(bam_paths,
     names(rcas) <- samples
     tables_list <- vector("list", length(samples))
 
-    ## Count one BAM at a time. A BAM with one sample keeps the bamsignals
-    ## backend; a BAM with several @RG SM samples is counted per read group so
-    ## every sample gets its own column without splitting the file on disk.
+    ## Count one BAM at a time with the htslib backend. A one-sample BAM
+    ## counts every read; a BAM with several @RG SM samples is counted per read
+    ## group so every sample gets its own column without splitting the file.
     headers <- lapply(indexed$original_path, bamHeaderInfo)
     names(headers) <- indexed$original_path
     selected_paths <- as.character(preflight$path)
@@ -566,29 +567,19 @@ analyzeBamInput <- function(bam_paths,
             next
         }
         bam_samples <- samples[rows]
-        counts_by_sample <- if (length(rows) == 1L) {
-            list(tryCatch(
-                countReads(
-                    indexed$path[[bam_index]],
-                    windows$gr,
-                    mapq = mapq,
-                    exclude_flags = exclude_flags
-                ),
-                error = function(e) {
+        matrix_counts <- tryCatch(
+            .count_reads_by_sample(
+                indexed$path[[bam_index]],
+                windows,
+                samples = bam_samples,
+                read_groups = headers[[bam_index]]$read_groups,
+                mapq = mapq,
+                exclude_flags = exclude_flags
+            ),
+            error = function(e) {
+                if (length(rows) == 1L) {
                     .sample_stage_error(e, bam_samples[[1L]], "counts")
-                }
-            ))
-        } else {
-            matrix_counts <- tryCatch(
-                .count_reads_by_sample(
-                    indexed$path[[bam_index]],
-                    windows,
-                    samples = bam_samples,
-                    read_groups = headers[[bam_index]]$read_groups,
-                    mapq = mapq,
-                    exclude_flags = exclude_flags
-                ),
-                error = function(e) {
+                } else {
                     .mamamia_error(
                         class(e)[[1L]],
                         "BAM '%s' (%d samples): %s",
@@ -596,9 +587,11 @@ analyzeBamInput <- function(bam_paths,
                         conditionMessage(e)
                     )
                 }
-            )
-            lapply(seq_along(bam_samples), function(j) matrix_counts[j, ])
-        }
+            }
+        )
+        counts_by_sample <- lapply(
+            seq_along(bam_samples), function(j) matrix_counts[j, ]
+        )
 
         for (j in seq_along(rows)) {
             i <- rows[[j]]

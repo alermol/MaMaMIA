@@ -1,5 +1,20 @@
 # MaMaMIA 0.99.1
 
+## Unified BAM counting
+
+* `analyzeBamInput()` now counts every BAM with the same htslib backend,
+  `.count_reads_by_sample()`: a one-sample BAM counts every read, and a BAM
+  with several `@RG SM` samples is split by `RG` tag. The single-sample
+  bamsignals branch is gone from the pipeline, so both cases share one flag,
+  MAPQ and window-boundary rule. `countReads()` now uses a C++ range counter
+  with the same htslib rules, and `bamsignals` is removed from the package
+  dependencies entirely.
+* Fixed the htslib window assignment at exact window boundaries. The counter
+  now uses the same floor boundaries as `makeAnalysisWindows()`, so a read on
+  the first base of a window is no longer assigned to the previous window when
+  the contig length is not divisible by the window count. Provenance records
+  `count_backend = "htslib"` and `count_semantics = "five_prime_start_based"`.
+
 ## Grid dashboard layout
 
 * The BAM-first dashboard now uses the `gridlayout` package with a `0.5rem`

@@ -159,8 +159,9 @@ test_that("analyzeBamInput() records provenance and writes the fit cache", {
     expect_match(provenance$package_version, "^[0-9.]+$")
     expect_match(provenance$r_version, "^[0-9.]+$")
     expect_true(all(c(
-        "bamsignals", "Rhtslib", "GenomicRanges", "DNAcopy", "glmmTMB"
+        "Rhtslib", "GenomicRanges", "DNAcopy", "glmmTMB"
     ) %in% names(provenance$dependency_versions)))
+    expect_false("bamsignals" %in% names(provenance$dependency_versions))
     expect_match(provenance$htslib_version, "^[0-9]+\\.[0-9]+\\.[0-9]+$")
     expect_true(all(c("uvr_version", "uvr_lock", "uvr_lock_hash") %in% names(provenance)))
     expect_identical(provenance$gcrank_commit, MaMaMIA:::.MaMaMIAgcrankCommit)
@@ -174,7 +175,8 @@ test_that("analyzeBamInput() records provenance and writes the fit cache", {
     expect_true(provenance$max_fit_windows_enforced)
     expect_identical(provenance$n_samples, 1L)
     expect_identical(provenance$total_windows, 200L)
-    expect_identical(provenance$count_semantics, "bamsignals_start_based")
+    expect_identical(provenance$count_backend, "htslib")
+    expect_identical(provenance$count_semantics, "five_prime_start_based")
     expect_identical(provenance$gc_source, "gcrank")
     expect_identical(provenance$normalization_mode, "none")
     expect_identical(provenance$normalization_requested, "none")
@@ -185,6 +187,25 @@ test_that("analyzeBamInput() records provenance and writes the fit cache", {
         "path", "sample", "sample_source", "file_size", "mtime"
     ) %in% names(provenance$bams)))
     unlink(provenance$cache)
+})
+
+test_that("analyzeBamInput() counts single-sample BAMs with the htslib backend", {
+    fixture <- pipeline_fixture()
+    on.exit(unlink(fixture$directory, recursive = TRUE), add = TRUE)
+
+    testthat::local_mocked_bindings(
+        countReads = function(...) {
+            stop("analyzeBamInput() must not call countReads()")
+        },
+        .package = "MaMaMIA"
+    )
+    run <- run_pipeline(fixture)
+
+    expect_identical(run$result$provenance$count_backend, "htslib")
+    expect_identical(
+        run$result$provenance$count_semantics,
+        "five_prime_start_based"
+    )
 })
 
 test_that("the gcrank commit matches the vendored source record", {

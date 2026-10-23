@@ -1,8 +1,10 @@
 // htslib helpers used by the BAM-first workflow.
 //
 // The package talks to BAM files through Rhtslib directly (D8): no
-// Rsamtools dependency. This file only reads headers and builds CSI indexes;
-// read counting stays in bamsignals.
+// Rsamtools and no bamsignals dependency. This file reads headers, builds CSI
+// indexes and counts reads. bam_count_rg_cpp() serves the per-sample pipeline;
+// bam_count_ranges_cpp() serves the public countReads() helper and arbitrary
+// GRanges.
 
 #include <Rcpp.h>
 
@@ -12,6 +14,7 @@
 #include <algorithm>
 #include <cerrno>
 #include <climits>
+#include <cmath>
 #include <cstdint>
 #include <cstring>
 #include <memory>
@@ -193,13 +196,14 @@ bool bam_index_build_cpp(const std::string& path,
 
 // Count reads per sample in one BAM.
 //
-// Reads are assigned to the window containing their 5' end, matching
-// bamsignals::bamCount(): a forward read uses its leftmost coordinate and a
-// reverse read uses the last aligned base. `exclude_flags` follows samtools
-// `view -F`: a read is dropped when any mask bit is set. Reads are assigned to
-// a sample through their `RG` tag, which must name an `@RG ID` from the header.
-// `sample_index` is 1-based and aligned to `read_group_ids`; the returned
-// matrix has one row per `sample_names` entry and one column per window.
+// Reads are assigned to the window containing their 5' end: a forward read
+// uses its leftmost coordinate and a reverse read uses the last aligned base.
+// `exclude_flags` follows samtools `view -F`: a read is dropped when any mask
+// bit is set. A one-sample BAM counts every read and ignores the `RG` tag; a
+// multi-sample BAM assigns each read through its `RG` tag, which must name an
+// `@RG ID` from the header. `sample_index` is 1-based and aligned to
+// `read_group_ids`; the returned matrix has one row per `sample_names` entry
+// and one column per window.
 // [[Rcpp::export]]
 Rcpp::IntegerMatrix bam_count_rg_cpp(
     const std::string& path,
@@ -210,10 +214,10 @@ Rcpp::IntegerMatrix bam_count_rg_cpp(
     Rcpp::IntegerVector sample_index,
     Rcpp::CharacterVector sample_names,
     int mapq,
-    int exclude_flags,
-    bool allow_missing_rg) {
+    int exclude_flags) {
   const int n_contigs = contig_names.size();
   const int n_samples = sample_names.size();
+  const bool single_sample = n_samples == 1;
   if (n_contigs < 1) {
     Rcpp::stop("At least one contig is required for read counting");
   }
@@ -310,9 +314,15 @@ Rcpp::IntegerMatrix bam_count_rg_cpp(
         continue;
       }
 
-      int sample = -1;
-      const uint8_t* rg_aux = bam_aux_get(b, "RG");
-      if (rg_aux != nullptr) {
+      int sample = 0;
+      if (!single_sample) {
+        const uint8_t* rg_aux = bam_aux_get(b, "RG");
+        if (rg_aux == nullptr) {
+          Rcpp::stop(
+              "Read '%s' in BAM '%s' has no RG tag; multi-sample BAMs need an "
+              "RG tag on every read",
+              bam_get_qname(b), path);
+        }
         const char* rg = bam_aux2Z(rg_aux);
         if (rg == nullptr) {
           Rcpp::stop(
@@ -328,13 +338,6 @@ Rcpp::IntegerMatrix bam_count_rg_cpp(
               bam_get_qname(b), path, rg);
         }
         sample = found->second;
-      } else if (allow_missing_rg && n_samples == 1) {
-        sample = 0;
-      } else {
-        Rcpp::stop(
-            "Read '%s' in BAM '%s' has no RG tag; multi-sample BAMs need an "
-            "RG tag on every read",
-            bam_get_qname(b), path);
       }
 
       const hts_pos_t pos0 = (b->core.flag & BAM_FREVERSE) != 0
@@ -343,8 +346,14 @@ Rcpp::IntegerMatrix bam_count_rg_cpp(
       if (pos0 < 0 || pos0 >= header_length) {
         continue;
       }
+      // The windows are the integer intervals
+      // [floor(i * L / n), floor((i + 1) * L / n)). Deriving the window
+      // from the real-valued boundary floor(pos0 * n / L) would put a read
+      // on the first base of a window into the previous one whenever L is
+      // not divisible by n. The (pos0 + 1) form uses the same floor
+      // boundaries as makeAnalysisWindows().
       const hts_pos_t window =
-          (pos0 * n_per_chromosome) / header_length;
+          (((pos0 + 1) * n_per_chromosome) - 1) / header_length;
       if (window < 0 || window >= n_per_chromosome) {
         continue;
       }
@@ -360,6 +369,151 @@ Rcpp::IntegerMatrix bam_count_rg_cpp(
     if (ret < -1) {
       Rcpp::stop("Could not read alignments from contig '%s' in BAM '%s'",
                  name, path);
+    }
+  }
+  return counts;
+}
+
+// Count reads in arbitrary half-open ranges.
+//
+// The ranges arrive in GRanges order. `range_contig` is a 1-based index into
+// `contig_names`; starts are 0-based and ends are exclusive. Each range gets
+// its own index iterator, so overlapping ranges are counted independently.
+// Reads are assigned by their 5' end, exactly as in bam_count_rg_cpp(): a
+// forward read uses its leftmost coordinate and a reverse read uses the last
+// aligned base. `exclude_flags` follows samtools `view -F`: a read is dropped
+// when any mask bit is set.
+// [[Rcpp::export]]
+Rcpp::IntegerVector bam_count_ranges_cpp(
+    const std::string& path,
+    Rcpp::CharacterVector contig_names,
+    Rcpp::NumericVector contig_lengths,
+    Rcpp::IntegerVector range_contig,
+    Rcpp::NumericVector range_start,
+    Rcpp::NumericVector range_end,
+    int mapq,
+    int exclude_flags) {
+  const int n_contigs = contig_names.size();
+  const R_xlen_t n_ranges = range_contig.size();
+  if (n_contigs < 1) {
+    Rcpp::stop("At least one contig is required for read counting");
+  }
+  if (contig_lengths.size() != n_contigs) {
+    Rcpp::stop("contig_names and contig_lengths must have the same length");
+  }
+  if (range_start.size() != n_ranges || range_end.size() != n_ranges) {
+    Rcpp::stop("range_contig, range_start and range_end must have the same length");
+  }
+  if (n_ranges == 0) {
+    return Rcpp::IntegerVector(0);
+  }
+
+  HtsFilePtr fp(hts_open(path.c_str(), "r"));
+  if (!fp) {
+    Rcpp::stop("Could not open BAM file '%s': %s", path,
+               errno != 0 ? std::strerror(errno) : "unknown htslib error");
+  }
+  HeaderPtr hdr(sam_hdr_read(fp.get()));
+  if (!hdr) {
+    Rcpp::stop("Could not read the BAM header of '%s'", path);
+  }
+  IndexPtr idx(sam_index_load(fp.get(), path.c_str()));
+  if (!idx) {
+    Rcpp::stop(
+        "Could not load an index for BAM '%s'; build a CSI index first", path);
+  }
+
+  std::vector<int> tids(n_contigs, -1);
+  std::vector<hts_pos_t> lengths(n_contigs, 0);
+  for (int contig = 0; contig < n_contigs; ++contig) {
+    const std::string name = Rcpp::as<std::string>(contig_names[contig]);
+    const double expected_length = contig_lengths[contig];
+    if (!std::isfinite(expected_length) || expected_length <= 0) {
+      Rcpp::stop("Contig '%s' has an invalid length", name);
+    }
+    const int tid = sam_hdr_name2tid(hdr.get(), name.c_str());
+    if (tid < 0) {
+      Rcpp::stop("Contig '%s' is not present in the BAM header of '%s'", name,
+                 path);
+    }
+    const hts_pos_t header_length = sam_hdr_tid2len(hdr.get(), tid);
+    if (header_length != static_cast<hts_pos_t>(expected_length)) {
+      Rcpp::stop(
+          "Contig '%s' is %lld bp in BAM '%s' but %lld bp in the count ranges",
+          name, static_cast<long long>(header_length), path,
+          static_cast<long long>(expected_length));
+    }
+    if (header_length <= 0) {
+      Rcpp::stop("Contig '%s' in BAM '%s' has no length", name, path);
+    }
+    tids[contig] = tid;
+    lengths[contig] = header_length;
+  }
+
+  Rcpp::IntegerVector counts(n_ranges);
+  std::fill(counts.begin(), counts.end(), 0);
+  BamPtr record(bam_init1());
+  if (!record) {
+    Rcpp::stop("Could not allocate a BAM record");
+  }
+
+  for (R_xlen_t i = 0; i < n_ranges; ++i) {
+    const int contig = range_contig[i] - 1;
+    if (contig < 0 || contig >= n_contigs) {
+      Rcpp::stop("range_contig must point into contig_names");
+    }
+    const double start_value = range_start[i];
+    const double end_value = range_end[i];
+    if (!std::isfinite(start_value) || !std::isfinite(end_value) ||
+        start_value != std::floor(start_value) ||
+        end_value != std::floor(end_value)) {
+      Rcpp::stop("Range %lld has non-integer coordinates",
+                 static_cast<long long>(i + 1));
+    }
+    const hts_pos_t start = static_cast<hts_pos_t>(start_value);
+    const hts_pos_t end = static_cast<hts_pos_t>(end_value);
+    if (start < 0 || end <= start || end > lengths[contig]) {
+      Rcpp::stop(
+          "Range %lld is outside contig '%s' in BAM '%s'",
+          static_cast<long long>(i + 1),
+          Rcpp::as<std::string>(contig_names[contig]), path);
+    }
+
+    ItrPtr itr(sam_itr_queryi(idx.get(), tids[contig], start, end));
+    if (!itr) {
+      Rcpp::stop(
+          "Could not iterate BAM '%s' over range %lld on contig '%s'", path,
+          static_cast<long long>(i + 1),
+          Rcpp::as<std::string>(contig_names[contig]));
+    }
+    int ret = 0;
+    while ((ret = sam_itr_next(fp.get(), itr.get(), record.get())) >= 0) {
+      const bam1_t* b = record.get();
+      if ((b->core.flag & exclude_flags) != 0) {
+        continue;
+      }
+      if (b->core.qual < mapq) {
+        continue;
+      }
+      if (b->core.tid < 0) {
+        continue;
+      }
+      const hts_pos_t pos0 = (b->core.flag & BAM_FREVERSE) != 0
+                                 ? bam_endpos(b) - 1
+                                 : b->core.pos;
+      if (pos0 < start || pos0 >= end) {
+        continue;
+      }
+      if (counts[i] == INT32_MAX) {
+        Rcpp::stop("Read count exceeds R's integer range for range %lld",
+                   static_cast<long long>(i + 1));
+      }
+      ++counts[i];
+    }
+    if (ret < -1) {
+      Rcpp::stop(
+          "Could not read alignments from BAM '%s' over range %lld", path,
+          static_cast<long long>(i + 1));
     }
   }
   return counts;

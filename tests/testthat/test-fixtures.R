@@ -95,25 +95,25 @@ test_that("the tiny BAM has exact counts for MAPQ/flag assertions", {
 
     gr <- GenomicRanges::GRanges(
         c("d1", "r1"),
-        IRanges::IRanges(c(1L, 1L), c(20000L, 20000L))
+        IRanges::IRanges(c(1L, 1L), c(20000L, 20000L)),
+        seqlengths = c(d1 = 20000L, r1 = 20000L)
     )
-    count <- function(mapq, filtered_flag) {
-        as.integer(bamsignals::bamCount(
+    count <- function(mapq, exclude_flags) {
+        as.integer(countReads(
             tiny_bam_path(), gr,
-            mapqual = mapq, filteredFlag = filtered_flag, verbose = FALSE
+            mapq = mapq, exclude_flags = exclude_flags
         ))
     }
 
-    ## bamsignals filters a read only when *all* bits in filteredFlag are set,
-    ## unlike samtools -F, which filters when any bit is set. The fixture has
-    ## one secondary, one supplementary, one duplicate and one low-MAPQ read so
-    ## T3.1 can verify a samtools-compatible countReads() wrapper.
-    expect_identical(count(20, -1), c(8L, 5L))   # MAPQ only
-    expect_identical(count(20, 1024), c(8L, 4L)) # duplicate
-    expect_identical(count(20, 256), c(7L, 5L))  # secondary
-    expect_identical(count(20, 2048), c(7L, 5L)) # supplementary
-    expect_identical(count(20, 2308), c(8L, 5L)) # no read has all three bits
-    expect_identical(count(0, 1024), c(9L, 4L))
+    ## countReads() follows samtools view -F: a read is excluded when any bit
+    ## is set. The fixture has one secondary, one supplementary, one duplicate
+    ## and one low-MAPQ read so the combinations can be checked exactly.
+    expect_identical(count(20, 0L), c(8L, 5L))    # MAPQ only
+    expect_identical(count(20, 1024L), c(8L, 4L))  # duplicate
+    expect_identical(count(20, 256L), c(7L, 5L))   # secondary
+    expect_identical(count(20, 2048L), c(7L, 5L))  # supplementary
+    expect_identical(count(20, 2308L), c(6L, 5L))  # any-bit semantics
+    expect_identical(count(0L, 1024L), c(9L, 4L))
 })
 
 test_that("a tiny fixture can run the end-to-end BAM pipeline", {

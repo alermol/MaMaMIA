@@ -1,26 +1,20 @@
-## Read counting through bamsignals with samtools-compatible filtering (T3.1).
+## Read counting through htslib.
 ##
-## bamsignals::bamCount(filteredFlag = mask) excludes a read only when *all*
-## bits in mask are set, whereas samtools view -F mask excludes a read when
-## *any* bit is set. A combined mask therefore cannot be passed directly.
+## countReads() counts arbitrary GRanges with bam_count_ranges_cpp();
+## .count_reads_by_sample() counts the pipeline's exact-N windows with
+## bam_count_rg_cpp(). Both live in src/htslib-utils.cpp and share the same
+## filtering rules.
 ##
-## For exclude_flags with bits b1..bk, inclusion-exclusion over the non-empty
-## subsets gives the samtools-compatible count:
-##
-##   pass = sum_{S non-empty} (-1)^(|S| + 1) * C(mask(S))
-##
-## where C(mask) is bamsignals' count with filteredFlag = mask. For the default
-## 2308 = 4 + 256 + 2048 this is seven bamsignals passes. The exponent is
-## bounded because every extra bit doubles the work.
+## `exclude_flags` follows samtools view -F: a read is excluded when *any* bit
+## in the mask is set. The htslib loops apply the mask directly, so a combined
+## mask costs one pass rather than an inclusion-exclusion expansion.
 ##
 ## Reads are assigned to the window containing their 5' end, not to every
-## window they overlap. bamsignals places a forward-strand read at its leftmost
-## coordinate and a reverse-strand read at its rightmost coordinate (the
-## alignment end), so a reverse read can belong to the window after the one
-## containing its SAM POS. This is documented as the deliberate difference from
+## window they overlap: a forward-strand read uses its leftmost coordinate and
+## a reverse-strand read uses its rightmost coordinate (the alignment end), so
+## a reverse read can belong to the window after the one containing its SAM
+## POS. This is documented as the deliberate difference from
 ## bedtools coverage -counts.
-
-.MaMaMIACountMaxBits <- 6L
 
 .count_error <- function(fmt, ...) {
     .mamamia_error("MaMaMIACountError", fmt, ...)
@@ -109,30 +103,26 @@
     invisible(gr)
 }
 
-.flag_bits <- function(mask) {
-    bits <- as.integer(2^(0:11))
-    bits[bitwAnd(as.integer(mask), bits) != 0L]
-}
-
-.flag_subsets <- function(bits) {
-    out <- vector("list", 0L)
-    for (k in seq_along(bits)) {
-        for (index in utils::combn(seq_along(bits), k, simplify = FALSE)) {
-            out[[length(out) + 1L]] <- bits[index]
-        }
-    }
-    out
-}
-
-.bam_count_call <- function(bam_path, gr, mapq, filtered_flag, verbose) {
+## Convert a GRanges to the arrays consumed by bam_count_ranges_cpp().
+.count_reads_cpp <- function(bam_path, gr, mapq, exclude_flags) {
+    seqnames <- as.character(GenomicRanges::seqnames(gr))
+    contigs <- unique(seqnames)
+    info <- GenomicRanges::seqinfo(gr)
+    seqlengths <- stats::setNames(
+        as.numeric(info@seqlengths),
+        as.character(GenomicRanges::seqnames(info))
+    )
     tryCatch(
-        as.numeric(bamsignals::bamCount(
-            bam_path, gr,
-            mapqual = mapq,
-            filteredFlag = filtered_flag,
-            ss = FALSE,
-            verbose = verbose
-        )),
+        bam_count_ranges_cpp(
+            bam_path,
+            contig_names = contigs,
+            contig_lengths = as.numeric(seqlengths[contigs]),
+            range_contig = match(seqnames, contigs),
+            range_start = as.numeric(IRanges::start(gr)) - 1,
+            range_end = as.numeric(IRanges::end(gr)),
+            mapq = mapq,
+            exclude_flags = exclude_flags
+        ),
         error = function(e) {
             message <- conditionMessage(e)
             hint <- if (grepl("index|idx", message, ignore.case = TRUE)) {
@@ -148,81 +138,38 @@
     )
 }
 
-.count_reads_bamsignals <- function(bam_path, gr, mapq, exclude_flags,
-                                    verbose) {
-    if (exclude_flags == 0L) {
-        counts <- .bam_count_call(bam_path, gr, mapq, -1L, verbose)
-    } else {
-        bits <- .flag_bits(exclude_flags)
-        if (length(bits) == 0L) {
-            counts <- .bam_count_call(bam_path, gr, mapq, -1L, verbose)
-        } else {
-            if (length(bits) > .MaMaMIACountMaxBits) {
-                .count_error(
-                    "`exclude_flags` = %d uses %d flag bits; the bamsignals backend supports at most %d bits (each additional bit doubles the number of passes)",
-                    exclude_flags, length(bits), .MaMaMIACountMaxBits
-                )
-            }
-
-            counts <- numeric(length(gr))
-            for (subset in .flag_subsets(bits)) {
-                mask <- as.integer(sum(subset))
-                sign <- if (length(subset) %% 2L == 1L) 1 else -1
-                counts <- counts + sign *
-                    .bam_count_call(bam_path, gr, mapq, mask, verbose)
-            }
-        }
-    }
-
-    if (any(counts < -1e-6)) {
-        .count_error(
-            "Internal counting error for BAM '%s': negative count", bam_path
-        )
-    }
-    counts[counts < 0] <- 0
-    if (any(abs(counts - round(counts)) > 1e-6)) {
-        .count_error(
-            "Internal counting error for BAM '%s': non-integer count", bam_path
-        )
-    }
-    if (any(counts > .Machine$integer.max)) {
-        .count_error(
-            "Counts for BAM '%s' exceed R's integer range", bam_path
-        )
-    }
-    as.integer(round(counts))
-}
-
-#' Count reads in genomic windows
+#' Count reads in genomic ranges
 #'
-#' Counts reads whose 5' end falls inside each window using
-#' [bamsignals::bamCount()]. A valid CSI index is ensured first.
+#' Counts reads whose 5' end falls inside each range using the package's
+#' htslib iterator. A valid CSI index is ensured first. This is the public
+#' helper for arbitrary `GRanges`; [analyzeBamInput()] uses the same htslib
+#' rules through `.count_reads_by_sample()`.
 #'
 #' `exclude_flags` follows `samtools view -F`: a read is excluded when **any**
-#' bit in the mask is set. bamsignals excludes a read only when **all** bits are
-#' set, so a combined mask is decomposed with inclusion-exclusion. The default
+#' bit in the mask is set. The default
 #' `2308 = 0x904 = unmapped + secondary + supplementary` matches the legacy
 #' `samtools view -F 2308` filter.
 #'
-#' Counting is 5'-end based: bamsignals assigns a forward-strand read to the
-#' window containing its leftmost coordinate and a reverse-strand read to the
-#' window containing its rightmost coordinate (the alignment end). A reverse
-#' read can therefore belong to the window after the one containing its SAM
-#' `POS`. This differs from `bedtools coverage -counts`, which counts a read in
-#' every window it overlaps; the difference is confined to reads whose 5' end
-#' lies outside the window while the alignment span overlaps it.
+#' Counting is 5'-end based: a forward-strand read belongs to the range
+#' containing its leftmost coordinate and a reverse-strand read to the range
+#' containing its rightmost coordinate (the alignment end). A reverse read can
+#' therefore belong to the range after the one containing its SAM `POS`. This
+#' differs from `bedtools coverage -counts`, which counts a read in every range
+#' it overlaps; the difference is confined to reads whose 5' end lies outside
+#' the range while the alignment span overlaps it.
 #'
-#' For very large window sets, the option `MaMaMIA.count_chunk_size` splits the
-#' GRanges into chunks before counting. It is disabled (`0`) by default; each
-#' chunk repeats the bamsignals passes, so enable it only to bound memory.
+#' For very large range sets, the option `MaMaMIA.count_chunk_size` splits the
+#' GRanges into chunks before counting. It is disabled (`0`) by default and is
+#' only useful to bound the size of the returned count vector.
 #'
 #' @param bam_path Path to a coordinate-sorted BAM.
 #' @param gr A `GenomicRanges::GRanges` object with positive seqlengths for
 #'   every seqname.
 #' @param mapq Minimum mapping quality (0-255).
 #' @param exclude_flags SAM flag mask; a read is excluded when any bit is set
-#'   (0-4095, at most six bits).
-#' @param verbose Print bamsignals progress messages.
+#'   (0-4095).
+#' @param verbose Print a start message. Accepted for compatibility with the
+#'   previous backend.
 #'
 #' @return An integer vector aligned to `gr`.
 #'
@@ -242,13 +189,6 @@ countReads <- function(bam_path, gr, mapq = 20L, exclude_flags = 2308L,
     bam_path <- .validate_bam_path(bam_path)
     mapq <- .count_integer(mapq, "mapq", 0L, 255L)
     exclude_flags <- .count_integer(exclude_flags, "exclude_flags", 0L, 4095L)
-    flag_bits <- .flag_bits(exclude_flags)
-    if (length(flag_bits) > .MaMaMIACountMaxBits) {
-        .count_error(
-            "`exclude_flags` = %d uses %d flag bits; the bamsignals backend supports at most %d bits (each additional bit doubles the number of passes)",
-            exclude_flags, length(flag_bits), .MaMaMIACountMaxBits
-        )
-    }
     verbose <- .count_logical(verbose, "verbose")
     .validate_count_gr(gr)
     if (length(gr) == 0L) {
@@ -256,6 +196,12 @@ countReads <- function(bam_path, gr, mapq = 20L, exclude_flags = 2308L,
     }
 
     ensureBamIndex(bam_path)
+    if (verbose) {
+        message(sprintf(
+            "Counting reads in %d range(s) from %s",
+            length(gr), bam_path
+        ))
+    }
 
     chunk_size <- getOption("MaMaMIA.count_chunk_size", 0L)
     if (!is.numeric(chunk_size) || length(chunk_size) != 1L ||
@@ -272,26 +218,26 @@ countReads <- function(bam_path, gr, mapq = 20L, exclude_flags = 2308L,
         )
         counts <- integer(length(gr))
         for (idx in chunks) {
-            counts[idx] <- .count_reads_bamsignals(
-                bam_path, gr[idx], mapq, exclude_flags, verbose
+            counts[idx] <- .count_reads_cpp(
+                bam_path, gr[idx], mapq, exclude_flags
             )
         }
         return(counts)
     }
 
-    .count_reads_bamsignals(bam_path, gr, mapq, exclude_flags, verbose)
+    .count_reads_cpp(bam_path, gr, mapq, exclude_flags)
 }
 
-#' Count reads per sample in a multi-sample BAM
+#' Count reads per sample in a BAM
 #'
-#' Counts the 5' end of every alignment in the windows of `windows`, exactly as
-#' [countReads()] does, but separates the counts by the read group (`RG`) tag of
-#' each read. Every read group must be declared in the BAM header and every read
-#' group must map to one of `samples`; reads without an `RG` tag are rejected.
+#' Counts the 5' end of every alignment in the windows of `windows`. A
+#' one-sample BAM counts every read and ignores the `RG` tag; a multi-sample BAM
+#' separates the counts by the read group (`RG`) tag of each read. For several
+#' samples every read group must be declared in the BAM header, every read group
+#' must map to one of `samples`, and reads without an `RG` tag are rejected.
 #'
-#' This is the counting backend for one BAM that contains several samples. A
-#' BAM with a single sample keeps using bamsignals through [countReads()], so the
-#' established single-sample path is unchanged.
+#' This is the counting backend for the BAM-first pipeline, whether the file
+#' contains one sample or several.
 #'
 #' @param bam_path Path to a coordinate-sorted, indexed BAM.
 #' @param windows A window list from [makeAnalysisWindows()].
@@ -372,15 +318,26 @@ countReads <- function(bam_path, gr, mapq = 20L, exclude_flags = 2308L,
         ,
         drop = FALSE
     ]
-    missing_samples <- setdiff(samples, read_groups$sample)
-    if (length(missing_samples) > 0L) {
-        .count_error(
-            "No @RG line maps sample%s %s to a read group",
-            if (length(missing_samples) == 1L) "" else "s",
-            paste(sprintf("'%s'", missing_samples), collapse = ", ")
-        )
+    if (length(samples) == 1L) {
+        ## The C++ counter ignores RG tags when there is only one sample, so
+        ## a BAM without @RG (or with unrelated read groups) still works.
+        read_group_ids <- character()
+        sample_index <- integer()
+    } else {
+        missing_samples <- setdiff(samples, read_groups$sample)
+        if (length(missing_samples) > 0L) {
+            .count_error(
+                "No @RG line maps sample%s %s to a read group",
+                if (length(missing_samples) == 1L) "" else "s",
+                paste(sprintf("'%s'", missing_samples), collapse = ", ")
+            )
+        }
+        read_groups <- read_groups[
+            read_groups$sample %in% samples, , drop = FALSE
+        ]
+        read_group_ids <- read_groups$id
+        sample_index <- match(read_groups$sample, samples)
     }
-    read_groups <- read_groups[read_groups$sample %in% samples, , drop = FALSE]
 
     counts <- tryCatch(
         bam_count_rg_cpp(
@@ -388,12 +345,11 @@ countReads <- function(bam_path, gr, mapq = 20L, exclude_flags = 2308L,
             contig_names = chr_ids,
             contig_lengths = lengths,
             n_per_chromosome = n_per,
-            read_group_ids = read_groups$id,
-            sample_index = match(read_groups$sample, samples),
+            read_group_ids = read_group_ids,
+            sample_index = sample_index,
             sample_names = samples,
             mapq = mapq,
-            exclude_flags = exclude_flags,
-            allow_missing_rg = length(samples) == 1L
+            exclude_flags = exclude_flags
         ),
         error = function(e) {
             .count_error(

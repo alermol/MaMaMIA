@@ -207,8 +207,9 @@ Reads are counted at their 5' end: a forward-strand read belongs to the window
 containing its `POS`, a reverse-strand read to the window containing the
 alignment end. `mapq` defaults to 20 and `exclude_flags` to
 `2308 = 0x904` (unmapped, secondary, supplementary). As with `samtools view
--F`, a read is excluded when **any** bit in the mask is set; `bamsignals`
-excludes only when all bits are set, so the mask is decomposed internally.
+-F`, a read is excluded when **any** bit in the mask is set. The pipeline
+applies the mask directly in one htslib pass. Both the pipeline and the
+exported `countReads()` helper use this same htslib implementation.
 
 `bedtools coverage -counts`, used by the legacy workflow, counts a read in
 every window it overlaps. The two counts therefore differ by the few reads

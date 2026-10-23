@@ -373,7 +373,7 @@ A species pair needs two different species; both sides are '<key>'
 | D5 | Reference: `(C_s + eps) / (C_ref + eps)`; median: `(C_s + eps) / (median_s(C_s) + eps)`; per side by default. `eps = pseudocount` (default 0.5). Both numerator and denominator zero gives dose 1. |
 | D6 | Normalize after GC correction, before CBS; store `RCA$data$dose`; preserve `cor.gc`. |
 | D7 | `segments(value_col = NULL)` uses `dose` if present, else `cor.gc`; `ISA$meta$value_col` records the choice. |
-| D8 | No Rsamtools. Use Rhtslib for headers/indexes, bamsignals for counts. |
+| D8 | No Rsamtools and no bamsignals. Use Rhtslib for headers, indexes and both the pipelined and arbitrary-range counters. |
 | D9 | Fit at most `max_fit_windows` ideal windows, stratified by subgenome and GC; predict all; include the limit in the cache key and metadata. |
 | D10 | Remove legacy directory-layout code after the T7.4 gate; keep the core analysis API. |
 | D11 | Per-sample `ISA` list, sample selector in the UI, combined BEDPE download with a `sample` column. |
@@ -388,13 +388,14 @@ the current assemblies.
 
 ---
 
-## 6. bamsignals flag semantics (Wave 0 finding)
+## 6. Flag semantics (Wave 0 finding)
 
-`bamsignals::bamCount(filteredFlag = mask)` filters a read only when **all**
-bits in `mask` are set. This differs from `samtools view -F mask`, which
-excludes a read when **any** bit is set. The real Sq54 BAM happens to contain
-no secondary, supplementary or unmapped alignments, so the original spike did
-not expose the difference.
+Both htslib counters apply `exclude_flags` directly, so a read is excluded when
+**any** mask bit is set, matching `samtools view -F mask`. The earlier
+bamsignals backend filtered only when **all** bits were set; it has been
+removed. The real Sq54 BAM happens to contain no secondary, supplementary or
+unmapped alignments, so the original spike did not expose the difference. The
+tiny fixture and `test-counts.R` lock the any-bit behaviour down.
 
 `countReads(exclude_flags = ...)` must keep samtools-compatible semantics.
 T3.1 must therefore not pass a combined mask such as `2308` straight to
@@ -533,8 +534,9 @@ n_assembly_targets, index_path, index_status, index_action, warnings, valid
 A BAM with several `@RG SM` values therefore contributes several rows; its
 `path` and index columns are repeated. `@RG ID` values must be present and
 unique, `@RG SM` must be present, and reads in a multi-sample BAM must carry an
-`RG` tag that names one of those read groups. A BAM without any `@RG` line keeps
-the basename fallback and contributes one sample.
+`RG` tag that names one of those read groups. A one-sample BAM does not need
+`RG` tags on its reads. A BAM without any `@RG` line keeps the basename fallback
+and contributes one sample.
 
 `index_status` is one of `valid`, `missing`, `stale` or `corrupt`.
 `index_action` says what the pipeline will do: `reuse`, `create`, `rebuild`, or
@@ -577,23 +579,21 @@ window definition without an explicit decision.
 `countReads(bam_path, gr, mapq = 20L, exclude_flags = 2308L, verbose = FALSE)`
 returns an integer vector aligned to `gr`. It validates the GRanges, its
 seqlengths and bounds, and ensures a CSI index with `ensureBamIndex()` before
-counting.
+counting. It uses `bam_count_ranges_cpp()`, the same htslib filtering and
+5'-end rules as the pipeline. `analyzeBamInput()` uses
+`.count_reads_by_sample()` instead because the pipeline already has exact-N
+window arrays.
+
+The pipeline counts every BAM with `.count_reads_by_sample()`. A one-sample BAM
+counts every read; a BAM with several `@RG SM` samples is split by `RG` tag
+without splitting the file.
 
 `exclude_flags` keeps `samtools view -F` semantics: a read is excluded when
-**any** mask bit is set. Because bamsignals excludes only when **all** bits are
-set, the mask is decomposed with inclusion-exclusion over its set bits:
+**any** mask bit is set. Both htslib loops apply the mask directly, so the
+default `2308 = 4 + 256 + 2048` costs one pass and masks with up to all 12 SAM
+flag bits are accepted.
 
-```text
-pass = sum over non-empty subsets S of (-1)^(|S| + 1) * C(mask(S))
-```
-
-For the default `2308 = 4 + 256 + 2048` this is seven bamsignals passes. The
-implementation supports at most six bits (63 passes) and raises
-`MaMaMIACountError` for larger masks instead of silently distorting counts. The
-Sq54 tiny fixture locks the difference down: a direct `filteredFlag = 2308`
-call returns `c(5, 8)` in window order, while the correct count is `c(5, 6)`.
-
-**Counting is 5'-end based.** bamsignals assigns a forward-strand read to the
+**Counting is 5'-end based.** The counter assigns a forward-strand read to the
 window containing its leftmost coordinate and a reverse-strand read to the
 window containing its rightmost coordinate (the alignment end). A reverse read
 can therefore belong to the window after the one containing its SAM `POS`.
@@ -603,6 +603,12 @@ the window while the alignment span overlaps it; it is not a pure
 "alignment start" rule. `tests/testthat/test-counts.R` includes a reverse-strand
 boundary test that locks this down.
 
+Window boundaries are the integer floor boundaries used by
+`makeAnalysisWindows()`, not the real-valued `i * L / n` points. A read whose
+5' end is the first base of a window therefore belongs to that window, even
+when `L` is not divisible by `n`; the htslib backend derives the index from
+those same floor boundaries.
+
 The gated Sq54 regression counts the legacy BED intervals and matches the
 legacy tables within the documented tolerance: 229/28,000 windows differ
 (0.82%; all on the recipient side, donor 0%), maximum delta 14, total absolute
@@ -611,9 +617,10 @@ explained exactly by the number of overlapping reads whose 5' end is outside
 the window (verified with `samtools view`, 229/229), and per-contig 5'-end
 totals equal `samtools view -c` exactly.
 
-Set `options(MaMaMIA.count_chunk_size = n)` to split very large window sets into
-chunks. The default `0` disables chunking because every chunk repeats the
-bamsignals passes.
+Set `options(MaMaMIA.count_chunk_size = n)` to split very large range sets into
+chunks for `countReads()`. The default `0` disables chunking; it only bounds
+the size of the returned count vector. The pipeline counter does not use this
+option.
 
 ---
 
@@ -643,9 +650,10 @@ correction and segmentation in that order. It stages BAMs whose directory is
 not writable before indexing, uses a per-process fit cache in session temp when
 `cache = NULL`, and records provenance (config path/hash, BAM sizes/mtimes,
 package/htslib/gcrank/uvr versions, `uvr.lock` hash, window rule, filters,
-normalization and timings). A BAM with several `@RG SM` samples is counted once
-per read group: `.count_reads_by_sample()` uses Rhtslib to read each alignment's
-`RG` tag and its 5' end, while a one-sample BAM keeps the bamsignals backend.
+normalization and timings). Every BAM is counted by the same htslib backend:
+`.count_reads_by_sample()` reads each alignment's 5' end and, for a multi-sample
+file, its `RG` tag. A one-sample BAM ignores `RG` and counts every read, so the
+single- and multi-sample paths share one window-boundary and flag rule.
 
 The `progress` callback is `function(stage, detail)` and is called after each
 completed stage: `preflight`, `index`, `windows`, `gc`, `counts`,

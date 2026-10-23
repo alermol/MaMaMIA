@@ -4,6 +4,13 @@ Status: **PASS**
 
 Date: 2026-10-21
 
+> Post-gate update: counting was later unified on the in-tree htslib counters
+> described in `bam-workflow-api.md`, and the bamsignals dependency was
+> removed. This document remains the record of the original gate run. See
+> `NEWS.md` for the count-backend change.
+
+
+
 Scope: wave 10 / T7.4 of `AGENTIC_PLAN.md` — full validation and release
 gate. This run validated the BAM-first workflow against the real Sq54, Sq81
 and Sq84 BAMs, the wheat and rye gcrank indexes, the golden legacy tables, the
