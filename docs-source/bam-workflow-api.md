@@ -878,15 +878,23 @@ bundled pre-computed example, fills the example species and resolution fields,
 and pressing it again clears the example. The remaining controls are rendered
 only after preflight succeeds and are grouped in single-open
 `bslib::accordion()` panels: **Analysis** (resolution, reference selector for
-multi-sample runs, Run), **Assembly** (recipient/donor species and subgenome
-selectors plus **Swap donor and recipient**), **Filters** (the explorer
-controls) and **Export** (cohort summary and BEDPE downloads). There is no
-**Advanced** panel: MAPQ, exclude flags, `max_fit_windows` and cores come from
-the validated registry. A failed preflight can unlock the panels explicitly
-with **Show setup** so a wrong species choice can be corrected.
+multi-sample runs) and **Assembly** (recipient/donor species and subgenome
+selectors plus **Swap donor and recipient**). **Run analysis** sits below both
+panels, outside the accordion, and is disabled until preflight and the selected
+resolution are ready. There is no **Advanced** panel: MAPQ, exclude flags,
+`max_fit_windows` and cores come from the validated registry. A failed preflight
+can unlock the panels explicitly with **Show setup** so a wrong species choice
+can be corrected.
 
-The main area only contains the result tabs: **Introgression circos**,
-**Coverage / dosage** (mirror or difference) and **Segments**. The footer holds
+The main area has a shared filter bar above the result tabs for chromosomes,
+chromosome pairs and the putative-only view. For multi-sample runs it also
+carries the **Sample** selector, which switches every result tab and the
+per-sample export together. The tabs are **Introgression circos**,
+**Coverage / dosage** (mirror or difference), **Segments** and **Export**.
+The circos is zoomable, labels chromosomes by their registry names
+and clears hover tooltips on mouse-out. Call threshold, minimum segment width
+and row selection live in **Segments**; cohort summaries and the per-sample and
+combined BEDPE downloads live in **Export**. The footer holds
 `verbatimTextOutput("calculation_log")`, a timestamped log that reports
 preflight status, the detected assembly, assembly candidates, problems with
 suggested fixes, and every pipeline progress stage. The log autoscrolls to new
@@ -1333,10 +1341,19 @@ the `interacCircos` widget name.
   red, other visible calls grey).
 - A link track joins the donor and recipient interval of every visible segment;
   hovering shows the segment id, pair, size and putative flag.
+- Genome labels, tooltips and link labels use the chromosome names from the
+  registry (`chr_name`), not the contig IDs. Duplicate names across subgenomes
+  are disambiguated with the subgenome suffix.
+
+The widget is zoomable (`zoom = TRUE`, scroll to zoom and drag to pan). Hover
+tooltips are cleared on `mouseout`; an `htmlwidgets::onRender()` hook also
+removes tooltip nodes left by an earlier render and hides the current tooltip
+when the pointer leaves the plot or the page scrolls.
 
 The view uses the same `plot_isa()` and `visible_segments()` reactives as the
 mirror plot and table, so the chromosome, pair, width and putative filters
 apply. The render returns `NULL` before an analysis or when no chromosome
 remains. `interacCircos` is declared in `Imports`; `htmlwidgets` is an existing
 runtime dependency. Tests cover the data contracts, module names, genome
-colours, empty-segment behaviour and the Shiny output.
+colours, chromosome labels, zoom/hover options, empty-segment behaviour and the
+Shiny output.

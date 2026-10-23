@@ -61,11 +61,13 @@ isa_dashboard_genome <- function(ISA, chr_ids = NULL) {
 }
 
 
-isa_dashboard_pair_labels <- function(segments) {
+isa_dashboard_pair_labels <- function(segments, labels = NULL) {
     if (nrow(segments) == 0L) {
         return(character())
     }
-    paste(segments$chr_id.don, segments$chr_id.rec, sep = " -> ")
+    donor <- circos_chr_labels(labels, segments$chr_id.don)
+    recipient <- circos_chr_labels(labels, segments$chr_id.rec)
+    paste(donor, recipient, sep = " -> ")
 }
 
 filter_dashboard_segments <- function(segments, chr_ids, pair_ids, putative_only) {
@@ -134,9 +136,9 @@ isa_dashboard_table <- function(segments) {
 }
 
 
-## Reusable explorer UI: the filter controls can live in a page sidebar
-## (`exploreIntrogressions()`) or in a card (`runMaMaMIA()`).
-explorer_controls_ui <- function(id) {
+## The view filters apply to every result tab. They live in the main area for
+## the BAM-first app and in the sidebar for `exploreIntrogressions()`.
+explorer_view_filters_ui <- function(id) {
     ns <- shiny::NS(id)
     shiny::tagList(
         shinyWidgets::pickerInput(
@@ -151,21 +153,65 @@ explorer_controls_ui <- function(id) {
             multiple = TRUE,
             options = list(`actions-box` = TRUE, `live-search` = TRUE)
         ),
-        shiny::checkboxInput(ns("putative_only"), "Show putative introgressions only", TRUE),
+        shiny::checkboxInput(
+            ns("putative_only"), "Show putative introgressions only", TRUE
+        )
+    )
+}
+
+## Call filters re-flag the segments without re-running segmentation, so they
+## belong with the segment table rather than with the analysis setup.
+explorer_call_filters_ui <- function(id) {
+    ns <- shiny::NS(id)
+    shiny::tagList(
         shiny::radioButtons(
             ns("threshold_type"), "Call threshold metric",
             choices = c("Median" = "median", "Mean" = "mean"),
             inline = TRUE
         ),
-        shiny::numericInput(ns("threshold_value"), "Minimum segment metric", value = 0),
-        shiny::numericInput(ns("min_width"), "Minimum segment width (windows)", value = 2, min = 2, step = 1),
-        shiny::div(
-            class = "d-flex gap-2",
-            shiny::actionButton(ns("select_all"), "Select visible", class = "btn-sm flex-fill"),
-            shiny::actionButton(ns("clear_selection"), "Clear", class = "btn-sm flex-fill")
+        shiny::numericInput(
+            ns("threshold_value"), "Minimum segment metric", value = 0
         ),
+        shiny::numericInput(
+            ns("min_width"), "Minimum segment width (windows)",
+            value = 2, min = 2, step = 1
+        )
+    )
+}
+
+## Selection helpers for the segment table.
+explorer_selection_ui <- function(id) {
+    ns <- shiny::NS(id)
+    shiny::div(
+        class = "d-flex gap-2",
+        shiny::actionButton(
+            ns("select_all"), "Select visible", class = "btn-sm flex-fill"
+        ),
+        shiny::actionButton(
+            ns("clear_selection"), "Clear", class = "btn-sm flex-fill"
+        )
+    )
+}
+
+## Export controls that operate on the rows selected in the segment table.
+explorer_export_ui <- function(id) {
+    ns <- shiny::NS(id)
+    shiny::tagList(
         shiny::textOutput(ns("selection_status")),
-        shiny::downloadButton(ns("download_bedpe"), "Download selected BEDPE")
+        shiny::downloadButton(
+            ns("download_bedpe"), "Download selected BEDPE"
+        )
+    )
+}
+
+## Full set of explorer controls for placements that keep them together, such
+## as the `exploreIntrogressions()` sidebar.
+explorer_controls_ui <- function(id) {
+    shiny::tagList(
+        explorer_view_filters_ui(id),
+        explorer_call_filters_ui(id),
+        explorer_selection_ui(id),
+        explorer_export_ui(id)
     )
 }
 
@@ -327,9 +373,25 @@ explorer_server <- function(id, ISA, chr_ids = NULL, sample = NULL,
             segments <- isa_dashboard_segments(isa)
             chr_ids_all <- names(isa_dashboard_genome(isa))
             initial_chr_ids <- if (is.null(chr_ids)) chr_ids_all else intersect(chr_ids, chr_ids_all)
-            pairs <- sort(unique(isa_dashboard_pair_labels(segments)))
-            shinyWidgets::updatePickerInput(session, "chr_ids", choices = chr_ids_all, selected = initial_chr_ids)
-            shinyWidgets::updatePickerInput(session, "pair_ids", choices = pairs, selected = pairs)
+            labels <- isa_dashboard_chr_labels(isa, chr_ids_all)
+            chr_choices <- stats::setNames(
+                chr_ids_all, unname(labels[chr_ids_all])
+            )
+            pair_ids <- isa_dashboard_pair_labels(segments)
+            pair_display <- isa_dashboard_pair_labels(segments, labels = labels)
+            pairs <- sort(unique(pair_ids))
+            pair_choices <- stats::setNames(
+                pairs,
+                unique(pair_display[match(pairs, pair_ids)])
+            )
+            shinyWidgets::updatePickerInput(
+                session, "chr_ids",
+                choices = chr_choices, selected = initial_chr_ids
+            )
+            shinyWidgets::updatePickerInput(
+                session, "pair_ids",
+                choices = pair_choices, selected = pairs
+            )
             shiny::updateRadioButtons(
                 session, "threshold_type",
                 selected = if (identical(isa$meta$metrics, "seg.mean")) "mean" else "median"

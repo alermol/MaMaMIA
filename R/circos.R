@@ -21,6 +21,70 @@ circos_link_color <- "rgba(203,24,29,0.35)"
 circos_donor_color <- "#737373"
 circos_recipient_color <- "#c9c9c9"
 
+## Map chromosome IDs to the names from the registry. Some registries have
+## repeated chromosome names across subgenomes, so duplicate labels are
+## disambiguated before they reach the widget.
+#' @noRd
+isa_dashboard_chr_labels <- function(ISA, chr_ids = NULL) {
+    out <- ISA$out
+    if (is.null(out) || nrow(out) == 0L) {
+        return(stats::setNames(character(), character()))
+    }
+    info <- rbind(
+        data.frame(
+            chr_id = as.character(out$chr_id.don),
+            chr_name = as.character(out$chr_name.don),
+            subgenome = as.character(out$subgenome.don),
+            stringsAsFactors = FALSE
+        ),
+        data.frame(
+            chr_id = as.character(out$chr_id.rec),
+            chr_name = as.character(out$chr_name.rec),
+            subgenome = as.character(out$subgenome.rec),
+            stringsAsFactors = FALSE
+        )
+    )
+    info <- info[!duplicated(info$chr_id), , drop = FALSE]
+    if (!is.null(chr_ids)) {
+        position <- match(as.character(chr_ids), info$chr_id)
+        info <- info[position, , drop = FALSE]
+        info$chr_id <- as.character(chr_ids)
+    }
+    labels <- info$chr_name
+    missing <- is.na(labels) | !nzchar(labels)
+    labels[missing] <- info$chr_id[missing]
+    duplicated_label <- duplicated(labels) | duplicated(labels, fromLast = TRUE)
+    if (any(duplicated_label)) {
+        suffix <- ifelse(
+            !is.na(info$subgenome) & nzchar(info$subgenome),
+            paste0(" (", info$subgenome, ")"),
+            paste0(" [", info$chr_id, "]")
+        )
+        labels[duplicated_label] <- paste0(
+            labels[duplicated_label], suffix[duplicated_label]
+        )
+    }
+    duplicated_label <- duplicated(labels) | duplicated(labels, fromLast = TRUE)
+    if (any(duplicated_label)) {
+        labels[duplicated_label] <- paste0(
+            labels[duplicated_label], " [", info$chr_id[duplicated_label], "]"
+        )
+    }
+    stats::setNames(labels, info$chr_id)
+}
+
+#' @noRd
+circos_chr_labels <- function(labels, chr_ids) {
+    chr_ids <- as.character(chr_ids)
+    if (is.null(labels)) {
+        return(chr_ids)
+    }
+    out <- unname(labels[chr_ids])
+    missing <- is.na(out) | !nzchar(out)
+    out[missing] <- chr_ids[missing]
+    out
+}
+
 #' @noRd
 isa_dashboard_empty_windows <- function() {
     data.frame(
@@ -61,7 +125,8 @@ isa_dashboard_thin_windows <- function(windows,
 #'
 #' @noRd
 isa_dashboard_diff_windows <- function(ISA, chr_ids,
-                                       max_per_chr = circos_max_windows_per_chr) {
+                                       max_per_chr = circos_max_windows_per_chr,
+                                       labels = NULL) {
     empty <- isa_dashboard_empty_windows()
     out <- ISA$out
     if (is.null(out) || nrow(out) == 0L || length(chr_ids) == 0L) {
@@ -88,6 +153,7 @@ isa_dashboard_diff_windows <- function(ISA, chr_ids,
             stringsAsFactors = FALSE
         )
     )
+    windows$chr <- circos_chr_labels(labels, windows$chr)
     isa_dashboard_thin_windows(windows, max_per_chr)
 }
 
@@ -136,7 +202,7 @@ isa_dashboard_circos_cnv <- function(windows, limit) {
 }
 
 #' @noRd
-isa_dashboard_circos_arcs <- function(segments) {
+isa_dashboard_circos_arcs <- function(segments, labels = NULL) {
     if (is.null(segments) || nrow(segments) == 0L) {
         return(data.frame(
             chr = character(), start = numeric(), end = numeric(),
@@ -144,12 +210,14 @@ isa_dashboard_circos_arcs <- function(segments) {
             html = character(), stringsAsFactors = FALSE
         ))
     }
+    chr_don <- circos_chr_labels(labels, segments$chr_id.don)
+    chr_rec <- circos_chr_labels(labels, segments$chr_id.rec)
     size <- segments$stop.don - segments$start.don
     label <- sprintf(
         "#%d %s -> %s | %.2f Mb | %s",
         segments$.row_id,
-        segments$chr_id.don,
-        segments$chr_id.rec,
+        chr_don,
+        chr_rec,
         size / 1e6,
         ifelse(
             segments$putative_introgression,
@@ -163,7 +231,7 @@ isa_dashboard_circos_arcs <- function(segments) {
         circos_segment_other
     )
     data.frame(
-        chr = c(segments$chr_id.don, segments$chr_id.rec),
+        chr = c(chr_don, chr_rec),
         start = c(segments$start.don, segments$start.rec),
         end = c(segments$stop.don, segments$stop.rec),
         color = rep(color, 2L),
@@ -175,7 +243,7 @@ isa_dashboard_circos_arcs <- function(segments) {
 }
 
 #' @noRd
-isa_dashboard_circos_links <- function(segments) {
+isa_dashboard_circos_links <- function(segments, labels = NULL) {
     if (is.null(segments) || nrow(segments) == 0L) {
         return(data.frame(
             g1chr = character(), g1start = numeric(), g1end = numeric(),
@@ -184,12 +252,14 @@ isa_dashboard_circos_links <- function(segments) {
             link = character(), html = character(), stringsAsFactors = FALSE
         ))
     }
+    chr_don <- circos_chr_labels(labels, segments$chr_id.don)
+    chr_rec <- circos_chr_labels(labels, segments$chr_id.rec)
     size <- segments$stop.don - segments$start.don
     label <- sprintf(
         "#%d %s -> %s | %.2f Mb | %s",
         segments$.row_id,
-        segments$chr_id.don,
-        segments$chr_id.rec,
+        chr_don,
+        chr_rec,
         size / 1e6,
         ifelse(
             segments$putative_introgression,
@@ -198,21 +268,21 @@ isa_dashboard_circos_links <- function(segments) {
         )
     )
     data.frame(
-        g1chr = segments$chr_id.don,
+        g1chr = chr_don,
         g1start = segments$start.don,
         g1end = segments$stop.don,
         g1name = sprintf(
             "%s:%.2f-%.2f Mb",
-            segments$chr_id.don,
+            chr_don,
             segments$start.don / 1e6,
             segments$stop.don / 1e6
         ),
-        g2chr = segments$chr_id.rec,
+        g2chr = chr_rec,
         g2start = segments$start.rec,
         g2end = segments$stop.rec,
         g2name = sprintf(
             "%s:%.2f-%.2f Mb",
-            segments$chr_id.rec,
+            chr_rec,
             segments$start.rec / 1e6,
             segments$stop.rec / 1e6
         ),
@@ -220,6 +290,42 @@ isa_dashboard_circos_links <- function(segments) {
         link = NA_character_,
         html = NA_character_,
         stringsAsFactors = FALSE
+    )
+}
+
+## Remove tooltips left behind by a previous widget render and hide the current
+## tooltips when the pointer leaves the plot or the page scrolls.
+#' @noRd
+circos_hover_cleanup <- function() {
+    htmlwidgets::JS(
+        "function(el, x) {",
+        "  var selectors = [",
+        "    '.NGCircosCNVTooltip',",
+        "    '.NGCircosARCTooltip',",
+        "    '.NGCircosLINKTooltip'",
+        "  ];",
+        "  selectors.forEach(function(selector) {",
+        "    var nodes = document.querySelectorAll(selector);",
+        "    for (var i = 0; i < nodes.length - 1; i++) {",
+        "      if (nodes[i].parentNode) nodes[i].parentNode.removeChild(nodes[i]);",
+        "    }",
+        "  });",
+        "  var hide = function() {",
+        "    selectors.forEach(function(selector) {",
+        "      document.querySelectorAll(selector).forEach(function(node) {",
+        "        node.style.opacity = '0';",
+        "      });",
+        "    });",
+        "  };",
+        "  if (!el.__mamamiaCircosHover) {",
+        "    el.__mamamiaCircosHover = hide;",
+        "    el.addEventListener('mouseleave', hide);",
+        "  }",
+        "  if (!document.__mamamiaCircosHover) {",
+        "    document.__mamamiaCircosHover = hide;",
+        "    document.addEventListener('scroll', hide, true);",
+        "  }",
+        "}"
     )
 }
 
@@ -240,11 +346,14 @@ isa_dashboard_circos <- function(ISA, segments, genome) {
         stop("No chromosome lengths available for the circos view", call. = FALSE)
     }
     chr_ids <- names(genome)
-    windows <- isa_dashboard_diff_windows(ISA, chr_ids)
+    labels <- isa_dashboard_chr_labels(ISA, chr_ids)
+    display_ids <- circos_chr_labels(labels, chr_ids)
+    genome <- stats::setNames(unname(genome), display_ids)
+    windows <- isa_dashboard_diff_windows(ISA, chr_ids, labels = labels)
     limit <- isa_dashboard_diff_limit(windows)
     cnv <- isa_dashboard_circos_cnv(windows, limit)
-    arcs <- isa_dashboard_circos_arcs(segments)
-    links <- isa_dashboard_circos_links(segments)
+    arcs <- isa_dashboard_circos_arcs(segments, labels = labels)
+    links <- isa_dashboard_circos_links(segments, labels = labels)
 
     fill <- ifelse(
         chr_ids %in% ISA$meta$don_chr_ids,
@@ -293,7 +402,7 @@ isa_dashboard_circos <- function(ISA, segments, genome) {
             )
     }
 
-    interacCircos::Circos(
+    widget <- interacCircos::Circos(
         moduleList = modules,
         genome = as.list(genome),
         genomeFillColor = fill,
@@ -310,10 +419,25 @@ isa_dashboard_circos <- function(ISA, segments, genome) {
         genomeLabelTextSize = "8pt",
         genomeLabelTextColor = "#2f3437",
         CNVMouseOverDisplay = TRUE,
+        CNVMouseOutDisplay = TRUE,
+        CNVMouseOutColor = "none",
+        CNVMouseOutArcOpacity = "none",
+        CNVMouseOutArcStrokeColor = "none",
+        CNVMouseOutArcStrokeWidth = "none",
         ARCMouseOverDisplay = TRUE,
+        ARCMouseOutDisplay = TRUE,
+        ARCMouseOutColor = "none",
+        ARCMouseOutArcOpacity = "none",
+        ARCMouseOutArcStrokeColor = "none",
+        ARCMouseOutArcStrokeWidth = "none",
         LINKMouseOverDisplay = TRUE,
-        zoom = FALSE
+        LINKMouseOutDisplay = TRUE,
+        LINKMouseOutOpacity = "none",
+        LINKMouseOutStrokeColor = "none",
+        LINKMouseOutStrokeWidth = "none",
+        zoom = TRUE
     )
+    htmlwidgets::onRender(widget, circos_hover_cleanup())
 }
 
 #' Shiny output for the interacCircos widget

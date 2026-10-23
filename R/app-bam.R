@@ -1496,6 +1496,79 @@ bam_dashboard_css <- function() {
     .mamamia-sidebar .accordion-body {
         padding: .55rem .6rem;
     }
+    .mamamia-run-panel {
+        margin-top: .75rem;
+        padding-top: .75rem;
+        border-top: 1px solid var(--bs-border-color);
+    }
+    .mamamia-run-panel .btn {
+        width: 100%;
+    }
+    .mamamia-main > .mamamia-filter-bar {
+        flex: 0 0 auto;
+    }
+    .mamamia-filter-bar {
+        display: flex;
+        align-items: flex-end;
+        gap: .7rem;
+        padding: .45rem .55rem;
+        border: 1px solid var(--bs-border-color);
+        border-radius: .375rem;
+        background: var(--bs-tertiary-bg);
+    }
+    .mamamia-sample-picker {
+        flex: 0 0 auto;
+    }
+    .mamamia-sample-picker .shiny-input-container,
+    .mamamia-sample-picker .form-group {
+        width: 12rem;
+        margin-bottom: 0;
+    }
+    .mamamia-filter-heading {
+        flex: 0 0 auto;
+        padding-bottom: .35rem;
+        font-size: .8rem;
+        font-weight: 600;
+        color: var(--bs-secondary-color);
+        white-space: nowrap;
+    }
+    .mamamia-filter-controls {
+        display: flex;
+        flex: 1 1 auto;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        gap: .7rem;
+        min-width: 0;
+    }
+    .mamamia-filter-controls .shiny-input-container {
+        width: auto;
+        min-width: 12rem;
+        margin-bottom: 0;
+    }
+    .mamamia-filter-controls .form-check {
+        margin-bottom: .35rem;
+        white-space: nowrap;
+    }
+    .mamamia-segment-controls {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: flex-end;
+        gap: .7rem;
+        margin-bottom: .55rem;
+    }
+    .mamamia-segment-controls .shiny-input-container {
+        margin-bottom: 0;
+    }
+    .mamamia-segment-controls .form-group {
+        margin-bottom: 0;
+    }
+    .mamamia-export-panel {
+        max-width: 48rem;
+    }
+    .mamamia-export-panel h5 {
+        margin-top: .4rem;
+        font-size: .95rem;
+    }
     .mamamia-sidebar .form-check {
         margin-bottom: .25rem;
         min-height: 1.25rem;
@@ -1577,31 +1650,87 @@ bam_sidebar_species_ui <- function(config, selection = NULL) {
 #' @noRd
 bam_sidebar_details_ui <- function(config) {
     defaults <- config$defaults
-    bslib::accordion(
-        id = "bam_sidebar_accordion",
-        multiple = FALSE,
-        open = "Analysis",
-        bslib::accordion_panel(
-            "Analysis",
-            shiny::radioButtons(
-                "resolution", "Resolution",
-                choices = bam_resolution_choices(defaults),
-                selected = bam_default_resolution(defaults)
+    shiny::tagList(
+        bslib::accordion(
+            id = "bam_sidebar_accordion",
+            multiple = FALSE,
+            open = "Analysis",
+            bslib::accordion_panel(
+                "Analysis",
+                shiny::radioButtons(
+                    "resolution", "Resolution",
+                    choices = bam_resolution_choices(defaults),
+                    selected = bam_default_resolution(defaults)
+                ),
+                shiny::uiOutput("reference_ui")
             ),
-            shiny::uiOutput("reference_ui"),
+            bslib::accordion_panel(
+                "Assembly",
+                shiny::uiOutput("species_ui")
+            )
+        ),
+        shiny::div(
+            class = "mamamia-run-panel",
             shiny::uiOutput("run_ui")
+        )
+    )
+}
+
+## The BAM-first result area. The view filters stay visible above all tabs;
+## call filters belong to the segment table and exports have their own tab.
+#' @noRd
+bam_results_ui <- function() {
+    ns <- shiny::NS("explorer")
+    shiny::tagList(
+        shiny::div(
+            class = "mamamia-filter-bar",
+            shiny::uiOutput(
+                "sample_selector_ui", class = "mamamia-sample-picker"
+            ),
+            shiny::div(class = "mamamia-filter-heading", "Filters"),
+            shiny::div(
+                class = "mamamia-filter-controls",
+                explorer_view_filters_ui("explorer")
+            )
         ),
-        bslib::accordion_panel(
-            "Assembly",
-            shiny::uiOutput("species_ui")
-        ),
-        bslib::accordion_panel(
-            "Filters",
-            explorer_controls_ui("explorer")
-        ),
-        bslib::accordion_panel(
-            "Export",
-            shiny::uiOutput("cohort_ui")
+        bslib::navset_card_tab(
+            id = ns("tabs"),
+            bslib::nav_panel(
+                "Introgression circos",
+                isa_dashboard_circos_output(
+                    ns("circos"), height = "calc(100vh - 335px)"
+                )
+            ),
+            bslib::nav_panel(
+                "Coverage / dosage",
+                shiny::radioButtons(
+                    ns("plot_type"), "Plot",
+                    choices = c("Mirror" = "mirror", "Difference" = "diff"),
+                    inline = TRUE
+                ),
+                shiny::plotOutput(
+                    ns("isa_plot"), height = "calc(100vh - 405px)"
+                )
+            ),
+            bslib::nav_panel(
+                "Segments",
+                shiny::div(
+                    class = "mamamia-segment-controls",
+                    explorer_call_filters_ui("explorer"),
+                    explorer_selection_ui("explorer")
+                ),
+                DT::DTOutput(ns("segments"))
+            ),
+            bslib::nav_panel(
+                "Export",
+                shiny::div(
+                    class = "mamamia-export-panel",
+                    shiny::h5("Selected segments"),
+                    explorer_export_ui("explorer"),
+                    shiny::h5("Cohort"),
+                    shiny::uiOutput("cohort_ui")
+                )
+            )
         )
     )
 }
@@ -1714,7 +1843,7 @@ bam_launcher_ui <- function(state) {
                 "main",
                 shiny::tags$main(
                     class = "mamamia-main",
-                    explorer_results_ui("explorer")
+                    bam_results_ui()
                 )
             ),
             gridlayout::grid_place(
@@ -2524,17 +2653,46 @@ bam_launcher_server <- function(state, cache = NULL) {
 
         shiny::observeEvent(result(), {
             selection_map(bam_selection_map(result()))
-            samples <- bam_sample_choices(result())
-            if (length(samples) > 0L) {
-                shiny::updateSelectInput(
-                    session, "result_sample",
-                    choices = samples, selected = samples[[1L]]
-                )
+        }, ignoreNULL = FALSE)
+
+        ## Samples are known as soon as preflight succeeds, so the selector can
+        ## appear before the run and keep the chosen sample through the run.
+        result_samples <- shiny::reactive({
+            res <- result()
+            if (!is.null(res)) {
+                samples <- bam_sample_choices(res)
+                if (length(samples) > 0L) {
+                    return(samples)
+                }
             }
+            pf <- preflight_state()
+            if (!isTRUE(pf$ok) || is.null(pf$table) ||
+                !"sample" %in% names(pf$table)) {
+                return(character())
+            }
+            unique(as.character(pf$table$sample))
+        })
+
+        shiny::observeEvent(result_samples(), {
+            samples <- result_samples()
+            if (length(samples) == 0L) {
+                return()
+            }
+            current <- shiny::isolate(input$result_sample)
+            selected <- if (!is.null(current) && length(current) == 1L &&
+                !is.na(current) && current %in% samples) {
+                current
+            } else {
+                samples[[1L]]
+            }
+            shiny::updateSelectInput(
+                session, "result_sample",
+                choices = samples, selected = selected
+            )
         }, ignoreNULL = FALSE)
 
         result_sample <- shiny::reactive({
-            samples <- bam_sample_choices(result())
+            samples <- result_samples()
             if (length(samples) == 0L) {
                 return(NULL)
             }
@@ -2717,6 +2875,21 @@ bam_launcher_server <- function(state, cache = NULL) {
             }
         })
 
+        ## The sample selector belongs to the main result area: it controls the
+        ## circos, coverage plot, segment table and exports. It is only useful
+        ## when the input BAM contains several @RG SM samples.
+        output$sample_selector_ui <- shiny::renderUI({
+            samples <- result_samples()
+            if (length(samples) <= 1L) {
+                return(NULL)
+            }
+            shiny::selectInput(
+                "result_sample", "Sample",
+                choices = samples,
+                selected = shiny::isolate(result_sample())
+            )
+        })
+
         output$cohort_ui <- shiny::renderUI({
             res <- result()
             if (is.null(res)) {
@@ -2729,13 +2902,6 @@ bam_launcher_server <- function(state, cache = NULL) {
             warnings <- bam_coverage_warnings(res)
             multiple_samples <- length(samples) > 1L
             shiny::tagList(
-                if (multiple_samples) {
-                    shiny::selectInput(
-                        "result_sample", "Sample",
-                        choices = samples,
-                        selected = shiny::isolate(result_sample())
-                    )
-                },
                 shiny::div(
                     class = "table-responsive",
                     shiny::tableOutput("cohort_table")

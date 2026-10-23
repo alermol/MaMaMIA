@@ -115,8 +115,9 @@ multi-file upload and no manual single/multi mode switch: the interface detects
 the sample count from the header and enables cohort controls (reference sample,
 combined export) automatically when more than one sample is present. The
 analysis controls are revealed only after preflight succeeds, as collapsible
-panels (only one panel is open at a time): **Analysis**, **Assembly**,
-**Filters** and **Export**.
+panels (only one panel is open at a time): **Analysis** and **Assembly**. The
+**Run analysis** button sits below both panels and stays disabled until
+preflight and the selected resolution are ready.
 
 Choose a **recipient species** and a **donor species**; each species can be
 used on either side of different runs (one run needs two different species), and
@@ -132,9 +133,17 @@ validated registry; those controls are not exposed in the interface.
 
 Upload one BAM, choose a resolution and, for several samples, a reference
 sample or median normalization. BAMs are accepted only through the upload
-control; the container does not mount a BAM directory. The main area is split
-into **Introgression circos**, **Coverage / dosage** (mirror or difference) and
-**Segments** tabs; preflight status, detected assemblies, problems and every
+control; the container does not mount a BAM directory. A shared filter bar above
+the results controls chromosomes, chromosome pairs and the putative-only view
+for every tab. For multi-sample BAMs the same bar carries a **Sample** selector
+that switches the circos, coverage plot, segment table and exports together.
+The main area is split into **Introgression circos**,
+**Coverage / dosage** (mirror or difference), **Segments** and **Export** tabs.
+The circos is zoomable (scroll to zoom, drag to pan), labels chromosomes with
+their registry names, and hides hover tooltips when the pointer leaves the
+plot. Call threshold, minimum segment width and row selection sit in
+**Segments**; cohort summaries and the per-sample and combined BEDPE downloads
+live in **Export**. Preflight status, detected assemblies, problems and every
 pipeline stage are written to the calculation log in the footer. The line above
 the log reports only the number of BAM files. The app keeps table selections
 per sample and exports a per-sample BEDPE or a combined BEDPE with a `sample`

@@ -709,11 +709,45 @@ test_that("the setup appears as single-open spoilers after preflight", {
         expect_match(sidebar, "Analysis")
         expect_match(sidebar, "Assembly")
         expect_false(grepl("Advanced", sidebar, fixed = TRUE))
-        expect_match(sidebar, "Filters")
-        expect_match(sidebar, "Export")
+        expect_false(grepl("Filters", sidebar, fixed = TRUE))
+        expect_false(grepl("Export", sidebar, fixed = TRUE))
         expect_false(grepl("Minimum MAPQ", sidebar, fixed = TRUE))
         expect_false(grepl("Max fit windows", sidebar, fixed = TRUE))
+        expect_match(sidebar, "mamamia-run-panel", fixed = TRUE)
+        expect_gt(
+            regexpr("mamamia-run-panel", sidebar, fixed = TRUE),
+            regexpr("accordion", sidebar, fixed = TRUE)
+        )
+        expect_match(output_html(output$run_ui), "Run analysis")
     })
+})
+
+test_that("filters and exports live in the main result area", {
+    skip_if_no_dashboard()
+
+    sidebar <- paste(
+        as.character(bam_sidebar_details_ui(list(defaults = .config_defaults()))),
+        collapse = ""
+    )
+    main <- paste(as.character(bam_results_ui()), collapse = "")
+
+    expect_false(grepl("Filters", sidebar, fixed = TRUE))
+    expect_false(grepl("Export", sidebar, fixed = TRUE))
+    expect_match(main, "mamamia-filter-bar", fixed = TRUE)
+    expect_match(main, "sample_selector_ui", fixed = TRUE)
+    expect_lt(
+        regexpr("sample_selector_ui", main, fixed = TRUE),
+        regexpr("Export", main, fixed = TRUE)
+    )
+    expect_match(main, "explorer-chr_ids", fixed = TRUE)
+    expect_match(main, "explorer-pair_ids", fixed = TRUE)
+    expect_match(main, "explorer-putative_only", fixed = TRUE)
+    expect_match(main, "explorer-threshold_type", fixed = TRUE)
+    expect_match(main, "explorer-min_width", fixed = TRUE)
+    expect_match(main, "explorer-select_all", fixed = TRUE)
+    expect_match(main, "explorer-download_bedpe", fixed = TRUE)
+    expect_match(main, "cohort_ui", fixed = TRUE)
+    expect_match(main, "Export")
 })
 
 test_that("the swap button exchanges donor and recipient species", {
@@ -1008,10 +1042,12 @@ test_that("a single BAM runs end to end and cleans up the session", {
     shiny::testServer(bam_launcher_server(state, cache = FALSE), {
         set_app_inputs(session, bams = upload_input(fixture$bam_path))
         expect_true(preflight_state()$ok)
+        expect_false(grepl("result_sample", output_html(output$sample_selector_ui)))
 
         suppressWarnings(session$setInputs(run = 1))
         expect_match(output$cohort_table, "synthetic")
         expect_match(output$cohort_table, "none")
+        expect_false(grepl("result_sample", output_html(output$sample_selector_ui)))
         expect_false(grepl("result_sample", output_html(output$cohort_ui)))
 
         set_explorer_inputs(session)
@@ -1094,13 +1130,21 @@ test_that("a cohort shows a selector and exports a combined BEDPE", {
             output_html(output$reference_ui),
             "None \\(median normalization\\)"
         )
+        before_run <- output_html(output$sample_selector_ui)
+        expect_match(before_run, "result_sample")
+        expect_match(before_run, "sample-a")
+        expect_match(before_run, "sample-b")
 
         session$setInputs(reference_sample = "")
         suppressWarnings(session$setInputs(run = 1))
         expect_match(output$cohort_table, "sample-a")
         expect_match(output$cohort_table, "sample-b")
         expect_match(output$cohort_table, "median")
-        expect_match(output_html(output$cohort_ui), "result_sample")
+        selector <- output_html(output$sample_selector_ui)
+        expect_match(selector, "result_sample")
+        expect_match(selector, "sample-a")
+        expect_match(selector, "sample-b")
+        expect_false(grepl("result_sample", output_html(output$cohort_ui)))
         expect_match(
             output_html(output$cohort_ui),
             "Download selected BEDPE \\(all samples\\)"
@@ -1186,7 +1230,8 @@ test_that("a three-sample cohort exports each sample and the cohort BEDPE", {
             expect_match(output$cohort_table, sample)
         }
         expect_match(output$cohort_table, "median")
-        expect_match(output_html(output$cohort_ui), "result_sample")
+        expect_match(output_html(output$sample_selector_ui), "result_sample")
+        expect_false(grepl("result_sample", output_html(output$cohort_ui)))
 
         set_explorer_inputs(session)
         for (sample in samples) {

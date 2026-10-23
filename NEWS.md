@@ -21,15 +21,27 @@
   gap, `240px` sidebar, `75px` header, fluid main area and `100px` footer. The
   slimmer header and footer give the result tabs more vertical space; the
   application name is shown in large bold type in the header. The main area
-  holds only the **Introgression circos**, **Coverage / dosage** and
-  **Segments** tabs.
+  has a shared filter bar above the **Introgression circos**, **Coverage /
+  dosage**, **Segments** and **Export** tabs.
 * The sidebar starts with one BAM upload control and an **Example data** button.
   Analysis controls appear after preflight succeeds and live in single-open
-  collapsible panels (**Analysis**, **Assembly**, **Filters**, **Export**).
-  There is no manual single/multi mode switch: the sample count is detected
-  from the BAM header and cohort controls appear automatically for several
-  samples. **Advanced** was removed: MAPQ, flag masks, fit limits and cores
-  come from the validated registry and the BAM is processed as-is.
+  collapsible panels (**Analysis**, **Assembly**). **Run analysis** sits below
+  both panels and is disabled until preflight and the selected resolution are
+  ready. There is no manual single/multi mode switch: the sample count is
+  detected from the BAM header and cohort controls appear automatically for
+  several samples. **Advanced** was removed: MAPQ, flag masks, fit limits and
+  cores come from the validated registry and the BAM is processed as-is.
+* The **Filters** and **Export** panels were removed from the sidebar. The main
+  area now keeps the chromosome, chromosome-pair and putative-only filters
+  above every result tab; call threshold, minimum width and row selection live
+  in **Segments**; the cohort summary and BEDPE downloads live in **Export**.
+* Multi-sample BAMs now show a **Sample** selector in the main filter bar. It
+  switches the circos, coverage plot, segment table and per-sample export
+  together; single-sample runs do not show it.
+* The circos view is zoomable (scroll to zoom, drag to pan), uses the
+  chromosome names from the registry instead of contig IDs, and hides hover
+  tooltips when the pointer leaves the plot or a stale widget render leaves a
+  tooltip behind.
 * A single BAM may contain one or several samples. Samples are read from
   `@RG SM` tags and read groups from `@RG ID`; incomplete or duplicate read
   groups are rejected, and reads are counted per read group for multi-sample

@@ -67,6 +67,7 @@ test_that("the interacCircos widget stacks difference, spans and links", {
     isa <- seg_step()
     segments <- isa_dashboard_segments(isa)
     genome <- isa_dashboard_genome(isa)
+    labels <- isa_dashboard_chr_labels(isa, names(genome))
     widget <- isa_dashboard_circos(isa, segments, genome)
 
     expect_s3_class(widget, "interacCircos")
@@ -77,11 +78,40 @@ test_that("the interacCircos widget stacks difference, spans and links", {
     expect_true("CNV_difference" %in% names)
     expect_true("ARC_segment_spans" %in% names)
     expect_true("LINK_introgressions" %in% names)
-    expect_equal(widget$x$genome, as.list(genome))
+    expect_identical(unname(labels[names(genome)]), c("1A", "1At"))
+    expect_equal(widget$x$genome, as.list(stats::setNames(genome, labels[names(genome)])))
     expect_equal(
         widget$x$genomeFillColor[names(genome) %in% isa$meta$don_chr_ids],
         rep(circos_donor_color, sum(names(genome) %in% isa$meta$don_chr_ids))
     )
+
+    ## The plot is zoomable and the hover tooltips are hidden on mouse-out.
+    expect_true(widget$x$zoom)
+    expect_true(widget$x$CNVMouseOutDisplay)
+    expect_true(widget$x$ARCMouseOutDisplay)
+    expect_true(widget$x$LINKMouseOutDisplay)
+    expect_length(widget$jsHooks$render, 1L)
+    hover_js <- paste(widget$jsHooks$render[[1L]]$code, collapse = "\n")
+    expect_match(hover_js, "mouseleave", fixed = TRUE)
+    expect_match(hover_js, "NGCircosCNVTooltip", fixed = TRUE)
+
+    cnv_data <- modules[[which(names == "CNV_difference")]][[3L]]
+    arc_data <- modules[[which(names == "ARC_segment_spans")]][[3L]]
+    link_data <- modules[[which(names == "LINK_introgressions")]][[3L]]
+    expect_setequal(
+        unique(vapply(cnv_data, function(row) row$chr, character(1))),
+        c("1A", "1At")
+    )
+    expect_setequal(
+        unique(vapply(arc_data, function(row) row$chr, character(1))),
+        c("1A", "1At")
+    )
+    expect_true(all(vapply(
+        link_data, function(row) row$g1chr == "1At", logical(1)
+    )))
+    expect_true(all(vapply(
+        link_data, function(row) row$g2chr == "1A", logical(1)
+    )))
 
     ## Without calls the CNV track still draws the genome and the difference.
     bare <- isa_dashboard_circos(isa, segments[0, , drop = FALSE], genome)
@@ -92,6 +122,45 @@ test_that("the interacCircos widget stacks difference, spans and links", {
     expect_true("CNV_difference" %in% bare_modules)
     expect_false("LINK_introgressions" %in% bare_modules)
     expect_false("ARC_segment_spans" %in% bare_modules)
+})
+
+test_that("circos data use chromosome names instead of registry IDs", {
+    isa <- seg_step()
+    genome <- isa_dashboard_genome(isa)
+    labels <- isa_dashboard_chr_labels(isa, names(genome))
+
+    expect_identical(unname(labels[c("d1", "r1")]), c("1At", "1A"))
+
+    windows <- isa_dashboard_diff_windows(
+        isa, names(genome), labels = labels
+    )
+    expect_setequal(unique(windows$chr), c("1A", "1At"))
+
+    segments <- isa_dashboard_segments(isa)
+    arcs <- isa_dashboard_circos_arcs(segments, labels = labels)
+    links <- isa_dashboard_circos_links(segments, labels = labels)
+
+    expect_identical(
+        unique(isa_dashboard_pair_labels(segments, labels = labels)),
+        "1At -> 1A"
+    )
+    expect_setequal(unique(arcs$chr), c("1A", "1At"))
+    expect_false(any(grepl("\\bd1\\b|\\br1\\b", arcs$des)))
+    expect_true(all(links$g1chr == "1At"))
+    expect_true(all(links$g2chr == "1A"))
+    expect_false(any(grepl("\\bd1\\b|\\br1\\b", links$fusion)))
+    expect_true(all(grepl("^1At:", links$g1name)))
+    expect_true(all(grepl("^1A:", links$g2name)))
+})
+
+test_that("duplicate chromosome names are disambiguated", {
+    isa <- seg_step()
+    isa$out$chr_name.don <- "1"
+    isa$out$chr_name.rec <- "1"
+    labels <- isa_dashboard_chr_labels(isa, c("d1", "r1"))
+
+    expect_identical(length(unique(labels)), 2L)
+    expect_true(all(grepl("^1", labels)))
 })
 
 test_that("the explorer renders an interacCircos output", {
