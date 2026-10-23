@@ -1101,8 +1101,13 @@ bam_progress_label <- function(stage, detail = list()) {
 }
 
 #' @noRd
-bam_progress_callback <- function(n_samples, normalization = "none") {
-    total <- length(bam_progress_stages(n_samples, normalization))
+bam_progress_callback <- function(n_samples, normalization = "none",
+                                  total_steps = NULL) {
+    stages <- length(bam_progress_stages(n_samples, normalization))
+    total <- suppressWarnings(as.integer(total_steps))
+    if (length(total) != 1L || is.na(total) || total < 1L) {
+        total <- stages
+    }
     state <- new.env(parent = emptyenv())
     state$done <- 0L
     function(stage, detail = list()) {
@@ -1289,11 +1294,11 @@ bam_coverage_warnings <- function(result, near_zero = 1) {
 #' Cache completed analyses for one Shiny session
 #'
 #' Switching a subgenome back to one that was already analysed should reuse
-#' that result instead of repeating the whole pipeline for every sample. The
-#' cache is deliberately small: complete results hold count matrices and ISA
-#' tables, and a session only needs the combinations the user is comparing.
-#' `get()` returns `NULL` on a miss; `set()` evicts the oldest entry once
-#' `max_entries` is reached.
+#' that result instead of repeating the whole pipeline for every sample. A
+#' first run also precomputes the other valid subgenome combinations, so the
+#' cache can grow beyond its initial three entries; `reserve()` raises the
+#' budget before those results arrive. `get()` returns `NULL` on a miss;
+#' `set()` evicts the oldest entry once the current limit is reached.
 #'
 #' @noRd
 bam_result_cache <- function(max_entries = 3L) {
@@ -1328,7 +1333,17 @@ bam_result_cache <- function(max_entries = 3L) {
             }
             invisible(NULL)
         },
-        size = function() length(order)
+        ## Precomputing all subgenomes can produce more results than the
+        ## default session budget; grow the budget before those results arrive.
+        reserve = function(n) {
+            n <- suppressWarnings(as.integer(n))
+            if (length(n) == 1L && !is.na(n) && n > max_entries) {
+                max_entries <<- n
+            }
+            invisible(NULL)
+        },
+        size = function() length(order),
+        limit = function() max_entries
     )
 }
 
@@ -1378,6 +1393,47 @@ bam_analysis_key <- function(preflight, resolution, reference_sample) {
         max_fit_windows = as.numeric(defaults$max_fit_windows),
         normalization_by_side = isTRUE(defaults$normalization_by_side)
     ))
+}
+
+#' Valid subgenome combinations for a species pair
+#'
+#' Returns every combination of one recipient subgenome and one donor
+#' subgenome whose labels are disjoint, which is the invariant [RCA()] needs.
+#' The caller still resolves each combination to check that chromosome groups
+#' pair and that contig lengths fit the selected resolution.
+#'
+#' @noRd
+bam_subgenome_combinations <- function(config, recipient, donor) {
+    recipient_species <- config$species[[recipient]]
+    donor_species <- config$species[[donor]]
+    if (is.null(recipient_species) || is.null(donor_species)) {
+        return(data.frame(
+            recipient_subgenome = character(),
+            donor_subgenome = character(),
+            stringsAsFactors = FALSE
+        ))
+    }
+    recipient_values <- unique(as.character(
+        recipient_species$contigs$subgenome
+    ))
+    donor_values <- unique(as.character(donor_species$contigs$subgenome))
+    if (length(recipient_values) == 0L || length(donor_values) == 0L) {
+        return(data.frame(
+            recipient_subgenome = character(),
+            donor_subgenome = character(),
+            stringsAsFactors = FALSE
+        ))
+    }
+    combinations <- expand.grid(
+        recipient_subgenome = recipient_values,
+        donor_subgenome = donor_values,
+        stringsAsFactors = FALSE
+    )
+    disjoint <- combinations$recipient_subgenome !=
+        combinations$donor_subgenome
+    combinations <- combinations[disjoint, , drop = FALSE]
+    rownames(combinations) <- NULL
+    combinations
 }
 
 #' @noRd
@@ -2993,41 +3049,175 @@ bam_launcher_server <- function(state, cache = NULL) {
                     ""
                 }
             ))
-            raw_progress <- bam_progress_callback(
-                length(samples), params$normalization
-            )
-            progress <- function(stage, detail = list()) {
-                log_line(bam_progress_label(stage, detail))
-                raw_progress(stage, detail)
+
+            ## A first run also computes the other valid subgenome
+            ## combinations for this species pair, so switching a subgenome
+            ## later is a cache hit instead of another full pipeline.
+            extra_jobs <- list()
+            if (!isTRUE(pf$example) && species_available) {
+                recipient_key <- recipient_species()
+                donor_key <- donor_species()
+                combinations <- bam_subgenome_combinations(
+                    pf$config, recipient_key, donor_key
+                )
+                for (i in seq_len(nrow(combinations))) {
+                    recipient_subgenome <-
+                        combinations$recipient_subgenome[[i]]
+                    donor_subgenome <- combinations$donor_subgenome[[i]]
+                    resolved <- tryCatch(
+                        resolveSpeciesAssembly(
+                            pf$config,
+                            donor = donor_key,
+                            recipient = recipient_key,
+                            donor_subgenome = donor_subgenome,
+                            recipient_subgenome = recipient_subgenome
+                        ),
+                        error = function(e) e
+                    )
+                    if (inherits(resolved, "condition")) {
+                        log_line(sprintf(
+                            "Skipping subgenome pair %s / %s: %s",
+                            recipient_subgenome, donor_subgenome,
+                            conditionMessage(resolved)
+                        ))
+                        next
+                    }
+                    if (identical(resolved$key, pf$assembly)) {
+                        next
+                    }
+                    extra_preflight <- pf
+                    extra_preflight$assembly <- resolved$key
+                    extra_preflight$config <- resolved$config
+                    extra_key <- bam_analysis_key(
+                        extra_preflight,
+                        input$resolution,
+                        input$reference_sample
+                    )
+                    if (!is.null(result_cache$get(extra_key))) {
+                        log_line(sprintf(
+                            "Assembly '%s' is already cached.", resolved$key
+                        ))
+                        next
+                    }
+                    extra_jobs[[length(extra_jobs) + 1L]] <- list(
+                        key = resolved$key,
+                        config = resolved$config,
+                        cache_key = extra_key,
+                        label = sprintf(
+                            "%s / %s", recipient_subgenome, donor_subgenome
+                        )
+                    )
+                }
+                if (length(extra_jobs) > 0L) {
+                    log_line(sprintf(
+                        paste0(
+                            "Precomputing %d other subgenome combination%s; ",
+                            "the first run will take longer."
+                        ),
+                        length(extra_jobs),
+                        if (length(extra_jobs) == 1L) "" else "s"
+                    ))
+                }
             }
+            result_cache$reserve(
+                result_cache$size() + 1L + length(extra_jobs)
+            )
+
+            stages_per_run <- length(bam_progress_stages(
+                length(samples), params$normalization
+            ))
+            total_steps <- stages_per_run * (1L + length(extra_jobs))
+            run_analysis <- function(assembly_config, assembly_key, progress) {
+                if (isTRUE(pf$example)) {
+                    example_result <- bam_example_result(params$resolution)
+                    bam_example_progress(
+                        example_result, progress, pause = 0.1
+                    )
+                    return(example_result)
+                }
+                analyzeBamInput(
+                    pf$staged,
+                    assembly_config,
+                    assembly = assembly_key,
+                    windows_per_chromosome = params$resolution,
+                    reference_sample = params$reference_sample,
+                    normalization = params$normalization,
+                    mapq = params$mapq,
+                    exclude_flags = params$exclude_flags,
+                    cores = params$cores,
+                    max_fit_windows = params$max_fit_windows,
+                    cache = cache,
+                    progress = progress
+                )
+            }
+            progress_for <- function(prefix = "") {
+                raw_progress <- bam_progress_callback(
+                    length(samples), params$normalization,
+                    total_steps = total_steps
+                )
+                function(stage, detail = list()) {
+                    log_line(paste0(
+                        prefix, bam_progress_label(stage, detail)
+                    ))
+                    raw_progress(stage, detail)
+                }
+            }
+
+            precomputed <- 0L
             new_result <- tryCatch(
                 shiny::withProgress(
                     message = "MaMaMIA analysis", value = 0,
                     {
-                        if (isTRUE(pf$example)) {
-                            example_result <- bam_example_result(
-                                params$resolution
+                        primary <- run_analysis(
+                            pf$config, pf$assembly, progress_for()
+                        )
+                        for (job in extra_jobs) {
+                            log_line(sprintf(
+                                "Precomputing subgenome pair %s (assembly '%s').",
+                                job$label, job$key
+                            ))
+                            outcome <- tryCatch(
+                                {
+                                    extra <- run_analysis(
+                                        job$config, job$key,
+                                        progress_for("Precompute: ")
+                                    )
+                                    result_cache$set(job$cache_key, extra)
+                                    log_line(sprintf(
+                                        paste0(
+                                            "Precomputed '%s': %d sample(s), ",
+                                            "%d segment(s), %d putative ",
+                                            "introgression(s)."
+                                        ),
+                                        job$key,
+                                        length(extra$isa),
+                                        sum(extra$samples$n_segments),
+                                        sum(extra$samples[["n_putative_introgressions"]])
+                                    ))
+                                    TRUE
+                                },
+                                error = function(e) e
                             )
-                            bam_example_progress(
-                                example_result, progress, pause = 0.1
-                            )
-                            example_result
-                        } else {
-                            analyzeBamInput(
-                                pf$staged,
-                                pf$config,
-                                assembly = pf$assembly,
-                                windows_per_chromosome = params$resolution,
-                                reference_sample = params$reference_sample,
-                                normalization = params$normalization,
-                                mapq = params$mapq,
-                                exclude_flags = params$exclude_flags,
-                                cores = params$cores,
-                                max_fit_windows = params$max_fit_windows,
-                                cache = cache,
-                                progress = progress
-                            )
+                            if (inherits(outcome, "condition")) {
+                                info <- bam_error_info(
+                                    outcome,
+                                    files = pf$table$source,
+                                    table = pf$table
+                                )
+                                log_line(sprintf(
+                                    paste0(
+                                        "Precomputation of '%s' skipped at ",
+                                        "stage '%s': %s"
+                                    ),
+                                    job$key, info$stage, info$message
+                                ))
+                                next
+                            }
+                            precomputed <- precomputed + 1L
                         }
+                        result_cache$set(key, primary)
+                        active_key(key)
+                        primary
                     }
                 ),
                 error = function(e) {
@@ -3061,14 +3251,36 @@ bam_launcher_server <- function(state, cache = NULL) {
                 sum(new_result$samples$n_segments),
                 sum(new_result$samples$n_putative_introgressions)
             ))
+            if (precomputed > 0L) {
+                log_line(sprintf(
+                    paste0(
+                        "Cached %d other subgenome combination%s; ",
+                        "switching to them needs no recalculation."
+                    ),
+                    precomputed,
+                    if (precomputed == 1L) "" else "s"
+                ))
+            }
+            run_summary <- sprintf(
+                "%d sample(s), %d segment(s), %d putative introgression(s)",
+                length(new_result$isa),
+                sum(new_result$samples$n_segments),
+                sum(new_result$samples$n_putative_introgressions)
+            )
+            if (precomputed > 0L) {
+                run_summary <- paste0(
+                    run_summary,
+                    sprintf(
+                        "; cached %d other subgenome combination%s",
+                        precomputed,
+                        if (precomputed == 1L) "" else "s"
+                    )
+                )
+            }
             shiny::showNotification(
-                sprintf(
-                    "%d sample(s), %d segment(s), %d putative introgression(s)",
-                    length(new_result$isa),
-                    sum(new_result$samples$n_segments),
-                    sum(new_result$samples$n_putative_introgressions)
-                ),
-                type = "message", duration = 6
+                run_summary,
+                type = "message",
+                duration = if (precomputed > 0L) 8 else 6
             )
             coverage <- bam_coverage_warnings(new_result)
             for (warning in coverage) {

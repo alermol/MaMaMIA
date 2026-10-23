@@ -38,10 +38,12 @@
 * Multi-sample BAMs now show a **Sample** selector in the main filter bar. It
   switches the circos, coverage plot, segment table and per-sample export
   together; single-sample runs do not show it.
-* Completed analyses are cached for the session. Returning to a previously
-  analysed species/subgenome pair, resolution or reference restores that
-  result without recalculating every sample; a combination that has never been
-  run still needs one **Run analysis** click.
+* The first run now precomputes every valid subgenome combination for the
+  selected species pair and caches each completed analysis. Returning to a
+  subgenome that was analysed earlier restores its result without recalculating
+  every sample; combinations that cannot be resolved or fail are logged and
+  skipped. The first run takes longer, and changing the resolution or reference
+  still needs one new run.
 * The circos view is zoomable (scroll to zoom, drag to pan), uses the
   chromosome names from the registry instead of contig IDs, and hides hover
   tooltips when the pointer leaves the plot or a stale widget render leaves a

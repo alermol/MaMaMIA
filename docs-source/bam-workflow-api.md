@@ -945,9 +945,13 @@ rather than the staged session copy. The result is invalidated when the BAM
 selection, resolution, assembly or reference changes, so a stale BEDPE cannot
 be downloaded for different inputs. A completed analysis is kept in a
 session cache keyed by the resolved assembly, staged BAM paths, resolution,
-reference and result-affecting registry defaults; returning to a combination
-that was already run restores its result instead of clearing it. The cache
-holds at most three analyses and never crosses sessions.
+reference and result-affecting registry defaults. The first run also resolves
+and precomputes every other valid subgenome combination for the selected
+species pair and caches each result; combinations that cannot be resolved or
+fail are logged and skipped. Returning to a cached combination restores it
+without rerunning the samples. The cache starts with room for three analyses,
+grows to hold all precomputed subgenomes of a pair, and never crosses sessions.
+Changing the resolution or reference needs a new run.
 
 `bam_resolution_problem()` mirrors the `makeAnalysisWindows()` length check
 before the run starts. A configured contig shorter than the selected resolution
@@ -1244,9 +1248,11 @@ subgenome selectors only where a species has more than one subgenome. A
 species' subgenome choice. The predefined-assembly selector has been removed;
 when the registry also declares named assemblies, a checkbox enables
 BAM-header auto-detection instead. A selected pair invalidates a result that
-was computed for a different assembly; the result of a pair that was already
-analysed is restored from the session cache without rerunning the samples. The
-cache holds at most three completed analyses.
+was computed for a different assembly. The first run precomputes every valid
+subgenome combination for the pair; switching to a combination that was already
+computed restores its cached result without rerunning the samples, and invalid
+or failed combinations are logged and skipped. The first run therefore takes
+longer than a single-assembly run.
 
 ---
 

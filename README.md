@@ -131,10 +131,11 @@ auto-detection checkbox: contigs are paired by chromosome group (the optional
 BAM processing uses the MAPQ, flag mask, fit cap and core count from the
 validated registry; those controls are not exposed in the interface.
 
-A completed analysis is cached for the session. Returning to a
-species/subgenome pair, resolution or reference that was already analysed
-restores its result without recalculating every sample; a new combination
-still needs one **Run analysis** click.
+A completed analysis is cached for the session. The first run also precomputes
+the other valid subgenome combinations for the selected species pair, so
+switching subgenomes afterwards restores the cached result without recalculating
+every sample. The first run takes longer; changing the resolution or reference
+still needs one new run, which precomputes the new parameter set.
 
 Upload one BAM, choose a resolution and, for several samples, a reference
 sample or median normalization. BAMs are accepted only through the upload

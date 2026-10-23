@@ -1343,6 +1343,36 @@ test_that("analysis keys follow the resolved assembly and the cache is bounded",
     expect_identical(cache$get("b"), 2L)
     expect_identical(cache$get("c"), 3L)
     expect_identical(cache$size(), 2L)
+
+    cache$reserve(4L)
+    expect_identical(cache$limit(), 4L)
+    cache$set("d", 4L)
+    cache$set("e", 5L)
+    expect_identical(cache$size(), 4L)
+    expect_identical(cache$get("b"), 2L)
+})
+
+test_that("subgenome combinations use disjoint labels", {
+    config <- list(species = list(
+        recipient = list(contigs = data.frame(
+            subgenome = c("A", "B", "A"), stringsAsFactors = FALSE
+        )),
+        donor = list(contigs = data.frame(
+            subgenome = c("R", "A"), stringsAsFactors = FALSE
+        ))
+    ))
+    combinations <- bam_subgenome_combinations(
+        config, "recipient", "donor"
+    )
+    expect_identical(
+        combinations$recipient_subgenome, c("A", "B", "B")
+    )
+    expect_identical(
+        combinations$donor_subgenome, c("R", "R", "A")
+    )
+
+    empty <- bam_subgenome_combinations(config, "missing", "donor")
+    expect_identical(nrow(empty), 0L)
 })
 
 test_that("coverage warnings are written to the calculation log", {
@@ -1415,6 +1445,50 @@ test_that("a completed analysis is restored when its inputs return", {
 
         suppressWarnings(session$setInputs(run = 1L))
         expect_identical(calls, 2L)
+    })
+})
+
+test_that("the first run precomputes other valid subgenomes", {
+    skip_if_no_dashboard()
+    skip_if_no_samtools()
+    fixture <- multi_subgenome_fixture()
+    on.exit(unlink(fixture$directory, recursive = TRUE), add = TRUE)
+    state <- app_state(fixture)
+    fake <- fake_bam_result(c("sample1", "sample2"))
+    calls <- character()
+    testthat::local_mocked_bindings(
+        analyzeBamInput = function(bam_paths, config, assembly, ...) {
+            calls <<- c(calls, assembly)
+            fake
+        },
+        .package = "MaMaMIA"
+    )
+
+    shiny::testServer(bam_launcher_server(state, cache = FALSE), {
+        set_app_inputs(
+            session,
+            bams = upload_input(fixture$bam_path),
+            resolution = 100
+        )
+        session$setInputs(recipient_subgenome = "A")
+        expect_true(preflight_state()$ok)
+
+        suppressWarnings(session$setInputs(run = 1L))
+        expect_identical(result(), fake)
+        expect_setequal(
+            calls,
+            c("recipient__A__donor__R", "recipient__B__donor__R")
+        )
+        expect_length(calls, 2L)
+        expect_match(
+            output$calculation_log,
+            "Cached 1 other subgenome combination",
+            fixed = TRUE
+        )
+
+        session$setInputs(recipient_subgenome = "B")
+        expect_identical(result(), fake)
+        expect_length(calls, 2L)
     })
 })
 

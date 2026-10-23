@@ -316,6 +316,120 @@ variable_gc_fixture <- function(sample = "synthetic", windows = 100L,
     fixture
 }
 
+## A synthetic species pair with two recipient subgenomes (A and B) that
+## share one donor subgenome (R). The BAM contains d1, r1 and r2, so switching
+## the recipient subgenome is a valid assembly change. Used to test that the
+## first analysis precomputes both combinations.
+multi_subgenome_fixture <- function(samples = c("sample1", "sample2"),
+                                    contig_length = 20000L) {
+    skip_if_no_samtools()
+    builder <- gcrank_build_binary()
+    if (!nzchar(builder)) {
+        testthat::skip("gcrank-build is not available")
+    }
+
+    directory <- tempfile("multi-subgenome-")
+    dir.create(directory)
+    fasta <- file.path(directory, "multi.fa")
+    writeLines(
+        c(
+            ">d1", variable_gc_sequence(contig_length, 0L),
+            ">r1", variable_gc_sequence(contig_length, 8L),
+            ">r2", variable_gc_sequence(contig_length, 3L)
+        ),
+        fasta
+    )
+    status <- system2(
+        builder,
+        c(
+            "--fasta", fasta, "--out", directory,
+            "--name", "multi", "--threads", "1"
+        ),
+        stdout = FALSE, stderr = FALSE
+    )
+    if (!identical(status, 0L)) {
+        unlink(directory, recursive = TRUE)
+        testthat::skip("gcrank-build could not create the multi-subgenome index")
+    }
+
+    config <- list(
+        version = 1L,
+        defaults = list(
+            windows_per_chromosome = 100L,
+            allowed_windows = c(100L, 1000L, 10000L),
+            mapq = 20L,
+            exclude_flags = 2308L,
+            max_fit_windows = 1000L,
+            gc_mmap = TRUE,
+            gc_validate_crc = FALSE,
+            normalization_by_side = TRUE
+        ),
+        server = list(max_bams = 4L, max_total_bytes = 20 * 1024^2),
+        species = list(
+            recipient = list(
+                label = "Multi-subgenome recipient",
+                default_subgenome = "A",
+                gc_indexes = list(file.path(directory, "multi.gcrank")),
+                contigs = list(
+                    list(id = "r1", name = "1A", subgenome = "A"),
+                    list(id = "r2", name = "1B", subgenome = "B")
+                )
+            ),
+            donor = list(
+                label = "Multi-subgenome donor",
+                default_subgenome = "R",
+                gc_indexes = list(file.path(directory, "multi.gcrank")),
+                contigs = list(
+                    list(id = "d1", name = "1R", subgenome = "R")
+                )
+            )
+        )
+    )
+    config_path <- file.path(directory, "assemblies.yml")
+    writeLines(yaml::as.yaml(config), config_path)
+
+    read_length <- 50L
+    positions <- seq(1L, contig_length - read_length + 1L, by = 4L)
+    reads <- list()
+    for (sample in samples) {
+        for (contig in c("d1", "r1", "r2")) {
+            reads[[length(reads) + 1L]] <- data.frame(
+                contig = contig,
+                position = positions,
+                sample = sample,
+                stringsAsFactors = FALSE
+            )
+        }
+    }
+    reads <- do.call(rbind, reads)
+    reads <- reads[order(
+        match(reads$contig, c("d1", "r1", "r2")),
+        reads$position, reads$sample
+    ), , drop = FALSE]
+    sam <- c(
+        "@HD\tVN:1.6\tSO:coordinate",
+        sprintf("@SQ\tSN:%s\tLN:%d", c("d1", "r1", "r2"), contig_length),
+        sprintf("@RG\tID:%s\tSM:%s", samples, samples),
+        sprintf(
+            "r_%s_%s_%d\t0\t%s\t%d\t60\t%dM\t*\t0\t0\t%s\t%s\tRG:Z:%s",
+            reads$sample, reads$contig, reads$position, reads$contig,
+            reads$position, read_length,
+            strrep("A", read_length), strrep("I", read_length), reads$sample
+        )
+    )
+    bam_path <- write_test_bam(
+        sam, file.path(directory, "multi.bam"), index = TRUE
+    )
+
+    list(
+        directory = directory,
+        config_path = config_path,
+        bam_path = bam_path,
+        samples = samples,
+        contig_length = as.integer(contig_length)
+    )
+}
+
 ## Read the legacy directory-layout BED tables used only as the golden oracle.
 ## The package no longer ships a directory-layout reader (T7.5); this helper
 ## keeps the gated BAM-vs-legacy regression self-contained.
