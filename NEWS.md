@@ -50,7 +50,9 @@
   tooltip behind.
 * The footer calculation log can be collapsed with **Hide log**. The footer
   shrinks to its status line, and the sidebar, circos and coverage plot take the
-  freed height; **Show log** restores the log.
+  freed height; **Show log** restores the log. The log names detected and
+  precomputed assemblies by their human-readable labels instead of internal
+  registry keys such as `triticum_aestivum__A__secale_cereale__R`.
 * A single BAM may contain one or several samples. Samples are read from
   `@RG SM` tags and read groups from `@RG ID`; incomplete or duplicate read
   groups are rejected, and reads are counted per read group for multi-sample

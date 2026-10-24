@@ -578,11 +578,17 @@ bam_preflight_log <- function(pf) {
         lines <- c(lines, sprintf("Suggested fix: %s", info$suggestion))
         candidates <- pf$candidates
         if (is.data.frame(candidates) && nrow(candidates) > 0L) {
+            labels <- candidates$label
+            if (is.null(labels) || length(labels) != nrow(candidates)) {
+                labels <- candidates$key
+            }
+            labels[is.na(labels) | !nzchar(labels)] <-
+                candidates$key[is.na(labels) | !nzchar(labels)]
             lines <- c(lines, paste0(
                 "Assembly candidates: ",
                 paste(sprintf(
                     "%s (%d/%d targets, %.1f%%)",
-                    candidates$key, candidates$n_matched,
+                    labels, candidates$n_matched,
                     candidates$n_targets, 100 * candidates$score
                 ), collapse = "; ")
             ))
@@ -612,10 +618,12 @@ bam_preflight_log <- function(pf) {
 
     assembly <- pf$assembly_config
     if (!is.null(assembly)) {
-        lines <- c(lines, sprintf(
-            "Detected assembly: %s (%s).",
-            assembly$label, assembly$key
-        ))
+        label <- assembly$label
+        if (is.null(label) || length(label) != 1L || is.na(label) ||
+            !nzchar(label)) {
+            label <- assembly$key
+        }
+        lines <- c(lines, sprintf("Detected assembly: %s.", label))
     }
     lines
 }
@@ -3095,7 +3103,8 @@ bam_launcher_server <- function(state, cache = NULL) {
                     )
                     if (!is.null(result_cache$get(extra_key))) {
                         log_line(sprintf(
-                            "Assembly '%s' is already cached.", resolved$key
+                            "Subgenome pair %s / %s is already cached.",
+                            recipient_subgenome, donor_subgenome
                         ))
                         next
                     }
@@ -3173,8 +3182,8 @@ bam_launcher_server <- function(state, cache = NULL) {
                         )
                         for (job in extra_jobs) {
                             log_line(sprintf(
-                                "Precomputing subgenome pair %s (assembly '%s').",
-                                job$label, job$key
+                                "Precomputing subgenome pair %s.",
+                                job$label
                             ))
                             outcome <- tryCatch(
                                 {
@@ -3185,11 +3194,11 @@ bam_launcher_server <- function(state, cache = NULL) {
                                     result_cache$set(job$cache_key, extra)
                                     log_line(sprintf(
                                         paste0(
-                                            "Precomputed '%s': %d sample(s), ",
-                                            "%d segment(s), %d putative ",
-                                            "introgression(s)."
+                                            "Precomputed subgenome pair %s: ",
+                                            "%d sample(s), %d segment(s), ",
+                                            "%d putative introgression(s)."
                                         ),
-                                        job$key,
+                                        job$label,
                                         length(extra$isa),
                                         sum(extra$samples$n_segments),
                                         sum(extra$samples[["n_putative_introgressions"]])
@@ -3206,10 +3215,10 @@ bam_launcher_server <- function(state, cache = NULL) {
                                 )
                                 log_line(sprintf(
                                     paste0(
-                                        "Precomputation of '%s' skipped at ",
-                                        "stage '%s': %s"
+                                        "Precomputation of subgenome pair %s ",
+                                        "skipped at stage '%s': %s"
                                     ),
-                                    job$key, info$stage, info$message
+                                    job$label, info$stage, info$message
                                 ))
                                 next
                             }

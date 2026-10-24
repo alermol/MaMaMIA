@@ -978,8 +978,9 @@ test_that("an assembly mismatch shows candidate scores", {
         expect_match(error_log, "File:")
         expect_match(error_log, "bad\\.bam")
         expect_match(error_log, "Assembly candidates")
-        expect_match(error_log, "variable")
+        expect_match(error_log, "Variable-GC synthetic assembly")
         expect_match(error_log, "50.0%")
+        expect_false(grepl("assembly 'variable'", error_log, fixed = TRUE))
         expect_match(output_html(output$run_ui), "disabled")
     })
 })
@@ -1485,6 +1486,7 @@ test_that("the first run precomputes other valid subgenomes", {
             "Cached 1 other subgenome combination",
             fixed = TRUE
         )
+        expect_false(grepl("recipient__", output$calculation_log, fixed = TRUE))
 
         session$setInputs(recipient_subgenome = "B")
         expect_identical(result(), fake)

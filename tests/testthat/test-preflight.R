@@ -294,7 +294,7 @@ test_that("preflightBams() warns about extra header targets", {
     table <- preflightBams(path, preflight_tiny_config())
     expect_match(
         table$warnings,
-        "1 target\\(s\\) not in assembly 'tiny'",
+        "1 target\\(s\\) not in assembly 'Tiny synthetic assembly'",
         fixed = FALSE
     )
 })

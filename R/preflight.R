@@ -59,7 +59,7 @@
     list(index_path = index_path, status = status, action = action)
 }
 
-.preflight_warnings <- function(header, targets, index, path, assembly_key) {
+.preflight_warnings <- function(header, targets, index, path, assembly_label) {
     warnings <- character(0)
 
     if (identical(header$sample_source, "basename")) {
@@ -75,7 +75,7 @@
             warnings,
             sprintf(
                 "The BAM header contains %d target(s) not in assembly '%s'; they will be ignored.",
-                length(extra), assembly_key
+                length(extra), assembly_label
             )
         )
     }
@@ -207,6 +207,11 @@ preflightBams <- function(paths, config, assembly = NULL) {
     matches <- matchAssemblyCohort(headers, config, assembly)
     keys <- vapply(matches, `[[`, character(1), "assembly")
     assembly_key <- keys[[1L]]
+    assembly_label <- matches[[1L]]$assembly_config$label
+    if (is.null(assembly_label) || length(assembly_label) != 1L ||
+        is.na(assembly_label) || !nzchar(assembly_label)) {
+        assembly_label <- assembly_key
+    }
     targets <- .assembly_targets_for_match(
         matches[[1L]]$assembly_config, assembly_key
     )
@@ -214,7 +219,7 @@ preflightBams <- function(paths, config, assembly = NULL) {
     indexes <- lapply(checked, .csi_status)
     warnings <- vapply(seq_len(n), function(i) {
         .preflight_warnings(
-            headers[[i]], targets, indexes[[i]], checked[[i]], assembly_key
+            headers[[i]], targets, indexes[[i]], checked[[i]], assembly_label
         )
     }, character(1))
 

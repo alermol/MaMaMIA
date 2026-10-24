@@ -70,3 +70,4 @@ AGENTS.md
 /.uvr/activate*
 report/
 .zed/
+.opencode/
