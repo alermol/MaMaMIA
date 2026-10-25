@@ -282,45 +282,6 @@ bam_launcher_state <- function(config = NULL) {
 }
 
 #' @noRd
-bam_config_labels <- function(labels, max_items = 4L) {
-    if (length(labels) <= max_items) {
-        return(paste(labels, collapse = "; "))
-    }
-    paste(
-        c(
-            utils::head(labels, max_items),
-            sprintf("+%d more", length(labels) - max_items)
-        ),
-        collapse = "; "
-    )
-}
-
-#' @noRd
-bam_config_summary <- function(config) {
-    species <- listMaMaMIASpecies(config)
-    if (nrow(species) > 0L) {
-        labels <- bam_config_labels(
-            sprintf("%s (%s)", species$label, species$key)
-        )
-        return(sprintf("%d species: %s", nrow(species), labels))
-    }
-
-    assemblies <- listMaMaMIAAssemblies(config)
-    if (nrow(assemblies) > 0L) {
-        labels <- bam_config_labels(
-            sprintf("%s (%s)", assemblies$label, assemblies$key)
-        )
-        return(sprintf(
-            "%d assembl%s, detected from the BAM header: %s",
-            nrow(assemblies),
-            if (nrow(assemblies) == 1L) "y" else "ies",
-            labels
-        ))
-    }
-    "No species or assemblies configured"
-}
-
-#' @noRd
 bam_species_choices <- function(config) {
     species <- config$species
     if (is.null(species) || length(species) == 0L) {
@@ -673,24 +634,6 @@ bam_preflight_display <- function(table) {
         targets = sprintf("%d/%d", table$n_targets, table$n_assembly_targets),
         index = table$index_action,
         warnings = table$warnings,
-        stringsAsFactors = FALSE
-    )
-}
-
-#' @noRd
-bam_candidate_display <- function(candidates) {
-    if (is.null(candidates) || nrow(candidates) == 0L) {
-        return(data.frame(
-            assembly = character(), label = character(),
-            targets = character(), score = character(),
-            stringsAsFactors = FALSE
-        ))
-    }
-    data.frame(
-        assembly = candidates$key,
-        label = candidates$label,
-        targets = sprintf("%d/%d", candidates$n_matched, candidates$n_targets),
-        score = sprintf("%.1f%%", 100 * candidates$score),
         stringsAsFactors = FALSE
     )
 }
@@ -1971,7 +1914,6 @@ bam_launcher_ui <- function(state) {
         ))
     }
 
-    config <- state$config
     example_available <- bam_example_available()
 
     bslib::page_fluid(

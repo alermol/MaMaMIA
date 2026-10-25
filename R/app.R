@@ -2,15 +2,6 @@
 ## hand over to the explorer module defined in dashboard.R.
 
 #' @noRd
-default_cores <- function() {
-    cores <- parallel::detectCores()
-    if (is.na(cores) || cores < 1L) {
-        return(1L)
-    }
-    as.integer(max(1L, min(4L, cores)))
-}
-
-#' @noRd
 default_fit_cache <- function() {
     dir <- tryCatch(tools::R_user_dir("MaMaMIA", "cache"), error = function(e) NULL)
     if (is.null(dir)) {
