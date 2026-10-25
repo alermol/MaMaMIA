@@ -48,16 +48,10 @@ PlainInputStream::PlainInputStream(std::string path) : name_(std::move(path)) {
 #endif
   if (file_ == nullptr)
     throw InputError("cannot open '" + name_ + "' for reading: " + std::strerror(errno));
-  owned_ = true;
-}
-
-PlainInputStream::PlainInputStream(std::FILE* file, std::string name)
-    : file_(file), owned_(false), name_(std::move(name)) {
-  if (file_ == nullptr) throw UsageError("PlainInputStream: null stream");
 }
 
 PlainInputStream::~PlainInputStream() {
-  if (file_ != nullptr && owned_) std::fclose(file_);
+  if (file_ != nullptr) std::fclose(file_);
 }
 
 std::size_t PlainInputStream::read(void* dst, std::size_t n) {

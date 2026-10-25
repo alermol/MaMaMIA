@@ -15,6 +15,14 @@
   the contig length is not divisible by the window count. Provenance records
   `count_backend = "htslib"` and `count_semantics = "five_prime_start_based"`.
 
+## Vendored gcrank 0.2.0
+
+* Updated the vendored gcrank sources from 0.1.0 to 0.2.0 (upstream commit
+  `5019bff`). The release removes unused internal helpers only; the public API
+  is unchanged and the on-disk `format_version` stays `0.1.0`, so existing
+  indexes remain valid. New indexes record `builder_version = "0.2.0"`, and
+  provenance records the new commit.
+
 ## Grid dashboard layout
 
 * The BAM-first dashboard now uses the `gridlayout` package with a `0.5rem`

@@ -24,8 +24,6 @@ public:
   // Final CRC-32 of everything fed so far (after the final XOR).
   uint32_t value() const { return value_ ^ 0xFFFFFFFFu; }
 
-  void reset() { value_ = 0xFFFFFFFFu; }
-
   // One-shot convenience.
   static uint32_t compute(const void* data, std::size_t n) {
     CRC32 c;

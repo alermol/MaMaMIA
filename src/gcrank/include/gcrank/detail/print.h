@@ -26,12 +26,4 @@ void print(std::format_string<Args...> fmt, Args&&... args) {
   print(stdout, fmt, std::forward<Args>(args)...);
 }
 
-// Same as print(), then flushes `out` so the message cannot sit in a buffer
-// (for diagnostics and interactive output).
-template <typename... Args>
-void println(std::FILE* out, std::format_string<Args...> fmt, Args&&... args) {
-  print(out, fmt, std::forward<Args>(args)...);
-  std::fflush(out);
-}
-
 }  // namespace gcrank::detail

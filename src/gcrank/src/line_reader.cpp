@@ -3,8 +3,6 @@
 #include <cstring>
 #include <string_view>
 
-#include "gcrank/error.h"
-
 namespace gcrank {
 
 namespace {

@@ -8,7 +8,6 @@
 #include <condition_variable>
 #include <cstdio>
 #include <cstring>
-#include <deque>
 #include <filesystem>
 #include <format>
 #include <fstream>
@@ -32,7 +31,6 @@
 #include "gcrank/detail/fasta_reader.h"
 #include "gcrank/format.h"
 #include "gcrank/detail/input_stream.h"
-#include "gcrank/detail/sha256.h"
 #include "gcrank/detail/thread_pool.h"
 
 namespace gcrank {

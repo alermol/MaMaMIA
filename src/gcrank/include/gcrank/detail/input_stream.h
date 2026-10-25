@@ -36,8 +36,6 @@ std::unique_ptr<InputStream> open_input(const std::string& path);
 class PlainInputStream final : public InputStream {
 public:
   explicit PlainInputStream(std::string path);
-  // Reads from an already-open stream; does not take ownership of `file`.
-  PlainInputStream(std::FILE* file, std::string name);
   ~PlainInputStream() override;
 
   std::size_t read(void* dst, std::size_t n) override;
@@ -45,7 +43,6 @@ public:
 
 private:
   std::FILE* file_ = nullptr;
-  bool owned_ = false;
   std::string name_;
 };
 

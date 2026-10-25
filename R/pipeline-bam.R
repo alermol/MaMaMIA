@@ -14,7 +14,7 @@
 ## integer matrices with one column per sample.
 
 ## Synchronized with tools/vendor-gcrank.txt by tests/testthat/test-pipeline-bam.R.
-.MaMaMIAgcrankCommit <- "8fdbc32557973c7737496959ecb91acd9bed3ee5"
+.MaMaMIAgcrankCommit <- "5019bff14c00eda0d53755eb60a222f1b0ca4ce6"
 
 .analysis_error <- function(fmt, ...) {
     .mamamia_error("MaMaMIAAnalysisError", fmt, ...)
