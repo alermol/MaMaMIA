@@ -41,6 +41,13 @@
 * **BEDPE export.** `writeCallsToBedpe()` writes donor and recipient intervals
   with `score_mean`, `class`, `confidence`, `method` and `mode`.
 
+## Dashboard
+
+* The sidebar accepts exactly one BAM per run, single- or multi-sample. The
+  file picker has no `multiple` attribute, a drag-and-drop guard keeps only
+  the first dropped file, and the server rejects a multi-file payload with a
+  message instead of silently ignoring the extra files.
+
 ## Validation
 
 * The paired log-ratio recovers **6/6** reference events on the 24

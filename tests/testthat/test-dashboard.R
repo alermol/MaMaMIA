@@ -16,6 +16,34 @@ test_that("bam_run_parameters() resolves the run controls", {
     ))
 })
 
+test_that("the BAM chooser accepts exactly one file", {
+    chooser <- as.character(bam_single_file_input())
+    expect_length(chooser, 1L)
+    expect_match(chooser, 'id="bams"', fixed = TRUE)
+    expect_match(chooser, 'accept=".bam"', fixed = TRUE)
+    expect_match(chooser, "Choose BAM file", fixed = TRUE)
+    expect_match(chooser, "No BAM selected", fixed = TRUE)
+    expect_false(grepl("multiple", chooser, fixed = TRUE))
+})
+
+test_that("the upload path helper rejects several files", {
+    one <- data.frame(datapath = "a.bam", stringsAsFactors = FALSE)
+    expect_identical(bam_single_upload_path(one), "a.bam")
+    expect_identical(bam_single_upload_path(NULL), character())
+    expect_identical(
+        bam_single_upload_path(data.frame(datapath = character())),
+        character()
+    )
+    two <- data.frame(
+        datapath = c("a.bam", "b.bam"), stringsAsFactors = FALSE
+    )
+    expect_error(
+        bam_single_upload_path(two),
+        "one BAM per run",
+        class = "MaMaMIAUploadError"
+    )
+})
+
 test_that("an unknown progress stage does not abort the analysis", {
     expect_silent(
         label <- bam_progress_label("metrics_done", list(n_windows = 10))

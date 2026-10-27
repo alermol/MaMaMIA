@@ -33,9 +33,10 @@ launching the dashboard.
 \description{
 \code{runMaMaMIA()} is the main entry point of the package and opens the
 BAM-first Shiny application. The app reads BAM headers, matches them to the
-configured species registry, stages the files in session temporary storage,
+configured species registry, stages the file in session temporary storage,
 and runs \code{\link[=analyzeBamInput]{analyzeBamInput()}} before handing the \code{BamAnalysisResult} to the
-introgression explorer of \code{\link[=exploreIntrogressions]{exploreIntrogressions()}}.
+introgression explorer of \code{\link[=exploreIntrogressions]{exploreIntrogressions()}}. The dashboard accepts
+one BAM per run; a multi-sample BAM is read through its \code{@RG SM} tags.
 }
 \details{
 The app reads its assembly registry from \code{config} or, when that is \code{NULL},
@@ -43,10 +44,10 @@ from the \code{MAMAMIA_CONFIG} environment variable (the ShinyProxy deployment
 path). A missing or invalid registry is rendered as a configuration error
 card rather than a crash.
 
-Uploaded BAMs are staged into a private per-session directory (symlinked
+The uploaded BAM is staged into a private per-session directory (symlinked
 for large files, copied for small files and when symlinks are unsupported)
 and indexed there. The source upload directory is never written to; the
-session directory and every staged BAM and CSI index are removed when the
+session directory, the staged BAM and its CSI index are removed when the
 session ends. GC index handles are process-wide and are not cleared at
 session end.
 

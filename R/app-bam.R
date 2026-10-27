@@ -2,11 +2,12 @@
 ##
 ## The app is deliberately thin: configuration, preflight, run orchestration
 ## and cohort export live here, while measurement, scoring, masking,
-## segmentation and calibration stay in the pipeline. Uploaded BAMs are staged by symlink into
-## a per-session directory before preflight, so the pipeline never writes an
-## index into the upload directory and the session can remove every staged
-## file and index when it ends. A bundled pre-computed example is available
-## without a BAM upload.
+## segmentation and calibration stay in the pipeline. The uploaded BAM is
+## staged by symlink into a per-session directory before preflight, so the
+## pipeline never writes an index into the upload directory and the session
+## can remove the staged file and index when it ends. The dashboard accepts one
+## BAM per run; a multi-sample BAM is read through its @RG SM tags. A bundled
+## pre-computed example is available without a BAM upload.
 
 ## Error taxonomy ------------------------------------------------------------
 
@@ -409,8 +410,35 @@ bam_max_cores <- function() {
     as.integer(cores)
 }
 
+#' Resolve the single uploaded BAM
+#'
+#' The dashboard analyses one BAM per run. A multi-sample BAM is still one
+#' file, so several rows from `input$bams` always mean several files and are
+#' rejected rather than silently truncated. The client already trims a
+#' multi-file drag-and-drop; this is the server-side contract.
+#'
+#' @param uploads The data frame Shiny stores in `input$bams`.
+#'
+#' @return A character vector with zero or one BAM path.
 #' @noRd
-
+bam_single_upload_path <- function(uploads) {
+    if (!is.data.frame(uploads) || !"datapath" %in% names(uploads)) {
+        return(character())
+    }
+    paths <- as.character(uploads$datapath)
+    paths <- paths[!is.na(paths) & nzchar(paths)]
+    if (length(paths) > 1L) {
+        .mamamia_error(
+            "MaMaMIAUploadError",
+            paste(
+                "The dashboard analyses one BAM per run;",
+                "%d files were supplied. A multi-sample BAM is one file."
+            ),
+            length(paths)
+        )
+    }
+    paths
+}
 
 ## BAM staging ---------------------------------------------------------------
 
@@ -1539,6 +1567,31 @@ bam_dashboard_css <- function() {
     "
 }
 
+#' Single-file BAM chooser
+#'
+#' The dashboard runs one BAM per analysis, so the control never offers a
+#' batch. `multiple = FALSE` removes multi-select from the native file picker;
+#' the launcher's drop guard trims a multi-file drag-and-drop to its first file
+#' and the server rejects a multi-file payload. A multi-sample BAM is a single
+#' file and remains supported.
+#'
+#' @return A `shiny.tag` containing the labelled file input.
+#' @noRd
+bam_single_file_input <- function() {
+    shiny::div(
+        class = "mamamia-upload",
+        shiny::fileInput(
+            "bams",
+            "BAM file",
+            multiple = FALSE,
+            accept = ".bam",
+            width = "100%",
+            buttonLabel = "Choose BAM file",
+            placeholder = "No BAM selected"
+        )
+    )
+}
+
 #' @noRd
 bam_sidebar_species_ui <- function(config, selection = NULL) {
     species_choices <- bam_species_choices(config)
@@ -1755,6 +1808,41 @@ bam_launcher_ui <- function(state) {
                     "  }, 0);",
                     "});"
                 )
+            )),
+            shiny::tags$script(shiny::HTML(
+                paste(
+                    "(function() {",
+                    "  var id = 'bams';",
+                    "  function onlyFirst(files) {",
+                    "    if (!files || files.length <= 1) return files;",
+                    "    var transfer = new DataTransfer();",
+                    "    transfer.items.add(files[0]);",
+                    "    return transfer.files;",
+                    "  }",
+                    "  function uploadInput(node) {",
+                    "    var zone = node && node.closest('.mamamia-upload');",
+                    "    if (!zone) return null;",
+                    "    var input = zone.querySelector('input[type=\"file\"]');",
+                    "    return input && input.id === id ? input : null;",
+                    "  }",
+                    "  document.addEventListener('change', function(event) {",
+                    "    var input = event.target;",
+                    "    if (!input || input.id !== id || !input.files) return;",
+                    "    if (input.files.length > 1) {",
+                    "      input.files = onlyFirst(input.files);",
+                    "    }",
+                    "  }, true);",
+                    "  document.addEventListener('drop', function(event) {",
+                    "    var input = uploadInput(event.target);",
+                    "    var files = event.dataTransfer && event.dataTransfer.files;",
+                    "    if (!input || !files || files.length <= 1) return;",
+                    "    event.preventDefault();",
+                    "    event.stopPropagation();",
+                    "    input.files = onlyFirst(files);",
+                    "    input.dispatchEvent(new Event('change', { bubbles: true }));",
+                    "  }, true);",
+                    "})();"
+                )
             ))
         ),
         gridlayout::grid_container(
@@ -1883,7 +1971,7 @@ bam_launcher_server <- function(state) {
                 return(shiny::p(
                     class = "text-muted small mb-2",
                     paste(
-                        "Upload a BAM; samples are detected from the @RG SM",
+                        "One BAM per run. Samples are detected from the @RG SM",
                         "tags in its header."
                     )
                 ))
@@ -1912,13 +2000,7 @@ bam_launcher_server <- function(state) {
 
         output$bam_upload_ui <- shiny::renderUI({
             upload_epoch()
-            shiny::fileInput(
-                "bams",
-                "BAM file",
-                multiple = FALSE,
-                accept = ".bam",
-                width = "100%"
-            )
+            bam_single_file_input()
         })
 
         shiny::observeEvent(input$example_data, {
@@ -1976,13 +2058,18 @@ bam_launcher_server <- function(state) {
         }, ignoreInit = TRUE)
 
         uploaded_paths <- shiny::reactive({
-            uploads <- input$bams
-            if (is.data.frame(uploads) && "datapath" %in% names(uploads)) {
-                paths <- as.character(uploads$datapath)
-                paths <- paths[!is.na(paths) & nzchar(paths)]
-                return(paths)
-            }
-            character()
+            tryCatch(
+                bam_single_upload_path(input$bams),
+                MaMaMIAUploadError = function(e) {
+                    log_line(conditionMessage(e))
+                    shiny::showNotification(
+                        conditionMessage(e),
+                        type = "error",
+                        duration = 10
+                    )
+                    character()
+                }
+            )
         })
 
         shiny::observeEvent(uploaded_paths(), {
@@ -2466,7 +2553,7 @@ bam_launcher_server <- function(state) {
             if (isTRUE(pf$empty)) {
                 return(data.frame(
                     status = paste(
-                        "Upload BAM files or select the bundled example",
+                        "Upload a BAM or select the bundled example",
                         "to see the preflight."
                     ),
                     stringsAsFactors = FALSE
@@ -2490,7 +2577,7 @@ bam_launcher_server <- function(state) {
                 return(shiny::p(
                     class = "text-muted",
                     paste(
-                        "Upload BAM files or select the bundled example",
+                        "Upload a BAM or select the bundled example",
                         "to detect an assembly."
                     )
                 ))
