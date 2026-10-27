@@ -9,8 +9,11 @@
 # one recipient species and one donor species; the same species can be used on
 # either side. Contigs are paired by chromosome group, taken from the optional
 # `group` field or from the first number in `name` (1A and 1R are both group
-# 1). Set `default_subgenome` for a polyploid species so the application does
-# not have to ask which subgenome to use; the user can still override it.
+# 1). The dashboard analyses every declared subgenome; `default_subgenome` is
+# only used by API calls that do not name a subgenome explicitly.
+#
+# `defaults.donor_aggregation` accepts mean, max or sum and supplies the
+# dashboard default; the sidebar exposes it under Advanced.
 #
 # Contig lengths are read from the gcrank index, not from this file.
 
@@ -23,6 +26,7 @@ defaults:
   exclude_flags: 1796      # unmapped + secondary + QC-fail + duplicate
   gc_mmap: true
   gc_validate_crc: false
+  donor_aggregation: max   # default; mean | max | sum, Advanced panel
 
 server:
   max_bams: 20

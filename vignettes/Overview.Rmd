@@ -58,7 +58,7 @@ defaults:
   exclude_flags: 1796          # unmapped + secondary + QC-fail + duplicate
   metric: breadth              # breadth | count | combined
   score: paired_log_ratio      # paired_log_ratio | donor_only
-  donor_aggregation: mean      # mean | max | sum
+  donor_aggregation: max       # mean | max | sum; default; Advanced panel
   mask:
     panel: null
     blacklist: null
@@ -166,11 +166,16 @@ y = log(lambda_donor + eps) - log(lambda_recipient + eps)
 ```
 
 where `lambda = -log(1 - breadth)` for `metric = "breadth"`. Recipient
-homoeologs are averaged within a group. Donor homoeologs are averaged, summed,
-or max-selected (`donor_aggregation`), which supports diploid, tetraploid,
-hexaploid and multi-donor designs. A single sample is GC-corrected with a
-natural spline and centred; a cohort uses median polish to remove the shared
-window effect and each sample's library/ploidy offset.
+homoeologs are averaged within a group. Donor homoeologs are max-selected by
+default: at each window the donor subgenome with the strongest
+donor/recipient log-ratio is used, so one strongly supported donor subgenome
+is not diluted by the other donor homoeologs. `mean` and `sum` remain
+available through the `donor_aggregation` setting; the registry supplies the
+default and the dashboard exposes it in the **Advanced** sidebar panel. This
+supports diploid, tetraploid, hexaploid and multi-donor designs. A single
+sample is GC-corrected with a natural spline and centred; a cohort uses median
+polish to remove the shared window effect and each sample's library/ploidy
+offset.
 
 `score = "donor_only"` is the CNV-robust fallback: it scores donor depth
 without the recipient denominator.
@@ -199,9 +204,10 @@ exploreIntrogressions(result)
 
 `writeCallsToBedpe()` writes one row per passing call with donor and recipient
 intervals, `score_mean`, `class`, `confidence`, `method` and `mode`.
-`exploreIntrogressions()` opens the dashboard: chromosome-group, class,
-confidence and width filters, a score profile with called intervals, a call
-table, and a BEDPE export.
+`exploreIntrogressions()` opens the dashboard over every subgenome declared
+for the species pair: chromosome-group, class, confidence and width filters, a
+vertical karyotype with score-heatmap and call-map modes, a score profile with
+called intervals, a call table, and a BEDPE export.
 
 # Session information
 

@@ -390,6 +390,8 @@
 #'   example `c(A = 2, B = 2, D = 2)`.
 #' @param metric `"breadth"`, `"count"` or `"combined"`.
 #' @param score `"paired_log_ratio"` or `"donor_only"`.
+#' @param donor_aggregation `"mean"`, `"max"` or `"sum"`. Defaults to the
+#'   registry value; the dashboard exposes it under **Advanced**.
 #' @param mask Optional panel `MaskTable`/TSV path, or a list with `panel`,
 #'   `blacklist`, `physical_fallback_mb` and `recurrence_threshold`.
 #' @param calibration Optional list with `length_bins_mb`, `fdr`, `floors`,
@@ -427,6 +429,7 @@ analyzeBamInput <- function(bam_paths,
                             sample_composition = NULL,
                             metric = NULL,
                             score = NULL,
+                            donor_aggregation = NULL,
                             mask = NULL,
                             calibration = NULL,
                             windows_per_chromosome = 1000L,
@@ -453,6 +456,19 @@ analyzeBamInput <- function(bam_paths,
     }
     score <- if (is.null(score)) defaults$score else {
         match.arg(score, c("paired_log_ratio", "donor_only"))
+    }
+    donor_aggregation <- if (is.null(donor_aggregation)) {
+        defaults$donor_aggregation
+    } else {
+        donor_aggregation
+    }
+    if (!is.character(donor_aggregation) ||
+        length(donor_aggregation) != 1L ||
+        is.na(donor_aggregation) || !nzchar(donor_aggregation) ||
+        !donor_aggregation %in% c("mean", "max", "sum")) {
+        .analysis_error(
+            "`donor_aggregation` must be one of: mean, max, sum"
+        )
     }
     cores <- .pipeline_integer(cores, "cores", 1L, 256L)
     old_cores <- getOption("MaMaMIA.cores")
@@ -551,7 +567,7 @@ analyzeBamInput <- function(bam_paths,
         metrics,
         mode = mode,
         metric = metric,
-        donor_aggregation = defaults$donor_aggregation,
+        donor_aggregation = donor_aggregation,
         recipient_aggregation = defaults$recipient_aggregation,
         sample_composition = composition,
         gc_correction = TRUE,
@@ -671,7 +687,7 @@ analyzeBamInput <- function(bam_paths,
         exclude_flags = exclude_flags,
         metric = metric,
         score = score,
-        donor_aggregation = defaults$donor_aggregation,
+        donor_aggregation = donor_aggregation,
         sample_composition = composition,
         mask = masks,
         calibration = calibrated$calibration,

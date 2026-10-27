@@ -32,7 +32,7 @@ test_that("the tiny fixture is a valid configuration", {
     expect_identical(config$version, 2L)
     expect_identical(config$defaults$metric, "breadth")
     expect_identical(config$defaults$score, "paired_log_ratio")
-    expect_identical(config$defaults$donor_aggregation, "mean")
+    expect_identical(config$defaults$donor_aggregation, "max")
     expect_identical(config$defaults$exclude_flags, 1796L)
     expect_identical(
         config$defaults$calibration$fdr, 0.01

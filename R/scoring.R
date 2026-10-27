@@ -260,7 +260,9 @@
 #' @param metrics A `WindowMetrics` data frame from [buildWindowMetrics()].
 #' @param mode `"single"` or `"multi"`.
 #' @param metric `"breadth"`, `"count"` or `"combined"`.
-#' @param donor_aggregation `"mean"`, `"max"` or `"sum"`.
+#' @param donor_aggregation `"mean"`, `"max"` or `"sum"`. Defaults to
+#'   `"max"`, so one strongly supported donor subgenome is not diluted by the
+#'   other donor homoeologs.
 #' @param recipient_aggregation Only `"mean"` is supported.
 #' @param sample_composition Optional named copy-number vector for recipient
 #'   subgenomes, for example `c(A = 2, B = 2, D = 2)`.
@@ -273,7 +275,7 @@ scoreIntrogression <- function(
     metrics,
     mode = c("single", "multi"),
     metric = c("breadth", "count", "combined"),
-    donor_aggregation = c("mean", "max", "sum"),
+    donor_aggregation = "max",
     recipient_aggregation = "mean",
     sample_composition = NULL,
     gc_correction = TRUE,

@@ -37,7 +37,8 @@
 #' BEDPE download carrying the `sample` column.
 #'
 #' Dashboard packages are optional MaMaMIA dependencies. Install them with
-#' `install.packages(c("shiny", "bslib", "shinyWidgets", "DT"))` before calling
+#' `install.packages(c("shiny", "bslib", "shinyWidgets", "DT", "htmlwidgets"))`
+#' before calling
 #' this function.
 #'
 #' @param config Optional assembly registry: a path to a YAML configuration or

@@ -24,6 +24,7 @@ DT = "*"
 bslib = "*"
 gridlayout = { git = "rstudio/gridlayout" }
 htmltools = "*"
+htmlwidgets = "*"
 knitr = ">=1.51"
 rmarkdown = ">=2.31"
 roxygen2 = "*"

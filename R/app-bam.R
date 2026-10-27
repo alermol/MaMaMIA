@@ -312,25 +312,31 @@ bam_species_choices <- function(config) {
     )
 }
 
-#' Resolve the subgenome used for a species selector
+#' Every subgenome declared for a species
 #'
-#' Falls back to the species default (or its first subgenome) when the current
-#' input is missing or belongs to a previously selected species.
+#' The dashboard never preselects a subgenome: it analyses all of them in one
+#' assembly. The order follows the registry so labels read A, B, D or S as the
+#' config declares them.
 #' @noRd
-bam_effective_subgenome <- function(species, requested) {
-    available <- unique(as.character(species$contigs$subgenome))
-    if (length(available) == 0L) {
-        return(NULL)
+bam_species_subgenomes <- function(species) {
+    if (is.null(species) || is.null(species$contigs)) {
+        return(character())
     }
-    if (!is.null(requested) && length(requested) == 1L &&
-        !is.na(requested) && requested %in% available) {
-        return(as.character(requested))
-    }
-    if (!is.null(species$default_subgenome) &&
-        species$default_subgenome %in% available) {
-        return(species$default_subgenome)
-    }
-    available[[1L]]
+    unique(as.character(species$contigs$subgenome))
+}
+
+#' Resolve a species pair over all of its subgenomes
+#' @noRd
+bam_resolve_species_pair <- function(config, recipient, donor) {
+    recipient_species <- config$species[[recipient]]
+    donor_species <- config$species[[donor]]
+    resolveSpeciesAssembly(
+        config,
+        donor = donor,
+        recipient = recipient,
+        donor_subgenomes = bam_species_subgenomes(donor_species),
+        recipient_subgenomes = bam_species_subgenomes(recipient_species)
+    )
 }
 
 ## Sidebar choices -----------------------------------------------------------
@@ -905,13 +911,26 @@ bam_run_parameters <- function(input, config, samples) {
     cores <- bam_integer(
         min(30L, bam_max_cores()), "Cores", 1L, bam_max_cores()
     )
+    donor_aggregation <- input$donor_aggregation
+    if (is.null(donor_aggregation) || length(donor_aggregation) != 1L ||
+        is.na(donor_aggregation) || !nzchar(donor_aggregation)) {
+        donor_aggregation <- defaults$donor_aggregation
+    }
+    donor_aggregation <- as.character(donor_aggregation)
+    if (!donor_aggregation %in% c("mean", "max", "sum")) {
+        .mamamia_error(
+            "MaMaMIAAnalysisError",
+            "`donor_aggregation` must be one of: mean, max, sum"
+        )
+    }
     list(
         resolution = resolution,
         mapq = mapq,
         exclude_flags = exclude_flags,
         cores = cores,
         metric = defaults$metric,
-        score = defaults$score
+        score = defaults$score,
+        donor_aggregation = donor_aggregation
     )
 }
 
@@ -1176,12 +1195,10 @@ bam_coverage_warnings <- function(result, near_zero = 1) {
 
 #' Cache completed analyses for one Shiny session
 #'
-#' Switching a subgenome back to one that was already analysed should reuse
-#' that result instead of repeating the whole pipeline for every sample. A
-#' first run also precomputes the other valid subgenome combinations, so the
-#' cache can grow beyond its initial three entries; `reserve()` raises the
-#' budget before those results arrive. `get()` returns `NULL` on a miss;
-#' `set()` evicts the oldest entry once the current limit is reached.
+#' Returning to an input that was already analysed should reuse that result
+#' instead of repeating the whole pipeline. `get()` returns `NULL` on a miss;
+#' `set()` evicts the oldest entry once the current limit is reached;
+#' `reserve()` raises the budget before a run adds its entry.
 #'
 #' @noRd
 bam_result_cache <- function(max_entries = 3L) {
@@ -1216,8 +1233,8 @@ bam_result_cache <- function(max_entries = 3L) {
             }
             invisible(NULL)
         },
-        ## Precomputing all subgenomes can produce more results than the
-        ## default session budget; grow the budget before those results arrive.
+        ## A run can need more entries than the default session budget; grow
+        ## the budget before the result arrives.
         reserve = function(n) {
             n <- suppressWarnings(as.integer(n))
             if (length(n) == 1L && !is.na(n) && n > max_entries) {
@@ -1232,14 +1249,14 @@ bam_result_cache <- function(max_entries = 3L) {
 
 #' Key for a completed analysis
 #'
-#' Use the resolved assembly key rather than the raw species/subgenome
-#' widgets: an invalid widget value that falls back to the species default
-#' must not invalidate a result that is still valid. The key also covers the
-#' staged BAM paths, sample names and every registry default that reaches
-#' [analyzeBamInput()] and changes the result.
+#' Use the resolved assembly key rather than the raw species selectors: an
+#' invalid widget value that falls back to the species default must not
+#' invalidate a result that is still valid. The key also covers the staged BAM
+#' paths, sample names and every registry default or Advanced control that
+#' reaches [analyzeBamInput()] and changes the result.
 #'
 #' @noRd
-bam_analysis_key <- function(preflight, resolution) {
+bam_analysis_key <- function(preflight, resolution, donor_aggregation = NULL) {
     if (!isTRUE(preflight$ok) || is.null(preflight$table) ||
         !all(c("path", "sample") %in% names(preflight$table))) {
         return(NULL)
@@ -1247,6 +1264,10 @@ bam_analysis_key <- function(preflight, resolution) {
     defaults <- preflight$config$defaults
     if (is.null(defaults)) {
         defaults <- list()
+    }
+    if (is.null(donor_aggregation) || length(donor_aggregation) != 1L ||
+        is.na(donor_aggregation) || !nzchar(donor_aggregation)) {
+        donor_aggregation <- defaults$donor_aggregation
     }
     samples <- unique(as.character(preflight$table$sample))
     resolution_key <- tryCatch(
@@ -1263,7 +1284,7 @@ bam_analysis_key <- function(preflight, resolution) {
         exclude_flags = as.integer(defaults$exclude_flags),
         metric = as.character(defaults$metric),
         score = as.character(defaults$score),
-        donor_aggregation = as.character(defaults$donor_aggregation)
+        donor_aggregation = as.character(donor_aggregation)
     ))
 }
 
@@ -1541,6 +1562,23 @@ bam_dashboard_css <- function() {
         margin-top: .4rem;
         font-size: .95rem;
     }
+    .mamamia-karyotype {
+        height: 100%;
+        min-height: 0;
+    }
+    .mamamia-karyotype .shiny-input-container {
+        width: auto;
+        margin-bottom: 0;
+    }
+    .mamamia-karyotype .control-label {
+        margin-bottom: 0;
+    }
+    .mamamia-karyotype .radio-inline {
+        margin-right: .75rem;
+    }
+    .mamamia-karyotype .html-widget {
+        min-height: 0;
+    }
     .mamamia-sidebar .form-check {
         margin-bottom: .25rem;
         min-height: 1.25rem;
@@ -1629,13 +1667,12 @@ bam_sidebar_species_ui <- function(config, selection = NULL) {
             choices = species_choices,
             selected = recipient
         ),
-        shiny::uiOutput("recipient_subgenome_ui"),
         shiny::selectInput(
             "donor_species", "Donor species",
             choices = species_choices,
             selected = donor
         ),
-        shiny::uiOutput("donor_subgenome_ui"),
+        shiny::uiOutput("subgenome_summary_ui"),
         shiny::actionButton(
             "swap_species", "Swap donor and recipient",
             class = "btn-sm btn-outline-secondary",
@@ -1663,6 +1700,28 @@ bam_sidebar_details_ui <- function(config) {
             bslib::accordion_panel(
                 "Assembly",
                 shiny::uiOutput("species_ui")
+            ),
+            bslib::accordion_panel(
+                "Advanced",
+                shiny::selectInput(
+                    "donor_aggregation", "Donor aggregation",
+                    choices = c(
+                        "Max" = "max",
+                        "Mean" = "mean",
+                        "Sum" = "sum"
+                    ),
+                    selected = defaults$donor_aggregation
+                ),
+                shiny::p(
+                    class = "text-muted small mb-0",
+                    sprintf(
+                        paste(
+                            "How donor subgenomes are combined per window.",
+                            "Registry default: %s."
+                        ),
+                        defaults$donor_aggregation
+                    )
+                )
             )
         ),
         shiny::div(
@@ -1691,6 +1750,12 @@ bam_results_ui <- function() {
         ),
         bslib::navset_card_tab(
             id = ns("tabs"),
+            bslib::nav_panel(
+                "Karyotype",
+                explorer_karyotype_ui(
+                    "explorer", height = "calc(100vh - 390px)"
+                )
+            ),
             bslib::nav_panel(
                 "Score profile",
                 shiny::plotOutput(
@@ -2140,10 +2205,6 @@ bam_launcher_server <- function(state) {
             if (isTRUE(example_mode())) {
                 return(bam_example_species_selection()$recipient)
             }
-            swapped <- pending_subgenomes()
-            if (!is.null(swapped)) {
-                return(swapped$recipient_species)
-            }
             value <- input$recipient_species
             if (is.null(value) || length(value) != 1L || is.na(value) ||
                 !value %in% species_keys) {
@@ -2155,10 +2216,6 @@ bam_launcher_server <- function(state) {
             if (isTRUE(example_mode())) {
                 return(bam_example_species_selection()$donor)
             }
-            swapped <- pending_subgenomes()
-            if (!is.null(swapped)) {
-                return(swapped$donor_species)
-            }
             value <- input$donor_species
             if (is.null(value) || length(value) != 1L || is.na(value) ||
                 !value %in% species_keys) {
@@ -2167,30 +2224,15 @@ bam_launcher_server <- function(state) {
             as.character(value)
         })
 
-        ## Subgenome choices to apply after swapping the two species. They are
-        ## keyed by species so they never leak into an unrelated selection.
-        pending_subgenomes <- shiny::reactiveVal(NULL)
         shiny::observeEvent(input$swap_species, {
             if (!species_available) {
                 return()
             }
             recipient_key <- recipient_species()
             donor_key <- donor_species()
-            recipient <- config$species[[recipient_key]]
-            donor <- config$species[[donor_key]]
-            if (is.null(recipient) || is.null(donor)) {
+            if (is.null(recipient_key) || is.null(donor_key)) {
                 return()
             }
-            pending_subgenomes(list(
-                recipient_species = donor_key,
-                recipient_subgenome = bam_effective_subgenome(
-                    donor, input$donor_subgenome
-                ),
-                donor_species = recipient_key,
-                donor_subgenome = bam_effective_subgenome(
-                    recipient, input$recipient_subgenome
-                )
-            ))
             shiny::updateSelectInput(
                 session, "recipient_species", selected = donor_key
             )
@@ -2199,105 +2241,34 @@ bam_launcher_server <- function(state) {
             )
         })
 
-        ## A manual species change ends the swapped state; the selects updated
-        ## by the swap itself match the pending values and keep it.
-        shiny::observeEvent(
-            list(input$recipient_species, input$donor_species),
-            {
-                swapped <- pending_subgenomes()
-                if (is.null(swapped)) {
-                    return()
-                }
-                if (!identical(input$recipient_species, swapped$recipient_species) ||
-                    !identical(input$donor_species, swapped$donor_species)) {
-                    pending_subgenomes(NULL)
-                }
-            },
-            ignoreInit = TRUE
-        )
-        shiny::observeEvent(input$recipient_subgenome, {
-            swapped <- pending_subgenomes()
-            if (!is.null(swapped) &&
-                identical(recipient_species(), swapped$recipient_species) &&
-                !identical(input$recipient_subgenome,
-                    swapped$recipient_subgenome)) {
-                pending_subgenomes(NULL)
-            }
-        }, ignoreInit = TRUE)
-        shiny::observeEvent(input$donor_subgenome, {
-            swapped <- pending_subgenomes()
-            if (!is.null(swapped) &&
-                identical(donor_species(), swapped$donor_species) &&
-                !identical(input$donor_subgenome, swapped$donor_subgenome)) {
-                pending_subgenomes(NULL)
-            }
-        }, ignoreInit = TRUE)
-
-        effective_subgenome <- function(role) {
-            if (isTRUE(example_mode())) {
-                selection <- bam_example_species_selection()
-                return(selection[[paste0(role, "_subgenome")]])
-            }
-            swapped <- pending_subgenomes()
-            if (!is.null(swapped) &&
-                identical(
-                    swapped[[paste0(role, "_species")]],
-                    if (identical(role, "recipient")) {
-                        recipient_species()
-                    } else {
-                        donor_species()
-                    }
-                )) {
-                return(swapped[[paste0(role, "_subgenome")]])
-            }
-            input[[paste0(role, "_subgenome")]]
-        }
-
-        species_subgenome_ui <- function(species_key, input_id, label, role) {
+        output$subgenome_summary_ui <- shiny::renderUI({
             species_config <- if (isTRUE(example_mode())) {
                 bam_example_config()
             } else {
                 config
             }
-            species <- species_config$species[[species_key]]
-            if (is.null(species)) {
-                return(NULL)
-            }
-            available <- unique(as.character(species$contigs$subgenome))
-            if (length(available) <= 1L) {
-                return(NULL)
-            }
-            pending <- pending_subgenomes()
-            current <- NULL
             if (isTRUE(example_mode())) {
                 selection <- bam_example_species_selection()
-                current <- selection[[paste0(role, "_subgenome")]]
+                recipient_key <- selection$recipient
+                donor_key <- selection$donor
+            } else {
+                recipient_key <- recipient_species()
+                donor_key <- donor_species()
             }
-            if (!is.null(pending) &&
-                identical(pending[[paste0(role, "_species")]], species_key)) {
-                current <- pending[[paste0(role, "_subgenome")]]
+            recipient <- species_config$species[[recipient_key]]
+            donor <- species_config$species[[donor_key]]
+            if (is.null(recipient) || is.null(donor)) {
+                return(NULL)
             }
-            if (is.null(current) || length(current) != 1L || is.na(current) ||
-                !current %in% available) {
-                current <- shiny::isolate(input[[input_id]])
-            }
-            if (is.null(current) || length(current) != 1L || is.na(current) ||
-                !current %in% available) {
-                current <- bam_effective_subgenome(species, NULL)
-            }
-            shiny::selectInput(
-                input_id, label, choices = available, selected = current
-            )
-        }
-        output$recipient_subgenome_ui <- shiny::renderUI({
-            species_subgenome_ui(
-                recipient_species(), "recipient_subgenome",
-                "Recipient subgenome", "recipient"
-            )
-        })
-        output$donor_subgenome_ui <- shiny::renderUI({
-            species_subgenome_ui(
-                donor_species(), "donor_subgenome", "Donor subgenome", "donor"
+            recipient_subgenomes <- bam_species_subgenomes(recipient)
+            donor_subgenomes <- bam_species_subgenomes(donor)
+            shiny::p(
+                class = "text-muted small mb-2",
+                sprintf(
+                    "All subgenomes: recipient %s; donor %s.",
+                    paste(recipient_subgenomes, collapse = "+"),
+                    paste(donor_subgenomes, collapse = "+")
+                )
             )
         })
 
@@ -2339,17 +2310,7 @@ bam_launcher_server <- function(state) {
                 return(empty)
             }
             resolved <- tryCatch(
-                resolveSpeciesAssembly(
-                    config,
-                    donor = donor_key,
-                    recipient = recipient_key,
-                    donor_subgenome = bam_effective_subgenome(
-                        donor, effective_subgenome("donor")
-                    ),
-                    recipient_subgenome = bam_effective_subgenome(
-                        recipient, effective_subgenome("recipient")
-                    )
-                ),
+                bam_resolve_species_pair(config, recipient_key, donor_key),
                 error = function(e) e
             )
             if (inherits(resolved, "condition")) {
@@ -2670,13 +2631,14 @@ bam_launcher_server <- function(state) {
         })
 
         ## A completed analysis is cached under its resolved assembly and run
-        ## parameters. Switching back to a subgenome that was already analysed
+        ## parameters. Returning to a combination that was already analysed
         ## restores that result instead of clearing it and recomputing every
         ## sample. A combination that has never been run still needs one run.
         analysis_key <- shiny::reactive({
             bam_analysis_key(
                 preflight_state(),
-                input$resolution
+                input$resolution,
+                input$donor_aggregation
             )
         })
 
@@ -2840,20 +2802,20 @@ bam_launcher_server <- function(state) {
                 return()
             }
             log_line(sprintf(
-                "Starting analysis: %d sample%s, %s windows/chromosome, metric '%s', score '%s'.",
+                paste(
+                    "Starting analysis: %d sample%s, %s windows/chromosome,",
+                    "metric '%s', score '%s', donor aggregation '%s'."
+                ),
                 length(samples),
                 if (length(samples) == 1L) "" else "s",
                 format(params$resolution, big.mark = ",", scientific = FALSE),
-                params$metric, params$score
+                params$metric, params$score, params$donor_aggregation
             ))
 
-            extra_jobs <- list()
-            result_cache$reserve(
-                result_cache$size() + 1L + length(extra_jobs)
-            )
+            result_cache$reserve(result_cache$size() + 1L)
 
             stages_per_run <- length(bam_progress_stages(length(samples)))
-            total_steps <- stages_per_run * (1L + length(extra_jobs))
+            total_steps <- stages_per_run
             run_analysis <- function(assembly_config, assembly_key, progress) {
                 if (isTRUE(pf$example)) {
                     example_result <- bam_example_result(params$resolution)
@@ -2869,6 +2831,7 @@ bam_launcher_server <- function(state) {
                     windows_per_chromosome = params$resolution,
                     metric = params$metric,
                     score = params$score,
+                    donor_aggregation = params$donor_aggregation,
                     mapq = params$mapq,
                     exclude_flags = params$exclude_flags,
                     cores = params$cores,
@@ -2947,8 +2910,8 @@ bam_launcher_server <- function(state) {
         })
 
         ## The sample selector belongs to the main result area: it controls the
-        ## score profile, call table and exports. It is only useful when the
-        ## input BAM contains several @RG SM samples.
+        ## karyotype, score profile, call table and exports. It is only useful
+        ## when the input BAM contains several @RG SM samples.
         output$sample_selector_ui <- shiny::renderUI({
             samples <- result_samples()
             if (length(samples) <= 1L) {

@@ -32,7 +32,7 @@
         gc_validate_crc = FALSE,
         metric = "breadth",
         score = "paired_log_ratio",
-        donor_aggregation = "mean",
+        donor_aggregation = "max",
         recipient_aggregation = "mean",
         mask = list(
             panel = NULL,

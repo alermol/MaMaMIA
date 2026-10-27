@@ -29,8 +29,13 @@
   `count * read_length / length`. No covidx index or binary is used.
 * **Ploidy-agnostic scoring.** Assemblies select one or more recipient and
   donor subgenomes. The paired donor/recipient log-ratio averages recipient
-  homoeologs and supports `mean`, `max` and `sum` donor aggregation. A
-  donor-only fallback is available for CNV-rich material.
+  homoeologs and supports `mean`, `max` and `sum` donor aggregation. Donor
+  aggregation now defaults to `max`: at each window the donor subgenome with
+  the strongest donor/recipient log-ratio is used, so a single-subgenome
+  signal is not diluted by the other donor homoeologs. The registry supplies
+  the default (`defaults.donor_aggregation`); the dashboard exposes the
+  setting in the **Advanced** sidebar panel. A donor-only fallback is
+  available for CNV-rich material.
 * **GC correction.** A single sample uses a natural spline and centring; a
   cohort uses median polish. The vendored gcrank library remains the only GC
   backend.
@@ -47,6 +52,16 @@
   file picker has no `multiple` attribute, a drag-and-drop guard keeps only
   the first dropped file, and the server rejects a multi-file payload with a
   message instead of silently ignoring the extra files.
+* Subgenome selectors are gone. The app resolves every subgenome declared for
+  the selected species — for example A+B+D versus S — and analyses them in one
+  assembly, with a read-only summary under **Assembly**.
+* The main tab is now a vertical, interactive karyotype built with
+  `htmlwidgets`. It shows the recipient chromosomes by group, keeps a deleted
+  recipient chromosome as a grey dashed bar, and adds donor chromosomes (one
+  shape per homolog copy) only when a passing call covers at least 95% of the
+  group. A toggle switches between the introgression-score heatmap and the
+  coloured call map; clicking a chromosome filters its group and clicking the
+  background clears the filter. The score profile remains as a second tab.
 
 ## Validation
 

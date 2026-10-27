@@ -8,7 +8,7 @@ scoreIntrogression(
   metrics,
   mode = c("single", "multi"),
   metric = c("breadth", "count", "combined"),
-  donor_aggregation = c("mean", "max", "sum"),
+  donor_aggregation = "max",
   recipient_aggregation = "mean",
   sample_composition = NULL,
   gc_correction = TRUE,
@@ -22,7 +22,9 @@ scoreIntrogression(
 
 \item{metric}{\code{"breadth"}, \code{"count"} or \code{"combined"}.}
 
-\item{donor_aggregation}{\code{"mean"}, \code{"max"} or \code{"sum"}.}
+\item{donor_aggregation}{\code{"mean"}, \code{"max"} or \code{"sum"}. Defaults to
+\code{"max"}, so one strongly supported donor subgenome is not diluted by the
+other donor homoeologs.}
 
 \item{recipient_aggregation}{Only \code{"mean"} is supported.}
 

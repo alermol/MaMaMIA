@@ -66,7 +66,8 @@ and, for a cohort, a per-sample selector, a cohort summary and a combined
 BEDPE download carrying the \code{sample} column.
 
 Dashboard packages are optional MaMaMIA dependencies. Install them with
-\code{install.packages(c("shiny", "bslib", "shinyWidgets", "DT"))} before calling
+\code{install.packages(c("shiny", "bslib", "shinyWidgets", "DT", "htmlwidgets"))}
+before calling
 this function.
 }
 \examples{

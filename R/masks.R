@@ -110,7 +110,7 @@
 buildPanelMask <- function(panel_metrics, z = 0.5,
                            recurrence_threshold = 0.4, output = NULL,
                            metric = "breadth",
-                           donor_aggregation = "mean") {
+                           donor_aggregation = "max") {
     if (!is.data.frame(panel_metrics) || nrow(panel_metrics) == 0L) {
         .mask_error("`panel_metrics` must be a non-empty WindowMetrics table")
     }

@@ -1,7 +1,9 @@
 ## The introgression explorer: score profiles, calls, filters and BEDPE
 ## export.
 
-dashboard_packages <- c("bslib", "DT", "shiny", "shinyWidgets")
+dashboard_packages <- c(
+    "bslib", "DT", "htmltools", "htmlwidgets", "shiny", "shinyWidgets"
+)
 
 require_dashboard_packages <- function() {
     missing <- dashboard_packages[
@@ -139,6 +141,33 @@ explorer_export_ui <- function(id) {
     )
 }
 
+explorer_karyotype_ui <- function(id, height = "calc(100vh - 360px)") {
+    ns <- shiny::NS(id)
+    shiny::div(
+        class = "mamamia-karyotype",
+        shiny::div(
+            style = paste(
+                "display:flex; flex-wrap:wrap; align-items:center;",
+                "gap:.75rem; padding:.2rem .3rem .1rem;"
+            ),
+            shiny::radioButtons(
+                ns("karyotype_mode"), "Plot",
+                choices = c("Heatmap" = "heatmap", "Calls" = "calls"),
+                selected = "heatmap", inline = TRUE
+            ),
+            shiny::p(
+                class = "text-muted small",
+                style = "margin:0;",
+                paste(
+                    "Click a chromosome to filter its group;",
+                    "click the background to clear."
+                )
+            )
+        ),
+        mamamia_karyotype_output(ns("karyotype"), height = height)
+    )
+}
+
 explorer_controls_ui <- function(id) {
     shiny::tagList(
         explorer_view_filters_ui(id),
@@ -152,6 +181,10 @@ explorer_results_ui <- function(id) {
     ns <- shiny::NS(id)
     bslib::navset_card_tab(
         id = ns("tabs"),
+        bslib::nav_panel(
+            "Karyotype",
+            explorer_karyotype_ui(id, height = "calc(100vh - 360px)")
+        ),
         bslib::nav_panel(
             "Score profile",
             shiny::plotOutput(ns("score_plot"), height = "calc(100vh - 280px)")
@@ -213,6 +246,26 @@ explorer_server <- function(id, result, sample = NULL) {
                 choices = groups, selected = groups
             )
         }, ignoreNULL = TRUE)
+
+        shiny::observeEvent(input$karyotype_click, {
+            clicked <- input$karyotype_click
+            group <- clicked$group
+            x <- scores()
+            if (is.null(x) || nrow(x) == 0L) {
+                return()
+            }
+            groups <- sort(unique(as.character(x$group)))
+            if (is.null(group) || length(group) != 1L || is.na(group) ||
+                !nzchar(group)) {
+                shinyWidgets::updatePickerInput(
+                    session, "groups", selected = groups
+                )
+            } else if (group %in% groups) {
+                shinyWidgets::updatePickerInput(
+                    session, "groups", selected = group
+                )
+            }
+        }, ignoreInit = TRUE)
 
         visible_calls <- shiny::reactive({
             x <- calls()
@@ -289,6 +342,32 @@ explorer_server <- function(id, result, sample = NULL) {
             explorer_score_plot(x, visible_calls())
         })
 
+        output$karyotype <- render_mamamia_karyotype({
+            mode <- input$karyotype_mode
+            if (length(mode) != 1L || is.na(mode) ||
+                !mode %in% c("heatmap", "calls")) {
+                mode <- "heatmap"
+            }
+            res <- result_value()
+            if (is.null(res)) {
+                return(mamamia_karyotype(list(
+                    mode = mode,
+                    sample = "",
+                    score_limit = 0.5,
+                    palette = karyotype_palette(),
+                    groups = list(),
+                    message = "Run the analysis to plot"
+                )))
+            }
+            mamamia_karyotype(karyotype_payload(
+                res,
+                sample = sample_value(),
+                mode = mode,
+                calls = visible_calls(),
+                selected_groups = input$groups
+            ))
+        })
+
         output$calls <- DT::renderDT({
             shiny::validate(
                 shiny::need(!is.null(result_value()), "Run the analysis to list calls")
@@ -347,8 +426,9 @@ explorer_server <- function(id, result, sample = NULL) {
 #'
 #' Opens a Shiny application for a `BamAnalysisResult` from
 #' [analyzeBamInput()]. The dashboard offers chromosome-group, class,
-#' confidence and width filters, a score profile with called intervals, a
-#' sortable call table and a BEDPE export of the selected calls.
+#' confidence and width filters, a vertical karyotype with a score heatmap or
+#' a call map, a score profile with called intervals, a sortable call table and
+#' a BEDPE export of the selected calls.
 #'
 #' @param result A `BamAnalysisResult`.
 #' @param host Host passed to [shiny::runApp()].

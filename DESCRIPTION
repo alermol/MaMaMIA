@@ -36,6 +36,7 @@ Suggests:
     DT,
     gridlayout (>= 0.2.1),
     htmltools,
+    htmlwidgets,
     knitr (>= 1.51),
     rmarkdown (>= 2.31),
     roxygen2,

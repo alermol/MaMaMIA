@@ -62,7 +62,7 @@ defaults:
   exclude_flags: 1796      # unmapped + secondary + QC-fail + duplicate
   metric: breadth
   score: paired_log_ratio
-  donor_aggregation: mean
+  donor_aggregation: max   # default; mean | max | sum, Advanced panel
 
 server:
   max_bams: 30
@@ -152,10 +152,14 @@ lambda = count * read_length / length         # metric = "count"
 y      = log(lambda_d + eps) - log(lambda_r + eps)
 ```
 
-Recipient homoeologs are averaged. Donor homoeologs are averaged, summed, or
-max-selected. A single sample is GC-corrected with a natural spline and
-centred; a cohort uses median polish. `score = "donor_only"` is the CNV-robust
-fallback.
+Recipient homoeologs are averaged. Donor homoeologs are max-selected by
+default: at each window the donor subgenome with the strongest donor/recipient
+log-ratio is used, so one strongly supported donor subgenome is not diluted by
+the other donor homoeologs. `mean` and `sum` remain available in the registry
+(`defaults.donor_aggregation`); the dashboard exposes the setting in the
+**Advanced** sidebar panel. A single sample is GC-corrected with a natural
+spline and centred; a cohort uses median polish. `score = "donor_only"` is the
+CNV-robust fallback.
 
 ### Ploidy
 
@@ -213,8 +217,10 @@ runMaMaMIA(config = "assemblies.yml")
 exploreIntrogressions(result)
 ```
 
-The dashboard offers chromosome-group, class, confidence and width filters, a
-score profile with called intervals, a call table and a BEDPE export.
+The dashboard analyses every subgenome declared for the selected species and
+offers chromosome-group, class, confidence and width filters. The main tab is
+a vertical karyotype with a score heatmap or call-map mode; a score profile,
+call table and BEDPE export follow.
 
 ## Validation
 

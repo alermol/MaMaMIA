@@ -11,8 +11,12 @@ test_that("bam_run_parameters() resolves the run controls", {
     expect_identical(params$resolution, 100L)
     expect_identical(params$metric, config$defaults$metric)
     expect_identical(params$score, config$defaults$score)
+    expect_identical(
+        params$donor_aggregation, config$defaults$donor_aggregation
+    )
     expect_named(params, c(
-        "resolution", "mapq", "exclude_flags", "cores", "metric", "score"
+        "resolution", "mapq", "exclude_flags", "cores", "metric", "score",
+        "donor_aggregation"
     ))
 })
 
@@ -42,6 +46,82 @@ test_that("the upload path helper rejects several files", {
         "one BAM per run",
         class = "MaMaMIAUploadError"
     )
+})
+
+test_that("donor aggregation defaults from the registry and is set under Advanced", {
+    config <- readMaMaMIAConfig(
+        system.file("extdata", "bam-demo", "assemblies.yml",
+            package = "MaMaMIA")
+    )
+    expect_identical(config$defaults$donor_aggregation, "max")
+    defaults <- bam_run_parameters(
+        list(resolution = 100), config, samples = "demo-sample"
+    )
+    expect_identical(defaults$donor_aggregation, "max")
+    meaned <- bam_run_parameters(
+        list(resolution = 100, donor_aggregation = "mean"),
+        config,
+        samples = "demo-sample"
+    )
+    expect_identical(meaned$donor_aggregation, "mean")
+    expect_error(
+        bam_run_parameters(
+            list(resolution = 100, donor_aggregation = "median"),
+            config,
+            samples = "demo-sample"
+        ),
+        "donor_aggregation"
+    )
+    html <- as.character(bam_sidebar_details_ui(config))
+    expect_match(html, 'id="donor_aggregation"', fixed = TRUE)
+    expect_match(html, "Advanced", fixed = TRUE)
+})
+
+test_that("the analysis key changes with the donor aggregation", {
+    config <- readMaMaMIAConfig(
+        system.file("extdata", "bam-demo", "assemblies.yml",
+            package = "MaMaMIA")
+    )
+    preflight <- list(
+        ok = TRUE,
+        table = data.frame(
+            path = "demo.bam", sample = "demo-sample",
+            stringsAsFactors = FALSE
+        ),
+        assembly = "triticum_like__A__secale_like__R",
+        config = config
+    )
+    max_key <- bam_analysis_key(preflight, 100, "max")
+    mean_key <- bam_analysis_key(preflight, 100, "mean")
+    expect_true(is.character(max_key) && nzchar(max_key))
+    expect_false(identical(max_key, mean_key))
+})
+
+test_that("the species pair resolves every declared subgenome", {
+    fixture <- multi_subgenome_fixture(samples = "sample1")
+    on.exit(unlink(fixture$directory, recursive = TRUE), add = TRUE)
+    config <- readMaMaMIAConfig(fixture$config_path)
+    resolved <- bam_resolve_species_pair(config, "recipient", "donor")
+    expect_identical(resolved$recipient_subgenomes, c("A", "B"))
+    expect_identical(resolved$donor_subgenomes, "R")
+    expect_identical(
+        sort(unique(resolved$assembly$contigs$recipient$subgenome)),
+        c("A", "B")
+    )
+    expect_identical(
+        unique(resolved$assembly$contigs$donor$subgenome), "R"
+    )
+})
+
+test_that("the sidebar no longer offers subgenome selectors", {
+    config <- readMaMaMIAConfig(
+        system.file("extdata", "bam-demo", "assemblies.yml",
+            package = "MaMaMIA")
+    )
+    html <- as.character(bam_sidebar_species_ui(config))
+    expect_false(grepl("recipient_subgenome", html, fixed = TRUE))
+    expect_false(grepl("donor_subgenome", html, fixed = TRUE))
+    expect_match(html, 'id="subgenome_summary_ui"', fixed = TRUE)
 })
 
 test_that("an unknown progress stage does not abort the analysis", {

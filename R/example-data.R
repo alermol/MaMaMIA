@@ -152,13 +152,17 @@ bam_example_preflight_state <- function() {
     config <- bam_example_config()
     data <- bam_example_data()
     selection <- data$species_selection
+    recipient <- config$species[[selection$recipient]]
+    donor <- config$species[[selection$donor]]
     resolved <- tryCatch(
         resolveSpeciesAssembly(
             config,
             donor = selection$donor,
             recipient = selection$recipient,
-            donor_subgenome = selection$donor_subgenome,
-            recipient_subgenome = selection$recipient_subgenome
+            donor_subgenomes = unique(as.character(donor$contigs$subgenome)),
+            recipient_subgenomes = unique(
+                as.character(recipient$contigs$subgenome)
+            )
         ),
         error = function(e) e
     )

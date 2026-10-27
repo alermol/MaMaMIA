@@ -10,7 +10,7 @@ buildPanelMask(
   recurrence_threshold = 0.4,
   output = NULL,
   metric = "breadth",
-  donor_aggregation = "mean"
+  donor_aggregation = "max"
 )
 }
 \arguments{

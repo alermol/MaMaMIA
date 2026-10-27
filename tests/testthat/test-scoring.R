@@ -166,6 +166,32 @@ test_that("multi-donor max selects the source subgenome and sum doubles", {
     expect_gt(mean(sum_event$donor_mean), mean(event$donor_mean))
 })
 
+test_that("donor aggregation defaults to max", {
+    set.seed(15)
+    metrics <- score_metrics(
+        donor_subgenomes = c("S1", "S2"),
+        recipient_subgenomes = "A"
+    )
+    idx <- metrics$role == "donor" & metrics$subgenome == "S2" &
+        metrics$group == "1" & metrics$iid >= 50 & metrics$iid <= 90
+    metrics$lambda_breadth[idx] <- metrics$lambda_breadth[idx] * 3
+    metrics$lambda_count[idx] <- metrics$lambda_count[idx] * 3
+    metrics$breadth[idx] <- 1 - exp(-metrics$lambda_breadth[idx])
+    metrics$covered[idx] <- pmin(
+        metrics$length[idx], round(metrics$breadth[idx] * metrics$length[idx])
+    )
+    default <- scoreIntrogression(metrics, mode = "single")
+    meaned <- scoreIntrogression(
+        metrics, mode = "single", donor_aggregation = "mean"
+    )
+    event <- default$group == "1" & default$iid >= 50 & default$iid <= 90
+    expect_true(all(default$donor_subgenome[event] == "S2"))
+    expect_gt(
+        mean(default$score[event]),
+        mean(meaned$score[event])
+    )
+})
+
 test_that("median polish removes a constant donor ploidy offset", {
     set.seed(6)
     m1 <- score_metrics(sample = "A", donor_lambda = 0.2)

@@ -135,20 +135,24 @@ appears in both the recipient and the donor selector.
 
 The registry lists role-free species. The sidebar asks for a **recipient
 species** and a **donor species**; the same species can fill either role, so
-swapping the two selectors reverses the comparison. When a species has more
-than one subgenome, the sidebar also asks which subgenome to use (the registry
-`default_subgenome` is preselected).
+swapping the two selectors reverses the comparison. There are no per-subgenome
+selectors: every subgenome declared for a species is analysed in one assembly,
+and the **Assembly** panel shows a read-only summary such as
+`recipient A+B+D; donor S`.
 
-Contigs are paired by chromosome group within the selected subgenomes. The
+Contigs are paired by chromosome group across all selected subgenomes. The
 group is the optional `group` field or the first number in `name`, so rye `1R`
 pairs with wheat `1A`, `2R` with `2A`, and so on. Only paired contigs enter the
 analysis; the card shows which contigs were excluded and why.
 
 The sidebar has no predefined-assembly selector. A "Swap donor and recipient"
-button reverses the comparison without reselecting the species, and keeps each
-species' subgenome choice. These selectors live in the **Assembly** panel,
-which appears after preflight succeeds. The resolution, upload limits,
-resource limits and registry-growth caveats are unchanged.
+button reverses the comparison without reselecting the species. These
+selectors live in the **Assembly** panel, which appears after preflight
+succeeds. The collapsed **Advanced** panel exposes donor aggregation
+(`max` by default, or `mean`/`sum`); the registry supplies the initial value,
+and changing it clears the current result until the analysis is rerun. The
+resolution, upload limits, resource limits and registry-growth caveats are
+unchanged.
 
 ## 2. Build the image
 
@@ -208,9 +212,9 @@ Open `http://127.0.0.1:3838/`, confirm that the calculation log shows the two
 species registry, choose `Triticum aestivum CS T2T` as the recipient and
 `Secale cereale` as the donor (or the reverse) in the **Assembly** panel, then
 either upload a BAM or press **Example data**. The example needs no BAM mount
-and takes about a second; a successful run populates the **Introgression
-circos**, **Coverage / dosage** and **Segments** tabs, and the footer log ends
-with the analysis summary. Stop the container with Ctrl-C; the session
+and takes about a second; a successful run populates the **Karyotype**,
+**Score profile**, **Calls** and **Export** tabs, and the footer log ends with
+the analysis summary. Stop the container with Ctrl-C; the session
 directory and staged indexes are removed on session end.
 
 To check the same pipeline without the browser, run the bundled smoke script in

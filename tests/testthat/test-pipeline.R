@@ -54,6 +54,29 @@ pipeline_fixture <- function() {
     fixture
 }
 
+test_that("analyzeBamInput() accepts a runtime donor aggregation", {
+    fixture <- pipeline_fixture()
+    on.exit(unlink(fixture$directory, recursive = TRUE), add = TRUE)
+    result <- analyzeBamInput(
+        fixture$bam_path, fixture$config,
+        assembly = fixture$assembly,
+        windows_per_chromosome = 100L,
+        donor_aggregation = "sum",
+        cores = 1L
+    )
+    expect_identical(result$provenance$donor_aggregation, "sum")
+    expect_error(
+        analyzeBamInput(
+            fixture$bam_path, fixture$config,
+            assembly = fixture$assembly,
+            windows_per_chromosome = 100L,
+            donor_aggregation = "median",
+            cores = 1L
+        ),
+        "donor_aggregation"
+    )
+})
+
 test_that("the pipeline returns the BamAnalysisResult contract", {
     fixture <- pipeline_fixture()
     on.exit(unlink(fixture$directory, recursive = TRUE), add = TRUE)
