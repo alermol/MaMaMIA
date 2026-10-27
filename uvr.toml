@@ -9,20 +9,15 @@ GenomicRanges = { bioc = true, version = ">=1.64.0" }
 IRanges = { bioc = true, version = ">=2.46.0" }
 Rcpp = ">=1.1.2"
 Rhtslib = { bioc = true, version = ">=3.8.0" }
-dplyr = ">=1.2.1"
-ggnewscale = ">=0.5.2"
 ggplot2 = ">=4.0.3"
-glmmTMB = ">=1.1.14"
-htmlwidgets = "*"
 jsonlite = ">=2.0.0"
-mgcv = "*"
-purrr = ">=1.2.2"
+parallel = "*"
 rlang = ">=1.3.0"
+splines = "*"
 stats = "*"
 tools = "*"
 utils = "*"
 yaml = ">=2.3.12"
-interacCircos = { bioc = true }
 
 [dev-dependencies]
 DT = "*"

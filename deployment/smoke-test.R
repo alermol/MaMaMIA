@@ -1,5 +1,6 @@
 ## Smoke test for the production image. It runs the full pipeline without
-## starting Shiny, and renders both a cairo text probe and a real ISA plot.
+## starting Shiny, and renders both a cairo text probe and the real score
+## profile.
 ##
 ## By default it uses the bundled demo BAM and registry, so the container needs
 ## no mounted BAM. Set MAMAMIA_SMOKE_BAM (and MAMAMIA_CONFIG) to exercise a
@@ -18,6 +19,7 @@ if (!file.exists(font_probe) || !isTRUE(file.info(font_probe)$size > 0)) {
 unlink(font_probe)
 
 source_bam <- Sys.getenv("MAMAMIA_SMOKE_BAM", unset = "")
+bundled <- !nzchar(source_bam)
 if (nzchar(source_bam)) {
     config_path <- Sys.getenv("MAMAMIA_CONFIG", unset = "")
     if (!nzchar(config_path)) {
@@ -76,35 +78,70 @@ if (!file.symlink(source_bam, staged_bam)) {
     stop("Could not stage ", source_bam, call. = FALSE)
 }
 
+## The bundled demo contigs are 20 kb, far below the 5 Mb production minimum
+## call width, and its depth is uniform by construction (breadth saturates),
+## so the demo runs at the resolution the README uses, on the count metric and
+## with a toy-scale calibration. An external BAM keeps the production
+## defaults and only has to prove that the pipeline completes.
+if (bundled) {
+    resolution <- 100L
+    metric <- "count"
+    calibration <- list(
+        min_mb = 0.001,
+        length_bins_mb = c(0.001, 0.01, Inf),
+        floors = c(0.3, 0.3)
+    )
+} else {
+    resolution <- 1000L
+    metric <- NULL
+    calibration <- NULL
+}
+
 result <- MaMaMIA::analyzeBamInput(
     staged_bam,
     analyze_config,
     assembly = assembly_key,
-    windows_per_chromosome = 1000L,
-    normalization = "none",
-    max_fit_windows = 5000L,
+    windows_per_chromosome = resolution,
+    metric = metric,
+    calibration = calibration,
     cores = 1L,
-    cache = NULL,
-    progress = function(stage, detail = NULL) {
-        message("stage: ", stage, if (is.null(detail)) "" else paste0(" (", detail, ")"))
+    progress = function(stage, detail = list()) {
+        message("stage: ", stage)
     }
 )
 print(result$samples)
-cat("segments:", sum(result$samples$n_segments), "\n")
-cat("putative:", sum(result$samples$n_putative_introgressions), "\n")
+cat("calibrated calls:", sum(result$calls$pass, na.rm = TRUE), "\n")
 
 ## The dashboard's renderPlot() prints a ggplot to a cairo device; exercise
 ## that path on the real result as well.
 plot_file <- tempfile(fileext = ".png")
 grDevices::png(plot_file, width = 1200, height = 400, type = "cairo")
-plot(result$isa[[1L]], max_points = 5000)
+print(
+    ggplot2::ggplot(
+        result$scores,
+        ggplot2::aes(
+            x = .data$start / 1e6, y = .data$score, colour = .data$mode
+        )
+    ) +
+        ggplot2::geom_hline(yintercept = 0, colour = "grey70") +
+        ggplot2::geom_line(linewidth = 0.3) +
+        ggplot2::facet_wrap(~group, scales = "free_x", ncol = 1) +
+        ggplot2::theme_minimal(base_size = 12)
+)
 grDevices::dev.off()
 if (!file.exists(plot_file) || !isTRUE(file.info(plot_file)$size > 0)) {
-    stop("Could not render the ISA plot", call. = FALSE)
+    stop("Could not render the score profile", call. = FALSE)
 }
 cat("plot:", file.info(plot_file)$size, "bytes\n")
 unlink(plot_file)
 
 unlink(c(staged_bam, paste0(staged_bam, ".csi")))
 stopifnot(inherits(result, "BamAnalysisResult"))
-stopifnot(sum(result$samples$n_segments) > 0)
+stopifnot(nrow(result$metrics) > 0L)
+stopifnot(nrow(result$scores) > 0L)
+stopifnot(nrow(result$calibration) > 0L)
+if (bundled) {
+    ## The demo fixture is built to contain a donor depth change, so a run
+    ## that finds nothing means segmentation or calibration is broken.
+    stopifnot(nrow(result$calls) > 0L)
+}

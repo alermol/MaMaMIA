@@ -31,6 +31,24 @@ tiny_config_path <- function() {
     tiny_fixture("assemblies.yml")
 }
 
+## The registry is species-only; the assembly is derived at run time.
+tiny_config <- function() {
+    readMaMaMIAConfig(tiny_config_path())
+}
+
+tiny_assembly <- function(config = tiny_config()) {
+    resolveSpeciesAssembly(
+        config, donor = "tiny_donor", recipient = "tiny_recipient"
+    )$assembly
+}
+
+tiny_resolved_config <- function() {
+    resolveSpeciesAssembly(
+        tiny_config(), donor = "tiny_donor", recipient = "tiny_recipient",
+        key = "tiny"
+    )$config
+}
+
 tiny_bam_path <- function() {
     tiny_fixture("tiny.bam")
 }
@@ -79,7 +97,7 @@ write_test_bam <- function(lines, path, index = FALSE) {
     path
 }
 
-## The committed tiny fixture has exactly 40% and 60% GC, so the ZINB smooth
+## The committed tiny fixture has exactly 40% and 60% GC, so the GC model
 ## cannot be fitted on it. These helpers build a small assembly whose GC varies
 ## between 20% and 100% in 20 bp blocks, plus a densely covered BAM, entirely in
 ## session temp. They need samtools and the gcrank builder.
@@ -220,8 +238,7 @@ add_multi_sample_gc_bam <- function(fixture, samples, filename = "multi.bam",
 
 variable_gc_fixture <- function(sample = "synthetic", windows = 100L,
                                 contig_length = 20000L,
-                                allowed_windows = c(100L, 1000L, 10000L),
-                                species = FALSE) {
+                                allowed_windows = c(100L, 1000L, 10000L)) {
     skip_if_no_samtools()
     builder <- gcrank_build_binary()
     if (!nzchar(builder)) {
@@ -252,63 +269,49 @@ variable_gc_fixture <- function(sample = "synthetic", windows = 100L,
     }
 
     config <- list(
-        version = 1L,
+        version = 2L,
         defaults = list(
             windows_per_chromosome = as.integer(windows),
             allowed_windows = as.integer(allowed_windows),
             mapq = 20L,
-            exclude_flags = 2308L,
-            max_fit_windows = 1000L,
+            exclude_flags = 1796L,
             gc_mmap = TRUE,
-            gc_validate_crc = FALSE,
-            normalization_by_side = TRUE
+            gc_validate_crc = FALSE
         ),
         server = list(max_bams = 4L, max_total_bytes = 20 * 1024^2)
     )
     index <- file.path(directory, "variable.gcrank")
-    if (species) {
-        config$species <- list(
-            recipient = list(
-                label = "Variable-GC recipient",
-                default_subgenome = "R",
-                gc_indexes = list(index),
-                contigs = list(list(
-                    id = "r1", name = "1R", subgenome = "R"
-                ))
-            ),
-            donor = list(
-                label = "Variable-GC donor",
-                default_subgenome = "D",
-                gc_indexes = list(index),
-                contigs = list(list(
-                    id = "d1", name = "1D", subgenome = "D"
-                ))
-            )
+    config$species <- list(
+        recipient = list(
+            label = "Variable-GC recipient",
+            default_subgenome = "R",
+            gc_indexes = list(index),
+            contigs = list(list(
+                id = "r1", name = "1R", subgenome = "R"
+            ))
+        ),
+        donor = list(
+            label = "Variable-GC donor",
+            default_subgenome = "D",
+            gc_indexes = list(index),
+            contigs = list(list(
+                id = "d1", name = "1D", subgenome = "D"
+            ))
         )
-    } else {
-        config$assemblies <- list(
-            variable = list(
-                label = "Variable-GC synthetic assembly",
-                description = "Two 20 kb contigs with variable GC",
-                gc_indexes = list(index),
-                contigs = list(
-                    recipient = list(list(
-                        id = "r1", name = "1R", subgenome = "R"
-                    )),
-                    donor = list(list(
-                        id = "d1", name = "1D", subgenome = "D"
-                    ))
-                ),
-                pairs = list(d1 = "r1")
-            )
-        )
-    }
+    )
     config_path <- file.path(directory, "assemblies.yml")
     writeLines(yaml::as.yaml(config), config_path)
+
+    resolved <- resolveSpeciesAssembly(
+        readMaMaMIAConfig(config_path),
+        donor = "donor", recipient = "recipient"
+    )
 
     fixture <- list(
         directory = directory,
         config_path = config_path,
+        config = resolved$config,
+        assembly = resolved$key,
         sample = sample,
         contig_length = as.integer(contig_length)
     )
@@ -353,16 +356,14 @@ multi_subgenome_fixture <- function(samples = c("sample1", "sample2"),
     }
 
     config <- list(
-        version = 1L,
+        version = 2L,
         defaults = list(
             windows_per_chromosome = 100L,
             allowed_windows = c(100L, 1000L, 10000L),
             mapq = 20L,
-            exclude_flags = 2308L,
-            max_fit_windows = 1000L,
+            exclude_flags = 1796L,
             gc_mmap = TRUE,
-            gc_validate_crc = FALSE,
-            normalization_by_side = TRUE
+            gc_validate_crc = FALSE
         ),
         server = list(max_bams = 4L, max_total_bytes = 20 * 1024^2),
         species = list(
@@ -428,56 +429,6 @@ multi_subgenome_fixture <- function(samples = c("sample1", "sample2"),
         samples = samples,
         contig_length = as.integer(contig_length)
     )
-}
-
-## Read the legacy directory-layout BED tables used only as the golden oracle.
-## The package no longer ships a directory-layout reader (T7.5); this helper
-## keeps the gated BAM-vs-legacy regression self-contained.
-read_golden_legacy <- function(root, sample = "Sq54",
-                               reference = "cs_t2t_se_cereale",
-                               window = 1000L) {
-    read_bed <- function(path, value_col) {
-        table <- utils::read.delim(
-            path, header = FALSE, comment.char = "#",
-            colClasses = "character", stringsAsFactors = FALSE,
-            check.names = FALSE
-        )
-        table <- table[, 1:4, drop = FALSE]
-        names(table) <- c("chr_id", "start", "stop", value_col)
-        table$chr_id <- trimws(table$chr_id)
-        for (col in c("start", "stop", value_col)) {
-            table[[col]] <- as.numeric(trimws(table[[col]]))
-        }
-        table
-    }
-
-    analysis <- file.path(root, "mamamia_analysis", "arsenal", sample)
-    assembly_dir <- file.path(root, "assemblies", reference)
-    dcov <- read_bed(
-        file.path(analysis, sprintf("%s.w%d.dcov.bed", reference, window)),
-        "cov"
-    )
-    rcov <- read_bed(
-        file.path(analysis, sprintf("%s.w%d.rcov.bed", reference, window)),
-        "cov"
-    )
-    dgc <- read_bed(
-        file.path(assembly_dir, sprintf("donor.w%d.gc.bed", window)), "gc"
-    )
-    rgc <- read_bed(
-        file.path(assembly_dir, sprintf("recipient.w%d.gc.bed", window)), "gc"
-    )
-    meta <- utils::read.delim(
-        file.path(assembly_dir, "chromosomes.tsv"),
-        header = FALSE,
-        col.names = c("chr_id", "chr_name", "subgenome"),
-        colClasses = "character",
-        stringsAsFactors = FALSE
-    )
-    meta <- meta[meta$chr_id %in% c(dcov$chr_id, rcov$chr_id), , drop = FALSE]
-    rownames(meta) <- NULL
-
-    list(dcov = dcov, dgc = dgc, rcov = rcov, rgc = rgc, meta = meta)
 }
 
 mamamia_test_data_dir <- function() {

@@ -14,21 +14,19 @@
 #
 # Contig lengths are read from the gcrank index, not from this file.
 
-version: 1
+version: 2
 
 defaults:
   windows_per_chromosome: 1000
   allowed_windows: [100, 1000, 10000]
   mapq: 20
-  exclude_flags: 2308      # unmapped + secondary + supplementary
-  max_fit_windows: 50000
+  exclude_flags: 1796      # unmapped + secondary + QC-fail + duplicate
   gc_mmap: true
   gc_validate_crc: false
-  normalization_by_side: true
 
 server:
   max_bams: 20
-  max_total_bytes: 5368709120   # 5 GiB
+  max_total_bytes: 5368709120.0   # 5 GiB
 
 species:
   triticum_aestivum:
@@ -73,3 +71,17 @@ species:
       - {id: OZ284386.1, name: 5R, subgenome: R}
       - {id: OZ284387.1, name: 6R, subgenome: R}
       - {id: OZ284388.1, name: 7R, subgenome: R}
+  aegilops_speltoides:
+    label: "Aegilops speltoides"
+    description: "Wild wheat relative (S subgenome)"
+    default_subgenome: S
+    gc_indexes:
+      - /srv/mamamia/gcidx/aegilops-speltoides/index.gcrank
+    contigs:
+      - {id: CH1S, name: 1S, subgenome: S, group: 1}
+      - {id: CH2S, name: 2S, subgenome: S, group: 2}
+      - {id: CH3S, name: 3S, subgenome: S, group: 3}
+      - {id: CH4S, name: 4S, subgenome: S, group: 4}
+      - {id: CH5S, name: 5S, subgenome: S, group: 5}
+      - {id: CH6S, name: 6S, subgenome: S, group: 6}
+      - {id: CH7S, name: 7S, subgenome: S, group: 7}

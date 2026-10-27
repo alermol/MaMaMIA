@@ -3,8 +3,8 @@
 ## The header is parsed exactly once per BAM, before any index or count work.
 ## Samples are read from the @RG SM tags, read groups from the @RG ID tags. A
 ## BAM may contain one or several samples; every read group must be complete
-## and every read group ID must be unique. A BAM without any @RG line keeps
-## the legacy single-sample fallback: the file basename without .bam.
+## and every read group ID must be unique. A BAM without any @RG line falls
+## back to a single sample named after the file basename without .bam.
 
 #' Construct a MaMaMIA error condition
 #'

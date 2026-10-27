@@ -1,20 +1,21 @@
-## Cohort pipeline orchestration (T4.3, formerly T3.3).
+## Cohort pipeline orchestration.
 ##
-## `analyzeBamInput()` is the BAM-first entrypoint of the package. It runs the
-## cheap checks first (preflight), then indexes, generates windows, extracts
-## GC, counts reads, builds the per-sample tables, corrects GC bias and
-## normalizes the cohort. Only then does it segment the pairwise difference
-## profiles, so every sample shares one normalization baseline. Every
-## expensive stage is preceded by a validation that names the BAM, sample or
-## contig that failed.
+## `analyzeBamInput()` is the only BAM-first entrypoint of the package. It runs
+## cheap checks first (preflight), indexes, generates group-aware windows,
+## extracts GC, measures counts and breadth in one htslib pass, builds the
+## WindowMetrics table, applies a window mask, scores donor/recipient
+## homoeologs, segments with CBS, calibrates thresholds by segment length and
+## classifies the calls.
 ##
-## The result is the `BamAnalysisResult` contract: a list with `assembly`,
-## `config`, `bams`, `samples`, `windows`, `gc`, `counts`, `rca`, `isa`,
-## `normalization` and `provenance`. `counts$donor` and `counts$recipient` are
-## integer matrices with one column per sample.
+## The result is the `BamAnalysisResult` contract: `assembly`, `config`,
+## `bams`, `samples`, `windows`, `gc`, `metrics`, `scores`, `masks`,
+## `calibration`, `calls` and `provenance`.
 
-## Synchronized with tools/vendor-gcrank.txt by tests/testthat/test-pipeline-bam.R.
-.MaMaMIAgcrankCommit <- "5019bff14c00eda0d53755eb60a222f1b0ca4ce6"
+## Synchronized with DESCRIPTION by tests/testthat/test-pipeline.R.
+.MaMaMIAPipelineVersion <- "0.99.2"
+
+## Synchronized with tools/vendor-gcrank.txt by tests/testthat/test-pipeline.R.
+.MaMaMIAgcrankCommit <- "aa3a32b4cd748ead4c933225d0c990689499f92f"
 
 .analysis_error <- function(fmt, ...) {
     .mamamia_error("MaMaMIAAnalysisError", fmt, ...)
@@ -38,14 +39,21 @@
     if (is.character(config)) {
         config <- readMaMaMIAConfig(config)
     }
-    if (!is.list(config) || is.null(config$assemblies) ||
-        length(config$assemblies) == 0L) {
+    if (!is.list(config) || is.null(config$assemblies)) {
+        .analysis_error("`config` must be a validated MaMaMIA configuration")
+    }
+    if (length(config$assemblies) == 0L) {
         .analysis_error(
-            "`config` must be a validated MaMaMIA configuration with at least one assembly; resolve a species pair first with resolveSpeciesAssembly()"
+            "`config` has no assembly: pair the species first with resolveSpeciesAssembly()"
         )
     }
     if (is.null(config$defaults) || is.null(config$server)) {
         config <- validateMaMaMIAConfig(config)
+    }
+    if (!identical(as.integer(config$version), 2L)) {
+        .analysis_error(
+            "MaMaMIA v1.0 requires a `version: 2` configuration; see MIGRATION.md"
+        )
     }
     config
 }
@@ -65,44 +73,6 @@
         )
     }
     invisible(progress)
-}
-
-.pipeline_normalization <- function(normalization, n_samples) {
-    mode <- tryCatch(
-        match.arg(normalization, c("median", "reference", "none")),
-        error = function(e) .analysis_error("%s", conditionMessage(e))
-    )
-    ## There is nothing to normalize a single sample against; the requested
-    ## mode is still recorded in provenance.
-    if (n_samples == 1L) {
-        return("none")
-    }
-    mode
-}
-
-.pipeline_cache <- function(cache) {
-    if (is.null(cache)) {
-        ## A per-process fit cache in session temp: repeated runs in one Shiny
-        ## session reuse the fit, while separate processes never share a file.
-        return(file.path(
-            .session_temp_dir(),
-            sprintf("mamamia-fit-cache-%d.rds", Sys.getpid())
-        ))
-    }
-    if (identical(cache, FALSE)) {
-        return(NULL)
-    }
-    if (!is.character(cache) || length(cache) != 1L || is.na(cache) ||
-        !nzchar(cache)) {
-        .analysis_error(
-            "`cache` must be NULL, FALSE or a single .rds file path"
-        )
-    }
-    cache <- path.expand(cache)
-    if (dir.exists(cache)) {
-        .analysis_error("`cache` points at a directory: %s", cache)
-    }
-    cache
 }
 
 .pipeline_contigs <- function(assembly) {
@@ -175,31 +145,12 @@
 }
 
 .htslib_version <- function() {
-    header <- system.file("include", "htslib", "hts.h", package = "Rhtslib")
-    if (!nzchar(header) || !file.exists(header)) {
+    version <- htslib_version_cpp()
+    if (length(version) != 1L || is.na(version) || !nzchar(version) ||
+        identical(version, "unknown")) {
         return(NA_character_)
     }
-    line <- grep(
-        "^#define[[:space:]]+HTS_VERSION[[:space:]]+[0-9]+",
-        readLines(header, warn = FALSE),
-        value = TRUE
-    )
-    if (length(line) == 0L) {
-        return(NA_character_)
-    }
-    code <- suppressWarnings(as.numeric(
-        sub("^.*[[:space:]]([0-9]+)[[:space:]]*$", "\\1", line[[1L]])
-    ))
-    if (is.na(code)) {
-        return(NA_character_)
-    }
-    ## htslib encodes 1.10 as 101000 and 1.18 as 101800.
-    sprintf(
-        "%d.%d.%d",
-        code %/% 100000,
-        (code %/% 1000) %% 100,
-        (code %/% 10) %% 100
-    )
+    version
 }
 
 .find_upwards <- function(name, start = getwd(), depth = 6L) {
@@ -263,9 +214,9 @@
 }
 
 .pipeline_provenance <- function(config, preflight, indexed, windows, gc,
-                                 n_per, mapq, exclude_flags, max_fit_windows,
-                                 normalization, cache, started_at,
-                                 requested_normalization) {
+                                 n_per, mapq, exclude_flags, metric, score,
+                                 donor_aggregation, sample_composition,
+                                 mask, calibration, started_at) {
     config_path <- .pipeline_config_path(config)
     config_hash <- if (!is.na(config_path) && file.exists(config_path)) {
         unname(tools::md5sum(config_path))
@@ -284,15 +235,16 @@
         assembly = preflight$assembly,
         stringsAsFactors = FALSE
     )
+    mask_sources <- unique(mask$source[mask$mask %in% TRUE])
     list(
+        pipeline_version = .MaMaMIAPipelineVersion,
         package = "MaMaMIA",
         package_version = .safe_package_version("MaMaMIA"),
         r_version = as.character(getRversion()),
         dependency_versions = c(
             Rhtslib = .safe_package_version("Rhtslib"),
             GenomicRanges = .safe_package_version("GenomicRanges"),
-            DNAcopy = .safe_package_version("DNAcopy"),
-            glmmTMB = .safe_package_version("glmmTMB")
+            DNAcopy = .safe_package_version("DNAcopy")
         ),
         htslib_version = .htslib_version(),
         gcrank_commit = .MaMaMIAgcrankCommit,
@@ -317,16 +269,28 @@
         n_gc_windows = nrow(gc),
         mapq = mapq,
         exclude_flags = exclude_flags,
-        max_fit_windows = max_fit_windows,
-        max_fit_windows_enforced = TRUE,
-        normalization_requested = requested_normalization,
-        normalization_mode = normalization$mode,
-        normalization_by_side = normalization$by_side,
-        pseudocount = normalization$pseudocount,
+        metric = metric,
+        score = score,
+        donor_aggregation = donor_aggregation,
+        sample_composition = as.list(sample_composition),
+        breadth_backend = "htslib",
         count_backend = "htslib",
-        count_semantics = "five_prime_start_based",
+        count_semantics = "aligned_base_overlap",
         gc_source = "gcrank",
-        cache = if (is.null(cache)) NA_character_ else cache,
+        mask_source = if (length(mask_sources) == 0L) {
+            "none"
+        } else {
+            paste(mask_sources, collapse = "+")
+        },
+        mask_version = {
+            versions <- unique(stats::na.omit(mask$version))
+            if (length(versions) == 0L) NA_character_ else versions[[1L]]
+        },
+        calibration_version = {
+            versions <- unique(stats::na.omit(calibration$version))
+            if (length(versions) == 0L) NA_character_ else versions[[1L]]
+        },
+        fdr = if (nrow(calibration) == 0L) NA_real_ else calibration$fdr[[1L]],
         started_at = format(started_at, "%Y-%m-%dT%H:%M:%S%z"),
         duration_secs = as.numeric(difftime(
             Sys.time(), started_at, units = "secs"
@@ -334,70 +298,114 @@
     )
 }
 
-#' Analyze one or more BAM files with the BAM-first workflow
+.pipeline_measure <- function(indexed, preflight, windows, headers,
+                              samples, mapq, exclude_flags) {
+    paths <- as.character(indexed$original_path)
+    selected_paths <- as.character(preflight$path)
+    count_one <- function(bam_index) tryCatch({
+        rows <- which(selected_paths == paths[[bam_index]])
+        if (length(rows) == 0L) {
+            return(NULL)
+        }
+        bam_samples <- samples[rows]
+        measured <- tryCatch(
+            countWindowMetrics(
+                indexed$path[[bam_index]],
+                windows,
+                samples = bam_samples,
+                read_groups = headers[[bam_index]]$read_groups,
+                mapq = mapq,
+                exclude_flags = exclude_flags
+            ),
+            error = function(e) e
+        )
+        if (inherits(measured, "condition")) {
+            if (length(rows) == 1L) {
+                return(.sample_stage_error(
+                    measured, bam_samples[[1L]], "metrics"
+                ))
+            }
+            return(.mamamia_error(
+                class(measured)[[1L]],
+                "BAM '%s' (%d samples): %s",
+                basename(paths[[bam_index]]), length(rows),
+                conditionMessage(measured)
+            ))
+        }
+        if (!is.finite(measured$read_length) || measured$read_length <= 0) {
+            return(.mamamia_error(
+                class = "MaMaMIASampleError",
+                "Sample%s %s has no usable reads in the analysis windows",
+                if (length(bam_samples) == 1L) "" else "s",
+                paste(sprintf("'%s'", bam_samples), collapse = ", ")
+            ))
+        }
+        measured$metrics$read_length <- as.numeric(measured$read_length)
+        measured$metrics
+    }, error = function(e) e)
+
+    n_bams <- length(paths)
+    cores <- min(30L, max(1L, getOption("MaMaMIA.cores", 1L)))
+    if (.Platform$OS.type == "unix" && cores > 1L && n_bams > 1L) {
+        pieces <- parallel::mclapply(
+            seq_len(n_bams), count_one,
+            mc.cores = min(cores, n_bams),
+            mc.preschedule = FALSE
+        )
+    } else {
+        pieces <- lapply(seq_len(n_bams), count_one)
+    }
+    failed <- vapply(pieces, function(x) {
+        inherits(x, "condition") || inherits(x, "try-error")
+    }, logical(1))
+    if (any(failed)) {
+        piece <- pieces[[which(failed)[[1L]]]]
+        if (inherits(piece, "try-error")) {
+            .analysis_error("%s", as.character(piece))
+        }
+        stop(piece)
+    }
+    do.call(rbind, pieces)
+}
+
+#' Analyze one or more BAM files with the MaMaMIA workflow
 #'
 #' Reads BAM headers, matches them to a configured assembly, ensures CSI
-#' indexes, generates exact-N analysis windows, extracts GC content from the
-#' configured gcrank indexes, counts reads with the htslib backend, builds the
-#' per-sample tables with [buildSampleTables()], corrects GC bias with
-#' [correctReadCounts()] and segments the pairwise coverage differences with
-#' [segments()]. A one-sample BAM counts every read; a BAM with several `@RG
-#' SM` samples is counted per read group in one pass over the file.
+#' indexes, generates group-aware exact-N windows, extracts GC from the
+#' configured gcrank indexes, measures breadth and counts in one htslib pass,
+#' scores donor/recipient homoeologs, applies a window mask, segments with CBS,
+#' calibrates thresholds by segment length and classifies the calls.
 #'
-#' For a single BAM the normalization mode is always `"none"`; segmentation
-#' therefore consumes `cor.gc` (D7). For several BAMs, `normalization = "median"`
-#' (the default) or `"reference"` calls [normalizeReadCounts()] after every
-#' sample has been corrected and before any segmentation. `"reference"` requires
-#' `reference_sample`; the reference sample's dose is exactly 1.
-#'
-#' The optional `progress` callback is called as `progress(stage, detail)` after
-#' each completed stage. Stages are `"preflight"`, `"index"`, `"windows"`,
-#' `"gc"`, `"counts"`, `"correction"` and `"segmentation"`. When a cohort is
-#' normalized, one `"normalization"` stage is reported between the corrections
-#' and the segmentations. `detail` is a list with stage-specific fields such as
-#' `sample`, `n_windows`, `n_ideal` or `n_segments`. An error raised by the
-#' callback aborts the analysis, which lets a Shiny session cancel a long run.
-#'
-#' A warning is emitted when the total analysis window count across samples
-#' (`length(bam_paths) * nrow(windows$table)`) exceeds `max_fit_windows`; this
-#' is a performance guard, not an error. The fit-window cap itself is applied
-#' per sample by [correctReadCounts()] and recorded in provenance and in each
-#' `RCA$fit_sampling`.
-#'
-#' BAMs whose directory is not writable are staged in session temp before
-#' indexing; the result records the staging decision in `provenance$staged`.
+#' A single sample is scored and calibrated on its own (single-sample mode).
+#' Several samples share a cohort median-polish correction and a cohort
+#' calibration. The result supports any number of donor and recipient
+#' subgenomes.
 #'
 #' @param bam_paths Character vector of coordinate-sorted BAM paths.
 #' @param config A validated configuration list from [readMaMaMIAConfig()] or a
 #'   path to a YAML configuration.
 #' @param assembly Optional assembly key. Without it, the BAM headers select the
 #'   most specific exact match.
+#' @param sample_composition Optional named recipient copy-number vector, for
+#'   example `c(A = 2, B = 2, D = 2)`.
+#' @param metric `"breadth"`, `"count"` or `"combined"`.
+#' @param score `"paired_log_ratio"` or `"donor_only"`.
+#' @param mask Optional panel `MaskTable`/TSV path, or a list with `panel`,
+#'   `blacklist`, `physical_fallback_mb` and `recurrence_threshold`.
+#' @param calibration Optional list with `length_bins_mb`, `fdr`, `floors`,
+#'   `controls`, `alpha`, `undo_SD`, `min_width`, `merge_gap`, `merge_floor`
+#'   and `min_mb`.
 #' @param windows_per_chromosome Number of windows per target contig.
-#' @param reference_sample Sample used as the denominator for
-#'   `normalization = "reference"`. Required in that mode and ignored by
-#'   `"median"` and `"none"`.
-#' @param normalization Normalization mode across samples: `"median"`
-#'   (default), `"reference"` or `"none"`. A single BAM is always analyzed with
-#'   `"none"`.
 #' @param mapq Minimum mapping quality.
 #' @param exclude_flags SAM flag mask; a read is excluded when any bit is set.
-#' @param cores Number of cores for the GC-bias fit.
-#' @param max_fit_windows Maximum number of ideal windows used for each
-#'   sample's GC-bias fit. Larger ideal sets are subsampled deterministically by
-#'   subgenome and GC decile with at least ten windows per non-empty stratum;
-#'   predictions still cover every window. `Inf` disables subsampling. A cohort
-#'   whose total window count exceeds this value also emits a performance
-#'   warning.
-#' @param cache Optional fit-cache `.rds` path. `NULL` uses a per-process file
-#'   in session temp; `FALSE` disables the cache.
+#' @param cores Number of cores for parallel BAM measurement.
 #' @param progress Optional `function(stage, detail)` progress callback.
 #'
 #' @return A `BamAnalysisResult` list with `assembly`, `config`, `bams`,
-#'   `samples`, `windows`, `gc`, `counts`, `rca`, `isa`, `normalization` and
-#'   `provenance`. `samples` is a data frame with one row per sample (`sample`,
-#'   `path`, `assembly`, `index_path`, `reference`, `normalization`, `n_windows`,
-#'   `n_segments`, `n_putative_introgressions`).
-#' @seealso [preflightBams()], [countReads()], [buildSampleTables()]
+#'   `samples`, `windows`, `gc`, `metrics`, `scores`, `masks`, `calibration`,
+#'   `calls` and `provenance`.
+#' @seealso [preflightBams()], [countWindowMetrics()], [buildWindowMetrics()],
+#'   [scoreIntrogression()], [segmentScores()], [calibrateSegments()]
 #' @examples
 #' demo <- system.file("extdata", "bam-demo", package = "MaMaMIA")
 #' config <- readMaMaMIAConfig(file.path(demo, "assemblies.yml"))
@@ -408,44 +416,48 @@
 #'     file.path(demo, "demo.bam"), pair$config,
 #'     assembly = pair$key,
 #'     windows_per_chromosome = 100L,
-#'     normalization = "none",
 #'     cores = 1L
 #' )
-#' result$samples[, c("sample", "n_windows", "n_segments")]
+#' result$samples[, c("sample", "n_windows", "n_calls")]
 #'
 #' @export
 analyzeBamInput <- function(bam_paths,
                             config,
                             assembly = NULL,
+                            sample_composition = NULL,
+                            metric = NULL,
+                            score = NULL,
+                            mask = NULL,
+                            calibration = NULL,
                             windows_per_chromosome = 1000L,
-                            reference_sample = NULL,
-                            normalization = c("median", "reference", "none"),
-                            mapq = 20L,
-                            exclude_flags = 2308L,
+                            mapq = NULL,
+                            exclude_flags = NULL,
                             cores = 1L,
-                            max_fit_windows = 50000L,
-                            cache = NULL,
                             progress = NULL) {
     started_at <- Sys.time()
     config <- .pipeline_config(config)
     .validate_progress(progress)
+    defaults <- config$defaults
     n_per <- .pipeline_integer(
         windows_per_chromosome, "windows_per_chromosome"
     )
-    mapq <- .pipeline_integer(mapq, "mapq", 0L, 255L)
-    exclude_flags <- .pipeline_integer(exclude_flags, "exclude_flags", 0L, 4095L)
-    if (length(max_fit_windows) != 1L || is.na(max_fit_windows) ||
-        !is.numeric(max_fit_windows) || max_fit_windows <= 0 ||
-        (!is.infinite(max_fit_windows) && max_fit_windows != floor(max_fit_windows))) {
-        .analysis_error(
-            "`max_fit_windows` must be a positive integer or Inf"
-        )
+    mapq <- .pipeline_integer(
+        if (is.null(mapq)) defaults$mapq else mapq, "mapq", 0L, 255L
+    )
+    exclude_flags <- .pipeline_integer(
+        if (is.null(exclude_flags)) defaults$exclude_flags else exclude_flags,
+        "exclude_flags", 0L, 4095L
+    )
+    metric <- if (is.null(metric)) defaults$metric else {
+        match.arg(metric, c("breadth", "count", "combined"))
     }
-    if (is.finite(max_fit_windows) &&
-        max_fit_windows > .Machine$integer.max) {
-        max_fit_windows <- .Machine$integer.max
+    score <- if (is.null(score)) defaults$score else {
+        match.arg(score, c("paired_log_ratio", "donor_only"))
     }
-    cores <- check_cores(cores)
+    cores <- .pipeline_integer(cores, "cores", 1L, 256L)
+    old_cores <- getOption("MaMaMIA.cores")
+    options(MaMaMIA.cores = cores)
+    on.exit(options(MaMaMIA.cores = old_cores), add = TRUE)
 
     if (!is.character(bam_paths) || length(bam_paths) == 0L ||
         anyNA(bam_paths) || any(!nzchar(bam_paths))) {
@@ -453,42 +465,29 @@ analyzeBamInput <- function(bam_paths,
             "`bam_paths` must be a non-empty character vector of BAM paths"
         )
     }
-    requested_mode <- tryCatch(
-        match.arg(normalization, c("median", "reference", "none")),
-        error = function(e) .analysis_error("%s", conditionMessage(e))
-    )
-    if (!is.null(reference_sample)) {
-        if (!is.character(reference_sample) || length(reference_sample) != 1L ||
-            is.na(reference_sample) || !nzchar(reference_sample)) {
-            .analysis_error(
-                "`reference_sample` must be NULL or a single sample name"
-            )
+    calibration_args <- if (is.null(calibration)) list() else calibration
+    if (!is.list(calibration_args)) {
+        .analysis_error("`calibration` must be NULL or a named list")
+    }
+    mask_args <- if (is.null(mask)) list() else {
+        if (is.list(mask) && !is.data.frame(mask) &&
+            any(c("panel", "blacklist", "physical_fallback_mb",
+                  "recurrence_threshold") %in% names(mask))) {
+            mask
+        } else {
+            list(panel = mask)
         }
     }
-    cache <- .pipeline_cache(cache)
 
     preflight <- preflightBams(bam_paths, config, assembly)
     n_bams <- length(unique(preflight$path))
     n_samples <- nrow(preflight)
-    mode <- .pipeline_normalization(requested_mode, n_samples)
     assembly_key <- preflight$assembly[[1L]]
     assembly_config <- config$assemblies[[assembly_key]]
     if (is.null(assembly_config)) {
         .analysis_error(
             "Assembly '%s' selected by preflight is not in the configuration",
             assembly_key
-        )
-    }
-    if (identical(mode, "reference") && is.null(reference_sample)) {
-        .analysis_error(
-            "`normalization = 'reference'` requires `reference_sample`"
-        )
-    }
-    if (!is.null(reference_sample) &&
-        !reference_sample %in% preflight$sample) {
-        .analysis_error(
-            "`reference_sample` '%s' is not one of the input samples: %s",
-            reference_sample, paste(preflight$sample, collapse = ", ")
         )
     }
     .pipeline_progress(progress, "preflight", list(
@@ -510,26 +509,11 @@ analyzeBamInput <- function(bam_paths,
         n_windows = nrow(windows$table)
     ))
 
-    total_windows <- n_samples * nrow(windows$table)
-    if (is.finite(max_fit_windows) && total_windows > max_fit_windows) {
-        warning(
-            sprintf(
-                paste0(
-                    "Total analysis windows across %d sample(s) is %d, above ",
-                    "max_fit_windows (%s); the run may be slow and memory-hungry"
-                ),
-                n_samples, total_windows,
-                format(max_fit_windows, scientific = FALSE)
-            ),
-            call. = FALSE
-        )
-    }
-
     gc <- extractWindowGc(
         windows,
         assembly_config,
-        mmap = config$defaults$gc_mmap,
-        validate_crc = config$defaults$gc_validate_crc
+        mmap = defaults$gc_mmap,
+        validate_crc = defaults$gc_validate_crc
     )
     .pipeline_progress(progress, "gc", list(
         n_windows = nrow(gc),
@@ -537,209 +521,135 @@ analyzeBamInput <- function(bam_paths,
     ))
 
     samples <- as.character(preflight$sample)
-    n_donor <- sum(windows$table$role == "donor")
-    n_recipient <- sum(windows$table$role == "recipient")
-    donor_counts <- matrix(
-        0L,
-        nrow = n_donor, ncol = length(samples),
-        dimnames = list(NULL, samples)
-    )
-    recipient_counts <- matrix(
-        0L,
-        nrow = n_recipient, ncol = length(samples),
-        dimnames = list(NULL, samples)
-    )
-
-    rcas <- vector("list", length(samples))
-    names(rcas) <- samples
-    tables_list <- vector("list", length(samples))
-
-    ## Count one BAM at a time with the htslib backend. A one-sample BAM
-    ## counts every read; a BAM with several @RG SM samples is counted per read
-    ## group so every sample gets its own column without splitting the file.
     headers <- lapply(indexed$original_path, bamHeaderInfo)
-    names(headers) <- indexed$original_path
-    selected_paths <- as.character(preflight$path)
-    for (bam_index in seq_along(indexed$original_path)) {
-        original_path <- indexed$original_path[[bam_index]]
-        rows <- which(selected_paths == original_path)
-        if (length(rows) == 0L) {
-            next
-        }
-        bam_samples <- samples[rows]
-        matrix_counts <- tryCatch(
-            .count_reads_by_sample(
-                indexed$path[[bam_index]],
-                windows,
-                samples = bam_samples,
-                read_groups = headers[[bam_index]]$read_groups,
-                mapq = mapq,
-                exclude_flags = exclude_flags
-            ),
-            error = function(e) {
-                if (length(rows) == 1L) {
-                    .sample_stage_error(e, bam_samples[[1L]], "counts")
-                } else {
-                    .mamamia_error(
-                        class(e)[[1L]],
-                        "BAM '%s' (%d samples): %s",
-                        basename(original_path), length(rows),
-                        conditionMessage(e)
-                    )
-                }
-            }
-        )
-        counts_by_sample <- lapply(
-            seq_along(bam_samples), function(j) matrix_counts[j, ]
-        )
-
-        for (j in seq_along(rows)) {
-            i <- rows[[j]]
-            sample <- samples[[i]]
-            counts <- counts_by_sample[[j]]
-            total <- sum(as.numeric(counts))
-            if (total <= 0) {
-                .mamamia_error(
-                    "MaMaMIASampleError",
-                    "Sample '%s' has zero reads in all analysis windows; cannot estimate GC bias",
-                    sample
-                )
-            }
-            donor_counts[, i] <- counts[windows$table$role == "donor"]
-            recipient_counts[, i] <- counts[windows$table$role == "recipient"]
-            .pipeline_progress(progress, "counts", list(
-                sample = sample,
-                path = original_path,
-                total = total
-            ))
-
-            tables <- buildSampleTables(
-                counts, gc, windows, assembly_config, sample
-            )
-            tables_list[[i]] <- tables
-            rca <- tryCatch(
-                do.call(RCA, tables[c("dcov", "dgc", "rcov", "rgc", "meta")]),
-                error = function(e) .sample_stage_error(e, sample, "RCA")
-            )
-            corrected <- tryCatch(
-                correctReadCounts(
-                    rca,
-                    cores = cores,
-                    verbose = FALSE,
-                    cache = cache,
-                    max_fit_windows = max_fit_windows
-                ),
-                error = function(e) {
-                    .sample_stage_error(e, sample, "GC correction")
-                }
-            )
-            .pipeline_progress(progress, "correction", list(
-                sample = sample,
-                n_ideal = sum(corrected$data$ideal)
-            ))
-
-            rcas[[sample]] <- corrected
-        }
-    }
-
-    ## Normalize only after every sample has been corrected, and before any
-    ## CBS (D6). `cor.gc` is preserved; the dose lives in `RCA$data$dose`.
-    normalization_out <- list(
-        mode = mode,
-        reference = NULL,
-        by_side = config$defaults$normalization_by_side,
-        pseudocount = 0.5
+    measured <- .pipeline_measure(
+        indexed, preflight, windows, headers, samples, mapq, exclude_flags
     )
-    if (!identical(mode, "none")) {
-        reference_used <- if (identical(mode, "reference")) {
-            reference_sample
-        } else {
-            NULL
-        }
-        rcas <- tryCatch(
-            normalizeReadCounts(
-                rcas,
-                reference = reference_used,
-                by_side = config$defaults$normalization_by_side,
-                pseudocount = 0.5
-            ),
-            error = function(e) {
-                if (inherits(e, "MaMaMIAError")) {
-                    stop(e)
-                }
-                .analysis_error(
-                    "Normalization failed: %s", conditionMessage(e)
-                )
-            }
-        )
-        normalization_out <- list(
-            mode = mode,
-            reference = reference_used,
-            by_side = config$defaults$normalization_by_side,
-            pseudocount = 0.5
-        )
-        .pipeline_progress(progress, "normalization", list(
-            mode = mode,
-            reference = reference_used,
-            n_samples = length(samples)
-        ))
-    }
-
-    ## All samples share one assembly, so their target pairs must agree. Using
-    ## a single vector guarantees that every sample is segmented on the same
-    ## donor-recipient pairs.
-    target_pairs <- tables_list[[1L]]$target_pairs
-    if (length(tables_list) > 1L) {
-        for (i in seq_along(tables_list)[-1L]) {
-            if (!identical(tables_list[[i]]$target_pairs, target_pairs)) {
-                .analysis_error(
-                    "Samples in one run must share the same donor-recipient target pairs"
-                )
-            }
-        }
-    }
-
-    isas <- vector("list", length(samples))
-    names(isas) <- samples
-    for (i in seq_along(samples)) {
-        sample <- samples[[i]]
-        isa <- tryCatch(
-            segments(
-                rcas[[i]],
-                target_pairs = target_pairs,
-                verbose = FALSE
-            ),
-            error = function(e) .sample_stage_error(e, sample, "segmentation")
-        )
-        .pipeline_progress(progress, "segmentation", list(
+    for (sample in samples) {
+        total <- sum(measured$count[measured$sample == sample])
+        .pipeline_progress(progress, "metrics", list(
             sample = sample,
-            n_segments = nrow(isa$segments),
-            value_col = isa$meta$value_col
+            total = total
         ))
-        isas[[sample]] <- isa
+        if (!is.finite(total) || total <= 0) {
+            .mamamia_error(
+                "MaMaMIASampleError",
+                "Sample '%s' has zero reads in all analysis windows",
+                sample
+            )
+        }
     }
+    metrics <- buildWindowMetrics(
+        measured, windows, gc, read_length = NULL
+    )
+    mode <- if (n_samples == 1L) "single" else "multi"
+    composition <- sample_composition
+    if (is.null(composition)) {
+        composition <- assembly_config$sample_composition
+    }
+    scores <- scoreIntrogression(
+        metrics,
+        mode = mode,
+        metric = metric,
+        donor_aggregation = defaults$donor_aggregation,
+        recipient_aggregation = defaults$recipient_aggregation,
+        sample_composition = composition,
+        gc_correction = TRUE,
+        score_type = score
+    )
+    .pipeline_progress(progress, "score", list(
+        mode = mode,
+        metric = metric,
+        score = score,
+        n_windows = nrow(scores)
+    ))
 
-    reference_used <- normalization_out$reference
-    is_reference <- if (is.null(reference_used)) {
-        rep(FALSE, length(samples))
-    } else {
-        samples == reference_used
+    mask_spec <- defaults$mask
+    mask_spec[names(mask_args)] <- mask_args
+    masks <- buildWindowMask(
+        metrics,
+        scores = scores,
+        mode = mode,
+        panel_mask = mask_spec$panel,
+        blacklist = mask_spec$blacklist,
+        physical_fallback_mb = mask_spec$physical_fallback_mb,
+        recurrence_threshold = mask_spec$recurrence_threshold
+    )
+    masked_fraction <- mean(masks$mask, na.rm = TRUE)
+    .pipeline_progress(progress, "mask", list(
+        masked = sum(masks$mask, na.rm = TRUE),
+        masked_fraction = masked_fraction,
+        source = unique(masks$source[masks$mask])
+    ))
+
+    segment_args <- list(
+        alpha = 0.001,
+        undo_SD = 1,
+        min_width = 5L,
+        merge_gap = 100L,
+        merge_floor = -0.5,
+        min_mb = 5
+    )
+    segment_keep <- intersect(names(calibration_args), names(segment_args))
+    segment_args[segment_keep] <- calibration_args[segment_keep]
+    donor_lengths <- tapply(
+        windows$table$stop[windows$table$role == "donor"],
+        windows$table$group[windows$table$role == "donor"],
+        max, na.rm = TRUE
+    )
+    segment_args$lengths <- donor_lengths
+    calls <- do.call(
+        segmentScores,
+        c(list(scores = scores, mask = masks), segment_args)
+    )
+    .pipeline_progress(progress, "segmentation", list(
+        n_segments = nrow(calls),
+        n_samples = length(unique(calls$sample))
+    ))
+
+    cal <- defaults$calibration
+    cal[names(calibration_args)] <- calibration_args
+    cal_floors <- cal$floors
+    if (is.null(cal_floors)) {
+        cal_floors <- if (identical(mode, "single")) {
+            cal$single_sample_floors
+        } else {
+            rep(0.25, max(1L, length(cal$length_bins_mb) - 1L))
+        }
     }
+    calibrated <- calibrateSegments(
+        calls,
+        controls = cal$controls,
+        mode = mode,
+        length_bins_mb = cal$length_bins_mb,
+        fdr = cal$fdr,
+        floors = cal_floors
+    )
+    calls <- classifyCalls(calibrated$calls)
+    .pipeline_progress(progress, "calibration", list(
+        n_calls = sum(calls$pass, na.rm = TRUE),
+        fdr = cal$fdr
+    ))
+
     sample_bam <- match(preflight$path, indexed$original_path)
     samples_meta <- data.frame(
         sample = samples,
         path = preflight$path,
         assembly = preflight$assembly,
         index_path = indexed$index_path[sample_bam],
-        reference = is_reference,
-        normalization = rep(normalization_out$mode, length(samples)),
+        mode = mode,
         n_windows = rep(nrow(windows$table), length(samples)),
-        n_segments = vapply(isas, function(x) nrow(x$segments), integer(1L)),
-        n_putative_introgressions = vapply(
-            isas,
-            function(x) sum(x$segments$putative_introgression, na.rm = TRUE),
-            integer(1L)
-        ),
+        n_calls = vapply(samples, function(s) {
+            sum(calls$pass[calls$sample == s], na.rm = TRUE)
+        }, integer(1L)),
+        n_high_confidence = vapply(samples, function(s) {
+            sum(
+                calls$pass[calls$sample == s] &
+                    calls$confidence[calls$sample == s] == "high",
+                na.rm = TRUE
+            )
+        }, integer(1L)),
+        masked_fraction = rep(masked_fraction, length(samples)),
         stringsAsFactors = FALSE
     )
 
@@ -759,14 +669,16 @@ analyzeBamInput <- function(bam_paths,
         n_per = n_per,
         mapq = mapq,
         exclude_flags = exclude_flags,
-        max_fit_windows = max_fit_windows,
-        normalization = normalization_out,
-        cache = cache,
-        started_at = started_at,
-        requested_normalization = requested_mode
+        metric = metric,
+        score = score,
+        donor_aggregation = defaults$donor_aggregation,
+        sample_composition = composition,
+        mask = masks,
+        calibration = calibrated$calibration,
+        started_at = started_at
     )
 
-    structure(
+    result <- structure(
         list(
             assembly = assembly_config,
             config = config,
@@ -774,15 +686,15 @@ analyzeBamInput <- function(bam_paths,
             samples = samples_meta,
             windows = windows,
             gc = gc,
-            counts = list(
-                donor = donor_counts,
-                recipient = recipient_counts
-            ),
-            rca = rcas,
-            isa = isas,
-            normalization = normalization_out,
+            metrics = metrics,
+            scores = scores,
+            masks = masks,
+            calibration = calibrated$calibration,
+            calls = calls,
             provenance = provenance
         ),
         class = c("BamAnalysisResult", "list")
     )
+    validateBamAnalysisResult(result)
+    result
 }

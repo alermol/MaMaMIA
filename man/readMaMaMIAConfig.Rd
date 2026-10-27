@@ -18,6 +18,10 @@ Reads the YAML configuration, resolves relative paths against the directory
 containing the YAML file, and validates the species registry, assemblies, GC
 indexes, contigs and pairs before returning a normalized configuration list.
 }
+\details{
+Version 2 is required. A version 1 file raises a migration error that points
+to \code{MIGRATION.md}.
+}
 \examples{
 demo <- system.file("extdata", "bam-demo", package = "MaMaMIA")
 config <- readMaMaMIAConfig(file.path(demo, "assemblies.yml"))

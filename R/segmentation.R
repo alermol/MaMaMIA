@@ -1,330 +1,239 @@
-## Pairwise segmentation: join each donor chromosome with its recipient
-## counterpart on the selected per-window value difference (normalized dose
-## when present, otherwise GC-corrected coverage), cut the difference profile
-## into segments with circular binary segmentation (CBS), and flag the segments
-## whose summary metric passes the call threshold.
+## CBS segmentation of the score profile, with gap merging.
 
-#' @export
-#' @importFrom rlang .data
-segments <- function(RCA,
-                     target_pairs,
-                     value_col = NULL,
-                     min_segment_median = 0L,
-                     min_segment_mean = 0L,
-                     threshold_type = c("median", "mean"),
-                     alpha = 0.001,
-                     min_width = 2,
-                     undo_SD = 1,
-                     seed = 1L,
-                     verbose = TRUE) {
-    stopifnot("Input is not RCA object" = inherits(RCA, "RCA"))
-    stopifnot("Coverage must be corrected before segmentation" = RCA$corrected)
-
-    value_col <- resolve_segmentation_value_col(RCA, value_col)
-
-    thr_type <- match.arg(threshold_type)
-    threshold <- switch(thr_type,
-        "mean" = min_segment_mean,
-        "median" = min_segment_median
-    )
-    colname <- switch(thr_type,
-        "mean" = "seg.mean",
-        "median" = "seg.median"
-    )
-
-    param <- validate_segmentation_params(alpha, min_width, undo_SD, seed)
-
-    target_pairs_df <- validate_target_pairs(target_pairs, RCA$meta$don_chr_ids, RCA$meta$rec_chr_ids)
-
-    by_chr_split <- split(RCA$data, RCA$data$chr_id)
-
-    if (verbose) {
-        message("Performing segmentation...")
-    }
-
-    ## Windows of one donor-recipient pair, matched by window index (`iid`),
-    ## restricted to the windows that are ideal on both sides. `diff` uses the
-    ## resolved value column: `dose` when normalization is present, otherwise
-    ## `cor.gc` (D1/D7).
-    don_value <- paste0(value_col, ".don")
-    rec_value <- paste0(value_col, ".rec")
-    pair_data <- function(don_chr, rec_chr) {
-        dplyr::inner_join(
-            by_chr_split[[as.character(don_chr)]],
-            by_chr_split[[as.character(rec_chr)]],
-            by = "iid",
-            suffix = c(".don", ".rec")
-        ) |>
-            dplyr::filter(.data$ideal.don & .data$ideal.rec) |>
-            dplyr::mutate(diff = .data[[don_value]] - .data[[rec_value]])
-    }
-
-    prepared_data <- target_pairs_df |>
-        dplyr::mutate(
-            data = purrr::map2(.data$chr_id.don, .data$chr_id.rec, pair_data),
-            segments = purrr::pmap(
-                list(.data$data, .data$chr_id.don, .data$chr_id.rec),
-                segment_pair_data,
-                meta = RCA$meta$meta,
-                param = param,
-                colname = colname,
-                threshold = threshold,
-                min_width = min_width,
-                value_col = value_col
-            ),
-            .keep = "unused"
-        )
-
-    keep_don <- unique(target_pairs_df$chr_id.don)
-    keep_rec <- unique(target_pairs_df$chr_id.rec)
-    keep_chrs <- c(keep_don, keep_rec)
-
-    structure(
-        list(
-            data = dplyr::filter(RCA$data, .data$chr_id %in% keep_chrs),
-            out = dplyr::bind_rows(prepared_data$data),
-            segments = dplyr::bind_rows(
-                empty_segments(),
-                purrr::compact(prepared_data$segments)
-            ),
-            param = param,
-            meta = list(
-                meta = dplyr::filter(RCA$meta$meta, .data$chr_id %in% keep_chrs),
-                don_chr_ids = keep_don,
-                rec_chr_ids = keep_rec,
-                target_pairs = target_pairs_df,
-                metrics = colname,
-                metrics_threshold = threshold,
-                value_col = value_col
-            )
-        ),
-        class = "ISA"
-    )
+.segmentation_error <- function(fmt, ...) {
+    .mamamia_error("MaMaMIASegmentationError", fmt, ...)
 }
 
-## Internal segmentation helpers ----------------------------------------------
-
-## Resolve the per-window value column used for the donor-recipient difference.
-## `NULL` means `dose` when it is present, otherwise `cor.gc` (D7).
-#' @noRd
-resolve_segmentation_value_col <- function(RCA, value_col = NULL) {
-    if (is.null(value_col)) {
-        value_col <- if ("dose" %in% names(RCA$data)) "dose" else "cor.gc"
+.segment_one <- function(x, alpha, undo_SD, min_width) {
+    x <- x[order(x$iid), , drop = FALSE]
+    y <- as.numeric(x$score)
+    keep <- is.finite(y)
+    if (sum(keep) < max(20L, min_width)) {
+        return(NULL)
     }
-    if (!is.character(value_col) || length(value_col) != 1L ||
-        is.na(value_col) || !nzchar(value_col)) {
-        stop("`value_col` must be NULL or a single column name", call. = FALSE)
-    }
-    allowed <- c("cor.gc", "dose")
-    if (!value_col %in% allowed) {
-        stop(
-            sprintf(
-                "`value_col` must be one of: %s",
-                paste(allowed, collapse = ", ")
-            ),
-            call. = FALSE
-        )
-    }
-    if (!value_col %in% names(RCA$data)) {
-        stop(
-            sprintf("`value_col` '%s' is not present in the RCA data", value_col),
-            call. = FALSE
-        )
-    }
-    if (!is.numeric(RCA$data[[value_col]])) {
-        stop(
-            sprintf("`value_col` '%s' must be numeric", value_col),
-            call. = FALSE
-        )
-    }
-    value_col
-}
-
-#' @noRd
-validate_segmentation_params <- function(alpha, min_width, undo_SD, seed = 1L) {
-    if (alpha <= 0 || alpha > 1) {
-        stop("1 >= alpha > 0 is not satisfied", call. = FALSE)
-    }
-
-    if (min_width < 2) {
-        stop("min_width must be >=2", call. = FALSE)
-    }
-
-    if (undo_SD <= 0 || undo_SD > 10) {
-        stop("10 >= undo_SD > 0 is not satisfied", call. = FALSE)
-    }
-
-    if (!is.numeric(seed) || length(seed) != 1L || is.na(seed)) {
-        stop("seed must be a single number", call. = FALSE)
-    }
-
-    list(
-        alpha = alpha,
-        undo.SD = undo_SD,
-        min.width = min_width,
-        seed = as.integer(seed)
+    cna <- DNAcopy::CNA(
+        genomdat = y[keep],
+        chrom = rep("1", sum(keep)),
+        maploc = as.integer(x$iid[keep]),
+        data.type = "logratio"
     )
-}
-
-#' @noRd
-validate_target_pairs <- function(target_pairs, don_chr_ids, rec_chr_ids) {
-    if (length(target_pairs) < 1L || is.null(names(target_pairs)) ||
-        any(!nzchar(names(target_pairs)))) {
-        stop(
-            "`target_pairs` must be a non-empty named vector of donor -> recipient chr_id",
-            call. = FALSE
-        )
-    }
-
-    target_don <- as.character(names(target_pairs))
-    target_rec <- as.character(unname(target_pairs))
-    stopifnot(
-        "Some donor chromosome IDs in target_pairs are not present" =
-            all(target_don %in% don_chr_ids)
-    )
-    stopifnot(
-        "Some recipient chromosome IDs in target_pairs are not present" =
-            all(target_rec %in% rec_chr_ids)
-    )
-
-    pairs <- data.frame(
-        chr_id.don = target_don,
-        chr_id.rec = target_rec,
-        stringsAsFactors = FALSE
-    )
-    pairs <- pairs[!duplicated(pairs), , drop = FALSE]
-    rownames(pairs) <- seq_len(nrow(pairs))
-    pairs
-}
-
-#' Run code under a fixed seed, then restore the caller's RNG state.
-#' @noRd
-with_local_seed <- function(seed, code) {
-    has_state <- exists(".Random.seed", envir = globalenv(), inherits = FALSE)
-    previous <- if (has_state) get(".Random.seed", envir = globalenv()) else NULL
-    on.exit(
-        {
-            if (has_state) {
-                assign(".Random.seed", previous, envir = globalenv())
-            } else if (exists(".Random.seed", envir = globalenv(), inherits = FALSE)) {
-                rm(".Random.seed", envir = globalenv())
-            }
-        },
-        add = TRUE
-    )
-
-    set.seed(as.integer(seed))
-    force(code)
-}
-
-#' @noRd
-getSegments <- function(counts, chrom, maploc, alpha, undo.SD, seed = 1L) {
-    with_local_seed(seed, {
-        CNA.object <- DNAcopy::CNA(
-            genomdat = counts,
-            chrom = chrom,
-            maploc = maploc,
-            data.type = "logratio"
-        ) |> DNAcopy::smooth.CNA()
+    smoothed <- DNAcopy::smooth.CNA(cna)
+    segmented <- tryCatch(
         DNAcopy::segment(
-            CNA.object,
+            smoothed,
             verbose = 0,
             undo.splits = "sdundo",
             alpha = alpha,
-            min.width = 2,
-            undo.SD = undo.SD
-        )
-    })
-}
-
-#' @noRd
-segment_pair_data <- function(pair_data, don, rec, meta, param, colname,
-                              threshold, min_width, value_col = "cor.gc") {
-    if (nrow(pair_data) < 2L) {
-        warning(
-            sprintf(
-                "Skipping donor %s / recipient %s: need at least 2 ideal windows for CBS, got %d",
-                don,
-                rec,
-                nrow(pair_data)
-            ),
-            call. = FALSE
-        )
+            min.width = min_width,
+            undo.SD = undo_SD
+        ),
+        error = function(e) NULL
+    )
+    if (is.null(segmented) || is.null(segmented$output) ||
+        nrow(segmented$output) == 0L) {
         return(NULL)
     }
-    don_value <- paste0(value_col, ".don")
-    rec_value <- paste0(value_col, ".rec")
-    diff <- pair_data[[don_value]] - pair_data[[rec_value]]
-    getSegments(
-        counts = diff,
-        chrom = rep_len("1", nrow(pair_data)),
-        maploc = pair_data$iid,
-        alpha = param$alpha,
-        undo.SD = param$undo.SD,
-        seed = if (is.null(param$seed)) 1L else param$seed
-    ) |>
-        DNAcopy::segments.summary() |>
-        dplyr::select(!dplyr::all_of(c("ID", "chrom"))) |>
-        dplyr::mutate(
-            putative_introgression = .data[[colname]] >= threshold,
-            chr_id.don = don,
-            chr_id.rec = rec,
-            .before = 1L
-        ) |>
-        dplyr::inner_join(meta, by = c("chr_id.don" = "chr_id")) |>
-        dplyr::inner_join(
-            meta,
-            by = c("chr_id.rec" = "chr_id"),
-            suffix = c(".don", ".rec")
-        ) |>
-        dplyr::filter((.data$loc.end - .data$loc.start + 1) >= min_width)
-}
-
-#' @noRd
-empty_segments <- function() {
+    output <- segmented$output
     data.frame(
-        chr_id.don = character(),
-        chr_id.rec = character(),
-        loc.start = integer(),
-        loc.end = integer(),
-        num.mark = integer(),
-        seg.mean = numeric(),
-        seg.sd = numeric(),
-        seg.median = numeric(),
-        seg.mad = numeric(),
-        putative_introgression = logical(),
-        chr_name.don = character(),
-        subgenome.don = character(),
-        chr_name.rec = character(),
-        subgenome.rec = character(),
+        start_iid = as.integer(output$loc.start),
+        end_iid = as.integer(output$loc.end),
+        n_windows = as.integer(output$num.mark),
+        score_mean = as.numeric(output$seg.mean),
         stringsAsFactors = FALSE
     )
 }
 
-#' @noRd
-annotate_segment_coords <- function(segments, out) {
-    merge_data <- dplyr::select(out, dplyr::all_of(
-        c(
-            "iid",
-            "chr_id.don",
-            "start.don",
-            "stop.don",
-            "chr_id.rec",
-            "start.rec",
-            "stop.rec"
+.segment_merge <- function(calls, profile, merge_gap, merge_floor,
+                           min_mb, merge_min = 0.25) {
+    if (nrow(calls) == 0L) {
+        return(calls)
+    }
+    calls <- calls[order(calls$start_iid), , drop = FALSE]
+    positive <- calls$score_mean > merge_min
+    merged <- list()
+    current <- NULL
+    for (i in seq_len(nrow(calls))) {
+        row <- calls[i, , drop = FALSE]
+        if (!positive[[i]]) {
+            if (!is.null(current)) {
+                merged[[length(merged) + 1L]] <- current
+                current <- NULL
+            }
+            merged[[length(merged) + 1L]] <- row
+            next
+        }
+        if (is.null(current)) {
+            current <- row
+            next
+        }
+        gap_start <- current$end_iid + 1L
+        gap_end <- row$start_iid - 1L
+        gap_mean <- if (gap_end >= gap_start) {
+            mean(profile[as.character(gap_start:gap_end)], na.rm = TRUE)
+        } else {
+            0
+        }
+        if (!is.finite(gap_mean)) {
+            gap_mean <- 0
+        }
+        if (row$start_iid - current$end_iid - 1L <= merge_gap &&
+            gap_mean > merge_floor) {
+            weight_current <- current$n_windows
+            weight_row <- row$n_windows
+            current$score_mean <- (
+                current$score_mean * weight_current +
+                    row$score_mean * weight_row
+            ) / (weight_current + weight_row)
+            current$end_iid <- row$end_iid
+            current$n_windows <- current$end_iid - current$start_iid + 1L
+        } else {
+            merged[[length(merged) + 1L]] <- current
+            current <- row
+        }
+    }
+    if (!is.null(current)) {
+        merged[[length(merged) + 1L]] <- current
+    }
+    out <- do.call(rbind, merged)
+    rownames(out) <- NULL
+    out[out$end_iid >= out$start_iid, , drop = FALSE]
+}
+
+#' Segment score profiles with CBS
+#'
+#' Runs circular binary segmentation on each sample × chromosome-group score
+#' profile. Masked windows are set to `NA` and excluded from the CBS fit.
+#' Adjacent positive segments separated by a short, near-null gap are merged.
+#'
+#' @param scores A `ScoreTable` from [scoreIntrogression()].
+#' @param mask Optional `MaskTable` from [buildWindowMask()].
+#' @param alpha CBS significance level.
+#' @param undo_SD `undo.splits = "sdundo"` parameter.
+#' @param min_width Minimum CBS segment width in windows.
+#' @param merge_gap Maximum gap in windows that can be merged.
+#' @param merge_floor Minimum mean score in the gap to allow merging.
+#' @param merge_min Minimum segment mean for a segment to be merged; null
+#'   segments below this value stay separate and are removed by calibration.
+#' @param min_mb Minimum call width in Mb.
+#' @param lengths Optional named vector of contig lengths by group.
+#'
+#' @return A `Calls` data frame without calibration thresholds.
+#' @export
+segmentScores <- function(scores, mask = NULL, alpha = 0.001, undo_SD = 1,
+                          min_width = 5L, merge_gap = 100L,
+                          merge_floor = -0.5, min_mb = 5,
+                          merge_min = 0.25, lengths = NULL) {
+    if (!is.data.frame(scores) || nrow(scores) == 0L) {
+        .segmentation_error("`scores` must be a non-empty ScoreTable")
+    }
+    required <- c(
+        "sample", "group", "iid", "score", "donor_residual",
+        "recipient_residual", "length", "n_per_chromosome", "mode", "metric"
+    )
+    missing <- setdiff(required, names(scores))
+    if (length(missing) > 0L) {
+        .segmentation_error(
+            "`scores` is missing column(s): %s", paste(missing, collapse = ", ")
         )
-    ))
-    segments |>
-        dplyr::inner_join(
-            y = dplyr::select(merge_data, !dplyr::all_of(c(
-                "stop.don", "stop.rec"
-            ))),
-            by = c("chr_id.don", "chr_id.rec", "loc.start" = "iid")
-        ) |>
-        dplyr::inner_join(
-            y = dplyr::select(merge_data, !dplyr::all_of(c(
-                "start.don", "start.rec"
-            ))),
-            by = c("chr_id.don", "chr_id.rec", "loc.end" = "iid")
-        )
+    }
+    alpha <- as.numeric(alpha)[[1L]]
+    undo_SD <- as.numeric(undo_SD)[[1L]]
+    min_width <- as.integer(min_width)[[1L]]
+    merge_gap <- as.integer(merge_gap)[[1L]]
+    if (anyNA(c(alpha, undo_SD, min_width, merge_gap)) ||
+        min_width < 1L || merge_gap < 0L) {
+        .segmentation_error("Invalid segmentation parameters")
+    }
+    if (!is.null(mask)) {
+        scores <- applyWindowMask(scores, mask)
+    }
+    if (is.null(lengths)) {
+        lengths <- tapply(scores$length, scores$group, max, na.rm = TRUE)
+    }
+    if (is.null(names(lengths))) {
+        .segmentation_error("`lengths` must be named by chromosome group")
+    }
+
+    pieces <- list()
+    for (sample in unique(scores$sample)) {
+        for (group in sort(unique(scores$group))) {
+            x <- scores[
+                scores$sample == sample & scores$group == group, ,
+                drop = FALSE
+            ]
+            if (nrow(x) < max(20L, min_width)) {
+                next
+            }
+            segments <- .segment_one(x, alpha, undo_SD, min_width)
+            if (is.null(segments)) {
+                next
+            }
+            profile <- stats::setNames(x$score, x$iid)
+            segments <- .segment_merge(
+                segments, profile, merge_gap, merge_floor, min_mb, merge_min
+            )
+            if (nrow(segments) == 0L) {
+                next
+            }
+            group_length <- as.numeric(lengths[[group]])
+            n_per <- as.integer(x$n_per_chromosome[[1L]])
+            if (!is.finite(group_length) || group_length <= 0 || n_per < 1L) {
+                .segmentation_error(
+                    "No valid length for chromosome group '%s'", group
+                )
+            }
+            segments$sample <- sample
+            segments$group <- group
+            segments$mode <- x$mode[[1L]]
+            segments$metric <- x$metric[[1L]]
+            segments$method <- if ("score_type" %in% names(x)) {
+                if (x$score_type[[1L]] %in% c("donor_only", "donor-only")) {
+                    "donor_only"
+                } else {
+                    "paired_lr"
+                }
+            } else {
+                "paired_lr"
+            }
+            segments$start_bp <- floor(segments$start_iid * group_length / n_per)
+            segments$end_bp <- floor(
+                (segments$end_iid + 1L) * group_length / n_per
+            )
+            segments$width_bp <- segments$end_bp - segments$start_bp
+            segments$donor_mean <- vapply(seq_len(nrow(segments)), function(i) {
+                idx <- x$iid >= segments$start_iid[[i]] &
+                    x$iid <= segments$end_iid[[i]]
+                mean(x$donor_residual[idx], na.rm = TRUE)
+            }, numeric(1))
+            segments$recipient_mean <- vapply(
+                seq_len(nrow(segments)), function(i) {
+                    idx <- x$iid >= segments$start_iid[[i]] &
+                        x$iid <= segments$end_iid[[i]]
+                    mean(x$recipient_residual[idx], na.rm = TRUE)
+                }, numeric(1)
+            )
+            pieces[[length(pieces) + 1L]] <- segments
+        }
+    }
+    if (length(pieces) == 0L) {
+        return(data.frame(
+            sample = character(0), group = character(0),
+            start_iid = integer(0), end_iid = integer(0),
+            start_bp = numeric(0), end_bp = numeric(0),
+            width_bp = numeric(0), score_mean = numeric(0),
+            donor_mean = numeric(0), recipient_mean = numeric(0),
+            n_windows = integer(0), method = character(0),
+            mode = character(0), metric = character(0),
+            stringsAsFactors = FALSE
+        ))
+    }
+    out <- do.call(rbind, pieces)
+    out <- out[out$width_bp >= min_mb * 1e6, , drop = FALSE]
+    out <- out[, c(
+        "sample", "group", "start_iid", "end_iid", "start_bp", "end_bp",
+        "width_bp", "score_mean", "donor_mean", "recipient_mean",
+        "n_windows", "method", "mode", "metric"
+    )]
+    rownames(out) <- NULL
+    out
 }

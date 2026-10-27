@@ -1,0 +1,23 @@
+CXX_STD = CXX23
+
+## Rhtslib ships a static libhts.a; the configure script substitutes its
+## flags so the package keeps working when the library layout changes.
+PKG_CPPFLAGS = @RHTLIBS_CPPFLAGS@ -I../src/gcrank/include
+
+PKG_LIBS = @RHTLIBS@ -pthread
+
+## gcrank is vendored under src/gcrank (see tools/vendor-gcrank.R). Its
+## sources are not picked up automatically because they live in a
+## subdirectory, so list the objects explicitly.
+GCRANK_OBJECTS = \
+	gcrank/src/bitvector.o \
+	gcrank/src/crc32.o \
+	gcrank/src/fasta_reader.o \
+	gcrank/src/gc_rank.o \
+	gcrank/src/input_stream.o \
+	gcrank/src/line_reader.o \
+	gcrank/src/manifest.o \
+	gcrank/src/sha256.o \
+	gcrank/src/thread_pool.o
+
+OBJECTS = RcppExports.o htslib-utils.o gcrank-wrapper.o $(GCRANK_OBJECTS)

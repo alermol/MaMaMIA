@@ -1,6 +1,7 @@
 #include "gcrank/gc_rank.h"
 
 #include <algorithm>
+#include <array>
 #include <atomic>
 #include <cerrno>
 #include <charconv>
@@ -12,6 +13,7 @@
 #include <format>
 #include <fstream>
 #include <iterator>
+#include <limits>
 #include <mutex>
 #include <span>
 #include <string_view>
@@ -47,12 +49,15 @@ namespace {
 
 // ---- parallel build pipeline --------------------------------------------
 //
-//   producer (1 thread)  parses FASTA -> bounded ring of slots (chunk_bits bases)
-//   workers (N threads)  pack A/C/G/T/N bases into GC and valid words
-//   assembler (caller)   appends blocks in order, records contig boundaries
+//   hash helper (1 thread)  hashes the read buffers, in read order
+//   producer (1 thread)     parses FASTA -> bounded ring of slots (chunk_bits bases)
+//   packers (N threads)     pack A/C/G/T/N bases into GC and valid words
+//   assembler (caller)      appends blocks in order, records contig boundaries
 //
 // Slots are recycled through the ring; the assembler consumes in submission
-// order, so the output does not depend on the thread count.
+// order, so the output does not depend on the thread count. The hash helper
+// lives in HashingInputStream, so hashing overlaps the parse instead of
+// extending the serial critical path.
 
 struct Slot {
   enum class Kind { ContigBegin, ContigEnd, Block };
@@ -68,33 +73,65 @@ struct Slot {
   bool ready = false; // assembler may consume it
 };
 
+// Per-byte packing code: bit 0 is the GC bit, bit 1 the valid bit. A table
+// lookup keeps the inner loop free of the data-dependent branches that a
+// base_is_gc()/base_is_valid() pair turns into on random sequence.
+struct PackTable {
+  std::array<uint8_t, 256> code{};
+  constexpr PackTable() {
+    for (int c = 0; c < 256; ++c) {
+      const BaseClass cls = base_class(static_cast<char>(c));
+      code[static_cast<std::size_t>(c)] =
+          static_cast<uint8_t>((base_is_gc(cls) ? 1u : 0u) | (base_is_valid(cls) ? 2u : 0u));
+    }
+  }
+};
+inline constexpr PackTable kPackTable{};
+
 // Packs bases into MSB-first 64-bit words (bit 0 of the block = MSB of word 0).
 // Padding bits after `n` bases in the last word are zero.
+//
+// Eight bases are packed per iteration: each one produces one byte for the GC
+// word and one for the valid word, which is then shifted into place. This is
+// several times faster than shifting a 64-bit accumulator once per base on
+// random sequence, and produces identical words.
 void pack_block(std::span<const char> bases, std::vector<uint64_t>& gc_words,
                 std::vector<uint64_t>& valid_words) {
   const std::size_t n = bases.size();
   const std::size_t nwords = (n + 63) / 64;
   gc_words.assign(nwords, 0);
   valid_words.assign(nwords, 0);
-  std::size_t word = 0;
-  uint64_t gc_acc = 0;
-  uint64_t valid_acc = 0;
-  for (std::size_t i = 0; i < n; ++i) {
-    const BaseClass cls = base_class(bases[i]);
-    gc_acc = (gc_acc << 1) | (base_is_gc(cls) ? uint64_t(1) : uint64_t(0));
-    valid_acc = (valid_acc << 1) | (base_is_valid(cls) ? uint64_t(1) : uint64_t(0));
-    if ((i & 63u) == 63u) {
-      gc_words[word] = gc_acc;
-      valid_words[word] = valid_acc;
-      ++word;
-      gc_acc = 0;
-      valid_acc = 0;
+
+  const unsigned char* bytes = reinterpret_cast<const unsigned char*>(bases.data());
+  std::size_t i = 0;
+  for (; i + 8 <= n; i += 8) {
+    unsigned gc_byte = 0;
+    unsigned valid_byte = 0;
+    for (unsigned j = 0; j < 8; ++j) {
+      const unsigned code = kPackTable.code[bytes[i + j]];
+      gc_byte = (gc_byte << 1) | (code & 1u);
+      valid_byte = (valid_byte << 1) | (code >> 1);
     }
+    const std::size_t word = i >> 6;
+    const unsigned shift = 56u - static_cast<unsigned>(i & 63u);
+    gc_words[word] |= static_cast<uint64_t>(gc_byte) << shift;
+    valid_words[word] |= static_cast<uint64_t>(valid_byte) << shift;
   }
-  const unsigned rem = static_cast<unsigned>(n & 63u);
-  if (rem != 0) {
-    gc_words[word] = gc_acc << (64 - rem);
-    valid_words[word] = valid_acc << (64 - rem);
+
+  if (i < n) {
+    uint64_t gc_acc = 0;
+    uint64_t valid_acc = 0;
+    const std::size_t start = i;
+    for (; i < n; ++i) {
+      const unsigned code = kPackTable.code[bytes[i]];
+      gc_acc = (gc_acc << 1) | (code & 1u);
+      valid_acc = (valid_acc << 1) | (code >> 1);
+    }
+    const std::size_t count = n - start;
+    const unsigned shift = 64u - static_cast<unsigned>(start & 63u) -
+                           static_cast<unsigned>(count);
+    gc_words[start >> 6] |= gc_acc << shift;
+    valid_words[start >> 6] |= valid_acc << shift;
   }
 }
 
@@ -861,6 +898,35 @@ double GcRank::gc_fraction(std::string_view contig_name, uint64_t start, uint64_
                            bool remove_ambiguous) const {
   const auto [begin, finish] = resolve_window(contig_name, start, end);
   return fraction(begin, finish, remove_ambiguous);
+}
+
+WindowStats GcRank::stats_global(uint64_t start, uint64_t end, bool remove_ambiguous) const {
+  WindowStats result;
+  result.length = end - start;
+  result.gc = impl_->genome_.rank1(end) - impl_->genome_.rank1(start);
+  result.valid = impl_->valid_.rank1(end) - impl_->valid_.rank1(start);
+  const uint64_t denominator = remove_ambiguous ? result.valid : result.length;
+  if (denominator == 0) {
+    result.gc_fraction = std::numeric_limits<double>::quiet_NaN();
+    return result;
+  }
+  // The same single-precision division as gc_fraction(), so the value is
+  // bit-identical to bedtools nuc's pct_gc.
+  const float quotient =
+      static_cast<float>(result.gc) / static_cast<float>(denominator);
+  result.gc_fraction = static_cast<double>(quotient);
+  return result;
+}
+
+WindowStats GcRank::stats(uint64_t start, uint64_t end, bool remove_ambiguous) const {
+  check_range(start, end);
+  return stats_global(start, end, remove_ambiguous);
+}
+
+WindowStats GcRank::stats(std::string_view contig_name, uint64_t start, uint64_t end,
+                          bool remove_ambiguous) const {
+  const auto [begin, finish] = resolve_window(contig_name, start, end);
+  return stats_global(begin, finish, remove_ambiguous);
 }
 
 uint64_t GcRank::total_bases() const { return impl_->genome_.size(); }

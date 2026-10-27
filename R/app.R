@@ -1,22 +1,13 @@
-## The BAM-first launcher: pick BAMs and a species pair, run the pipeline, then
-## hand over to the explorer module defined in dashboard.R.
-
-#' @noRd
-default_fit_cache <- function() {
-    dir <- tryCatch(tools::R_user_dir("MaMaMIA", "cache"), error = function(e) NULL)
-    if (is.null(dir)) {
-        return(NULL)
-    }
-    file.path(dir, "zinb-fit.rds")
-}
+## The BAM-first launcher: pick BAMs and a species pair, run the pipeline,
+## then hand over to the explorer module defined in dashboard.R.
 
 #' Run MaMaMIA as a local Shiny dashboard
 #'
 #' `runMaMaMIA()` is the main entry point of the package and opens the
 #' BAM-first Shiny application. The app reads BAM headers, matches them to the
 #' configured species registry, stages the files in session temporary storage,
-#' and runs [analyzeBamInput()] before handing the per-sample `ISA` objects to
-#' the introgression explorer of [exploreIntrogressions()].
+#' and runs [analyzeBamInput()] before handing the `BamAnalysisResult` to the
+#' introgression explorer of [exploreIntrogressions()].
 #'
 #' The app reads its assembly registry from `config` or, when that is `NULL`,
 #' from the `MAMAMIA_CONFIG` environment variable (the ShinyProxy deployment
@@ -37,21 +28,17 @@ default_fit_cache <- function() {
 #'
 #' The analysis runs in the R session, so the session blocks while it runs; the
 #' progress bar reports the pipeline stages (headers, indexes, windows, GC,
-#' counts, correction, normalization, segmentation). Errors are reported with
-#' the failing stage and a suggested fix.
+#' breadth/counts, scoring, masking, segmentation, calibration). Errors are
+#' reported with the failing stage and a suggested fix.
 #'
-#' The explorer shows an `interacCircos` overview of the visible calls, the
-#' mirror/difference plot, the segment table with the BEDPE export, and, for a
-#' cohort, a per-sample selector, a cohort summary and a combined BEDPE download
-#' carrying the `sample` column.
+#' The explorer shows the score profile, the call table with the BEDPE export,
+#' and, for a cohort, a per-sample selector, a cohort summary and a combined
+#' BEDPE download carrying the `sample` column.
 #'
 #' Dashboard packages are optional MaMaMIA dependencies. Install them with
-#' `install.packages(c("shiny", "bslib", "shinyWidgets", "DT"))` and
-#' `remotes::install_github("rstudio/gridlayout")` before calling this function.
+#' `install.packages(c("shiny", "bslib", "shinyWidgets", "DT"))` before calling
+#' this function.
 #'
-#' @param cache Optional path to an `.rds` file used to memoise the GC-bias
-#'   model fit, passed to [correctReadCounts()]. Defaults to a file in the
-#'   user cache directory.
 #' @param config Optional assembly registry: a path to a YAML configuration or
 #'   a validated configuration list from [readMaMaMIAConfig()]. The app falls
 #'   back to the `MAMAMIA_CONFIG` environment variable when this is `NULL`.
@@ -69,7 +56,7 @@ default_fit_cache <- function() {
 #' runMaMaMIA(config = "assemblies.yml")
 #' }
 #' @export
-runMaMaMIA <- function(cache = NULL, config = NULL,
+runMaMaMIA <- function(config = NULL,
                        max_request_size = 5 * 1024^3,
                        host = "127.0.0.1", port = NULL,
                        launch.browser = interactive()) {
@@ -82,11 +69,8 @@ runMaMaMIA <- function(cache = NULL, config = NULL,
         )
     }
     options(shiny.maxRequestSize = max_request_size)
-    if (is.null(cache)) {
-        cache <- default_fit_cache()
-    }
 
-    app <- mamamia_app(cache = cache, config = config)
+    app <- mamamia_app(config = config)
     args <- list(appDir = app, host = host, launch.browser = launch.browser)
     if (!is.null(port)) {
         args$port <- port
@@ -100,11 +84,8 @@ runMaMaMIA <- function(cache = NULL, config = NULL,
 #' launching Shiny. The `mamamia_input` attribute is always `"bam"`.
 #'
 #' @noRd
-mamamia_app <- function(cache = NULL, config = NULL) {
-    app <- bam_launcher_app(
-        config = config,
-        cache = cache
-    )
+mamamia_app <- function(config = NULL) {
+    app <- bam_launcher_app(config = config)
     attr(app, "mamamia_input") <- "bam"
     app
 }

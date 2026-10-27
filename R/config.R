@@ -4,8 +4,13 @@
 ## application. Validation happens once, before any BAM work starts, so that a
 ## broken index or an inconsistent contig map fails with a message that names
 ## the assembly, contig and file.
+##
+## Version 2 is ploidy-aware: a species declares its subgenomes per contig and
+## an assembly selects one or more recipient and donor subgenomes. Contigs are
+## paired by chromosome group; the scoring layer aggregates homoeologs within a
+## group instead of requiring a one-to-one contig map.
 
-.MaMaMIASupportedConfigVersions <- 1L
+.MaMaMIASupportedConfigVersions <- 2L
 .MaMaMIASupportedGcrankFormatVersions <- "0.1.0"
 
 .config_error <- function(fmt, ...) {
@@ -22,11 +27,24 @@
         windows_per_chromosome = 1000L,
         allowed_windows = c(100L, 1000L, 10000L),
         mapq = 20L,
-        exclude_flags = 2308L,
-        max_fit_windows = 50000L,
+        exclude_flags = 1796L,
         gc_mmap = TRUE,
         gc_validate_crc = FALSE,
-        normalization_by_side = TRUE
+        metric = "breadth",
+        score = "paired_log_ratio",
+        donor_aggregation = "mean",
+        recipient_aggregation = "mean",
+        mask = list(
+            panel = NULL,
+            blacklist = NULL,
+            physical_fallback_mb = 1,
+            recurrence_threshold = 0.4
+        ),
+        calibration = list(
+            length_bins_mb = c(5, 10, 25, 50, 100, Inf),
+            fdr = 0.01,
+            single_sample_floors = c(2.0, 1.5, 1.2, 1.0, 0.5)
+        )
     )
 }
 
@@ -88,6 +106,14 @@
         path <- file.path(base_dir, path)
     }
     normalizePath(path, winslash = "/", mustWork = FALSE)
+}
+
+.config_path_or_null <- function(path, what, base_dir) {
+    if (is.null(path)) {
+        return(NULL)
+    }
+    value <- .config_string(path, what)
+    .config_path(value, base_dir)
 }
 
 .read_contigs_tsv <- function(path) {
@@ -240,152 +266,6 @@
         any(names(x) %in% c("id", "name", "subgenome"))
 }
 
-.config_contig_entries <- function(x, role, assembly_key) {
-    if (is.null(x) || length(x) == 0L) {
-        return(data.frame(
-            id = character(0), name = character(0),
-            subgenome = character(0), stringsAsFactors = FALSE
-        ))
-    }
-    entries <- if (is.data.frame(x)) {
-        lapply(seq_len(nrow(x)), function(i) as.list(x[i, , drop = FALSE]))
-    } else if (.is_contig_mapping(x)) {
-        list(x)
-    } else if (is.list(x)) {
-        x
-    } else {
-        .config_error(
-            "Assembly '%s': contigs.%s must be a list of mappings",
-            assembly_key, role
-        )
-    }
-
-    rows <- lapply(seq_along(entries), function(i) {
-        entry <- entries[[i]]
-        where <- sprintf("Assembly '%s': contigs.%s[[%d]]", assembly_key, role, i)
-        if (!is.list(entry)) {
-            .config_error("%s must be a mapping with id, name and subgenome", where)
-        }
-        id <- .config_string(entry$id, paste0(where, ".id"))
-        name <- if (is.null(entry$name)) id else {
-            .config_string(entry$name, paste0(where, ".name"))
-        }
-        subgenome <- .config_string(
-            entry$subgenome, paste0(where, ".subgenome")
-        )
-        data.frame(
-            id = id, name = name, subgenome = subgenome,
-            stringsAsFactors = FALSE
-        )
-    })
-    out <- do.call(rbind, rows)
-    rownames(out) <- NULL
-    out
-}
-
-.config_pairs <- function(pairs, donor, recipient, assembly_key) {
-    if (is.null(pairs) || length(pairs) == 0L) {
-        return(stats::setNames(character(0), character(0)))
-    }
-    flat <- unlist(pairs, use.names = TRUE)
-    if (is.null(names(flat)) || anyNA(names(flat)) ||
-        any(!nzchar(names(flat)))) {
-        .config_error(
-            "Assembly '%s': pairs must be a named donor-to-recipient mapping",
-            assembly_key
-        )
-    }
-    values <- as.character(flat)
-    names(values) <- names(flat)
-    if (anyNA(values) || any(!nzchar(values))) {
-        .config_error("Assembly '%s': pairs must not contain empty values", assembly_key)
-    }
-    if (anyDuplicated(names(values))) {
-        .config_error("Assembly '%s': pairs has a duplicate donor", assembly_key)
-    }
-    if (anyDuplicated(unname(values))) {
-        .config_error(
-            "Assembly '%s': pairs is not one-to-one; a recipient is used more than once",
-            assembly_key
-        )
-    }
-    unknown_donor <- setdiff(names(values), donor$id)
-    if (length(unknown_donor) > 0L) {
-        .config_error(
-            "Assembly '%s': pairs refers to unknown donor contig(s): %s",
-            assembly_key, paste(unknown_donor, collapse = ", ")
-        )
-    }
-    unknown_recipient <- setdiff(unname(values), recipient$id)
-    if (length(unknown_recipient) > 0L) {
-        .config_error(
-            "Assembly '%s': pairs refers to unknown recipient contig(s): %s",
-            assembly_key, paste(unknown_recipient, collapse = ", ")
-        )
-    }
-    values
-}
-
-.config_gc_indexes <- function(gc_indexes, what, config_dir) {
-    if (is.null(gc_indexes) || length(gc_indexes) == 0L) {
-        .config_error("%s: gc_indexes must not be empty", what)
-    }
-    if (!is.character(gc_indexes)) {
-        gc_indexes <- unlist(gc_indexes, use.names = FALSE)
-    }
-    if (!is.character(gc_indexes) || anyNA(gc_indexes) ||
-        any(!nzchar(trimws(gc_indexes)))) {
-        .config_error(
-            "%s: gc_indexes must be a list of non-empty paths", what
-        )
-    }
-    gc_indexes <- vapply(gc_indexes, .config_path, character(1),
-        base_dir = config_dir
-    )
-    if (anyDuplicated(gc_indexes)) {
-        .config_error("%s: gc_indexes lists the same index twice", what)
-    }
-    unname(gc_indexes)
-}
-
-.attach_contig_lengths <- function(contigs, index_contigs, what, role) {
-    position <- match(contigs$id, index_contigs$id)
-    if (anyNA(position)) {
-        missing_ids <- contigs$id[is.na(position)]
-        .config_error(
-            "%s: %s contig(s) not found in any configured gc_index: %s",
-            what, role, paste(missing_ids, collapse = ", ")
-        )
-    }
-    contigs$length <- index_contigs$length[position]
-    contigs$index_path <- index_contigs$index_path[position]
-    contigs
-}
-
-.check_contig_lengths <- function(contigs, what, allowed_windows) {
-    max_resolution <- max(allowed_windows)
-    too_short <- contigs$length < max_resolution
-    if (any(too_short)) {
-        contig <- contigs$id[too_short][[1L]]
-        length_bp <- contigs$length[too_short][[1L]]
-        .config_error(
-            "%s: contig '%s' is %s bp, shorter than the largest allowed window (%s bp)",
-            what, contig, format(length_bp, scientific = FALSE),
-            format(max_resolution, scientific = FALSE)
-        )
-    }
-    too_long <- contigs$length >= 2^31
-    if (any(too_long)) {
-        contig <- contigs$id[too_long][[1L]]
-        .config_error(
-            "%s: contig '%s' is %s bp; 32-bit positions require lengths below 2^31",
-            what, contig,
-            format(contigs$length[too_long][[1L]], scientific = FALSE)
-        )
-    }
-    invisible(contigs)
-}
-
 ## First number in a contig display name, used as the chromosome group when the
 ## registry does not declare one (for example "1A" and "1R" both give "1").
 #' @noRd
@@ -396,12 +276,19 @@ chr_number <- function(chr_name) {
     number
 }
 
+.config_copy_number <- function(x, what) {
+    if (is.null(x)) {
+        return(2)
+    }
+    .config_integer(x, what, min = 0L, max = 1000L)
+}
+
 .species_contig_entries <- function(x, species_key) {
     if (is.null(x) || length(x) == 0L) {
         return(data.frame(
             id = character(0), name = character(0),
             subgenome = character(0), group = character(0),
-            stringsAsFactors = FALSE
+            copy_number = numeric(0), stringsAsFactors = FALSE
         ))
     }
     entries <- if (is.data.frame(x)) {
@@ -436,6 +323,9 @@ chr_number <- function(chr_name) {
         }
         data.frame(
             id = id, name = name, subgenome = subgenome, group = group,
+            copy_number = .config_copy_number(
+                entry$copy_number, paste0(where, ".copy_number")
+            ),
             stringsAsFactors = FALSE
         )
     })
@@ -523,43 +413,102 @@ chr_number <- function(chr_name) {
         description = description,
         default_subgenome = default_subgenome,
         gc_indexes = unname(gc_indexes),
-        contigs = contigs[, c("id", "name", "subgenome", "group", "length", "index_path")]
+        contigs = contigs[, c(
+            "id", "name", "subgenome", "group", "copy_number", "length",
+            "index_path"
+        )]
     )
 }
 
-.species_assembly_key <- function(recipient, donor, recipient_subgenome,
-                                    donor_subgenome) {
-    paste(recipient, recipient_subgenome, donor, donor_subgenome, sep = "__")
+.config_gc_indexes <- function(gc_indexes, what, config_dir) {
+    if (is.null(gc_indexes) || length(gc_indexes) == 0L) {
+        .config_error("%s: gc_indexes must not be empty", what)
+    }
+    if (!is.character(gc_indexes)) {
+        gc_indexes <- unlist(gc_indexes, use.names = FALSE)
+    }
+    if (!is.character(gc_indexes) || anyNA(gc_indexes) ||
+        any(!nzchar(trimws(gc_indexes)))) {
+        .config_error(
+            "%s: gc_indexes must be a list of non-empty paths", what
+        )
+    }
+    gc_indexes <- vapply(gc_indexes, .config_path, character(1),
+        base_dir = config_dir
+    )
+    if (anyDuplicated(gc_indexes)) {
+        .config_error("%s: gc_indexes lists the same index twice", what)
+    }
+    unname(gc_indexes)
 }
 
-.species_resolve_subgenome <- function(species, requested, role, context) {
-    available <- unique(as.character(species$contigs$subgenome))
-    if (!is.null(requested)) {
-        requested <- .config_string(
-            requested, sprintf("%s %s_subgenome", context, role)
+.attach_contig_lengths <- function(contigs, index_contigs, what, role) {
+    position <- match(contigs$id, index_contigs$id)
+    if (anyNA(position)) {
+        missing_ids <- contigs$id[is.na(position)]
+        .config_error(
+            "%s: %s contig(s) not found in any configured gc_index: %s",
+            what, role, paste(missing_ids, collapse = ", ")
         )
-        if (!requested %in% available) {
-            .config_error(
-                "%s: species '%s' has no %s subgenome '%s'; available: %s",
-                context, species$key, role, requested,
-                paste(available, collapse = ", ")
-            )
+    }
+    contigs$length <- index_contigs$length[position]
+    contigs$index_path <- index_contigs$index_path[position]
+    contigs
+}
+
+.check_contig_lengths <- function(contigs, what, allowed_windows) {
+    max_resolution <- max(allowed_windows)
+    too_short <- contigs$length < max_resolution
+    if (any(too_short)) {
+        contig <- contigs$id[too_short][[1L]]
+        length_bp <- contigs$length[too_short][[1L]]
+        .config_error(
+            "%s: contig '%s' is %s bp, shorter than the largest allowed window (%s bp)",
+            what, contig, format(length_bp, scientific = FALSE),
+            format(max_resolution, scientific = FALSE)
+        )
+    }
+    too_long <- contigs$length >= 2^31
+    if (any(too_long)) {
+        contig <- contigs$id[too_long][[1L]]
+        .config_error(
+            "%s: contig '%s' is %s bp; 32-bit positions require lengths below 2^31",
+            what, contig,
+            format(contigs$length[too_long][[1L]], scientific = FALSE)
+        )
+    }
+    invisible(contigs)
+}
+
+.species_resolve_subgenomes <- function(species, requested, role, context) {
+    available <- unique(as.character(species$contigs$subgenome))
+    if (is.null(requested) || length(requested) == 0L) {
+        if (!is.null(species$default_subgenome)) {
+            return(species$default_subgenome)
         }
-        return(requested)
-    }
-    if (!is.null(species$default_subgenome)) {
-        return(species$default_subgenome)
-    }
-    if (length(available) == 1L) {
         return(available)
     }
-    .config_error(
-        "%s: species '%s' has several subgenomes (%s); choose a %s_subgenome",
-        context, species$key, paste(available, collapse = ", "), role
-    )
+    if (!is.character(requested)) {
+        requested <- unlist(requested, use.names = FALSE)
+    }
+    requested <- trimws(as.character(requested))
+    if (length(requested) == 0L || anyNA(requested) || any(!nzchar(requested))) {
+        .config_error("%s: `%s_subgenomes` must be a non-empty character vector",
+            context, role)
+    }
+    unknown <- setdiff(requested, available)
+    if (length(unknown) > 0L) {
+        .config_error(
+            "%s: species '%s' has no %s subgenome(s) %s; available: %s",
+            context, species$key, role,
+            paste(sprintf("'%s'", unknown), collapse = ", "),
+            paste(available, collapse = ", ")
+        )
+    }
+    unique(requested)
 }
 
-.species_derived_pairs <- function(donor, recipient, context) {
+.species_derived_pairs <- function(donor, recipient) {
     donor_group <- donor$group
     recipient_group <- recipient$group
     pairs <- character(0)
@@ -586,14 +535,9 @@ chr_number <- function(chr_name) {
             ))
             next
         }
-        if (length(matched) > 1L) {
-            .config_error(
-                "%s: chromosome group '%s' matches more than one recipient contig: %s",
-                context, group,
-                paste(recipient$id[matched], collapse = ", ")
-            )
-        }
-        pairs[[donor$id[[i]]]] <- recipient$id[[matched]]
+        ## Group-level scoring uses every recipient homoeolog; this map names a
+        ## representative so one-to-one consumers still have a pairing.
+        pairs[[donor$id[[i]]]] <- recipient$id[[matched[[1L]]]]
     }
 
     used <- unname(pairs)
@@ -614,11 +558,56 @@ chr_number <- function(chr_name) {
     list(pairs = pairs, unpaired = unpaired)
 }
 
+.sample_composition <- function(contigs, subgenomes, requested, context) {
+    if (is.null(requested)) {
+        values <- vapply(subgenomes, function(s) {
+            x <- contigs$copy_number[contigs$subgenome == s]
+            if (length(x) == 0L) 2 else as.numeric(x[[1L]])
+        }, numeric(1))
+        return(stats::setNames(values, subgenomes))
+    }
+    values <- unlist(requested, use.names = TRUE)
+    if (is.null(values) || is.null(names(values)) || anyNA(names(values)) ||
+        any(!nzchar(names(values)))) {
+        .config_error(
+            "%s: `default_sample_composition` must be a named numeric mapping",
+            context
+        )
+    }
+    unknown <- setdiff(names(values), subgenomes)
+    if (length(unknown) > 0L) {
+        .config_error(
+            "%s: `default_sample_composition` names unknown recipient subgenome(s): %s",
+            context, paste(unknown, collapse = ", ")
+        )
+    }
+    out <- vapply(seq_along(values), function(i) {
+        .config_integer(
+            values[[i]],
+            sprintf("%s: default_sample_composition.%s", context, names(values)[[i]]),
+            min = 0L, max = 1000L
+        )
+    }, integer(1))
+    names(out) <- names(values)
+    missing <- setdiff(subgenomes, names(out))
+    if (length(missing) > 0L) {
+        defaults <- vapply(missing, function(s) {
+            x <- contigs$copy_number[contigs$subgenome == s]
+            if (length(x) == 0L) 2 else as.numeric(x[[1L]])
+        }, numeric(1))
+        out <- c(out, stats::setNames(defaults, missing))
+    }
+    out[subgenomes]
+}
+
 .build_species_assembly <- function(recipient_species, donor_species, key = NULL,
                                     label = NULL, description = NULL,
+                                    recipient_subgenomes = NULL,
+                                    donor_subgenomes = NULL,
                                     recipient_subgenome = NULL,
                                     donor_subgenome = NULL,
-                                    pairs = NULL, allowed_windows) {
+                                    default_sample_composition = NULL,
+                                    allowed_windows) {
     if (identical(recipient_species$key, donor_species$key)) {
         .config_error(
             "A species pair needs two different species; both sides are '%s'",
@@ -629,57 +618,47 @@ chr_number <- function(chr_name) {
         "Species pair '%s' (recipient) + '%s' (donor)",
         recipient_species$key, donor_species$key
     )
-    recipient_subgenome <- .species_resolve_subgenome(
-        recipient_species, recipient_subgenome, "recipient", context
+    if (is.null(recipient_subgenomes) && !is.null(recipient_subgenome)) {
+        recipient_subgenomes <- recipient_subgenome
+    }
+    if (is.null(donor_subgenomes) && !is.null(donor_subgenome)) {
+        donor_subgenomes <- donor_subgenome
+    }
+    recipient_subgenomes <- .species_resolve_subgenomes(
+        recipient_species, recipient_subgenomes, "recipient", context
     )
-    donor_subgenome <- .species_resolve_subgenome(
-        donor_species, donor_subgenome, "donor", context
+    donor_subgenomes <- .species_resolve_subgenomes(
+        donor_species, donor_subgenomes, "donor", context
     )
 
     recipient_all <- recipient_species$contigs[
-        recipient_species$contigs$subgenome == recipient_subgenome, ,
+        recipient_species$contigs$subgenome %in% recipient_subgenomes, ,
         drop = FALSE
     ]
     donor_all <- donor_species$contigs[
-        donor_species$contigs$subgenome == donor_subgenome, ,
+        donor_species$contigs$subgenome %in% donor_subgenomes, ,
         drop = FALSE
     ]
     if (nrow(recipient_all) == 0L || nrow(donor_all) == 0L) {
         .config_error(
             "%s: no contigs in the selected subgenomes (%s/%s)",
-            context, recipient_subgenome, donor_subgenome
+            context, paste(recipient_subgenomes, collapse = ","),
+            paste(donor_subgenomes, collapse = ",")
         )
     }
 
-    unpaired <- data.frame(
-        role = character(0), contig = character(0), reason = character(0),
-        stringsAsFactors = FALSE
-    )
-    if (is.null(pairs)) {
-        derived <- .species_derived_pairs(donor_all, recipient_all, context)
-        pairs <- derived$pairs
-        unpaired <- derived$unpaired
-        if (length(pairs) == 0L) {
-            .config_error(
-                "%s: no contig pairs could be derived by chromosome group; add `group` values or configure explicit `pairs`",
-                context
-            )
-        }
-    } else {
-        pairs <- .config_pairs(
-            pairs, donor_all, recipient_all,
-            if (is.null(key)) context else key
+    derived <- .species_derived_pairs(donor_all, recipient_all)
+    pairs <- derived$pairs
+    unpaired <- derived$unpaired
+    if (length(pairs) == 0L) {
+        .config_error(
+            "%s: no contig pairs could be derived by chromosome group; add `group` values to the species contigs",
+            context
         )
-        if (length(pairs) == 0L) {
-            .config_error("%s: `pairs` is empty", context)
-        }
     }
 
-    donor <- donor_all[match(names(pairs), donor_all$id), , drop = FALSE]
-    recipient <- recipient_all[match(unname(pairs), recipient_all$id), , drop = FALSE]
-    if (anyNA(donor$id) || anyNA(recipient$id)) {
-        .config_error("%s: `pairs` refers to an unknown contig", context)
-    }
+    donor <- donor_all
+    recipient <- recipient_all
     if (anyDuplicated(c(recipient$id, donor$id))) {
         duplicate <- unique(c(recipient$id, donor$id)[
             duplicated(c(recipient$id, donor$id))
@@ -704,9 +683,10 @@ chr_number <- function(chr_name) {
     )
 
     if (is.null(key)) {
-        key <- .species_assembly_key(
-            recipient_species$key, donor_species$key,
-            recipient_subgenome, donor_subgenome
+        key <- paste(
+            recipient_species$key, paste(recipient_subgenomes, collapse = "+"),
+            donor_species$key, paste(donor_subgenomes, collapse = "+"),
+            sep = "__"
         )
     } else {
         key <- .config_string(key, "assembly key")
@@ -722,8 +702,10 @@ chr_number <- function(chr_name) {
                 "Species pair: %s [%s] (recipient) + %s [%s] (donor); ",
                 "contigs paired by chromosome group"
             ),
-            recipient_species$label, recipient_subgenome,
-            donor_species$label, donor_subgenome
+            recipient_species$label,
+            paste(recipient_subgenomes, collapse = ","),
+            donor_species$label,
+            paste(donor_subgenomes, collapse = ",")
         )
     } else {
         description <- .config_string(
@@ -731,7 +713,13 @@ chr_number <- function(chr_name) {
         )
     }
 
-    columns <- c("id", "name", "subgenome", "length", "index_path")
+    composition <- .sample_composition(
+        recipient, recipient_subgenomes, default_sample_composition, context
+    )
+    columns <- c(
+        "id", "name", "subgenome", "group", "copy_number", "length",
+        "index_path"
+    )
     assembly <- list(
         key = key,
         label = label,
@@ -741,158 +729,50 @@ chr_number <- function(chr_name) {
             recipient = recipient[, columns, drop = FALSE],
             donor = donor[, columns, drop = FALSE]
         ),
-        pairs = pairs
+        pairs = pairs,
+        recipient_subgenomes = recipient_subgenomes,
+        donor_subgenomes = donor_subgenomes,
+        sample_composition = composition
     )
     list(
         key = key,
         assembly = assembly,
         unpaired = unpaired,
-        recipient_subgenome = recipient_subgenome,
-        donor_subgenome = donor_subgenome
+        recipient_subgenomes = recipient_subgenomes,
+        donor_subgenomes = donor_subgenomes,
+        recipient_subgenome = recipient_subgenomes[[1L]],
+        donor_subgenome = donor_subgenomes[[1L]]
     )
 }
 
-.normalize_species_assembly <- function(assembly, key, defaults, species) {
-    if (is.null(species) || length(species) == 0L) {
-        .config_error(
-            "Assembly '%s' references species, but the config has no `species` registry",
-            key
-        )
+.validate_metric <- function(x, what) {
+    value <- .config_string(x, what)
+    allowed <- c("breadth", "count", "combined")
+    if (!value %in% allowed) {
+        .config_error("`%s` must be one of: %s", what, paste(allowed, collapse = ", "))
     }
-    recipient <- .config_string(
-        assembly$recipient, sprintf("assemblies.%s.recipient", key)
-    )
-    donor <- .config_string(
-        assembly$donor, sprintf("assemblies.%s.donor", key)
-    )
-    if (!recipient %in% names(species)) {
-        .config_error(
-            "Assembly '%s': unknown recipient species '%s'; configured species: %s",
-            key, recipient, paste(names(species), collapse = ", ")
-        )
-    }
-    if (!donor %in% names(species)) {
-        .config_error(
-            "Assembly '%s': unknown donor species '%s'; configured species: %s",
-            key, donor, paste(names(species), collapse = ", ")
-        )
-    }
-
-    built <- .build_species_assembly(
-        recipient_species = species[[recipient]],
-        donor_species = species[[donor]],
-        key = key,
-        label = assembly$label,
-        description = assembly$description,
-        recipient_subgenome = assembly$recipient_subgenome,
-        donor_subgenome = assembly$donor_subgenome,
-        pairs = assembly$pairs,
-        allowed_windows = defaults$allowed_windows
-    )
-    built$assembly
+    value
 }
 
-.normalize_assembly <- function(assembly, key, config_dir, defaults,
-                                species = NULL) {
-    if (!is.list(assembly)) {
-        .config_error("Assembly '%s' must be a mapping", key)
-    }
-    if (is.null(assembly$contigs) &&
-        (is.character(assembly$recipient) || is.character(assembly$donor))) {
-        return(.normalize_species_assembly(assembly, key, defaults, species))
-    }
-    if (!is.null(assembly$contigs) &&
-        (is.character(assembly$recipient) || is.character(assembly$donor))) {
-        .config_error(
-            "Assembly '%s' cannot define both `contigs` and species references",
-            key
-        )
-    }
-    label <- .config_string(assembly$label, sprintf("assemblies.%s.label", key))
-    description <- if (is.null(assembly$description)) "" else {
-        x <- assembly$description
-        if (length(x) != 1L ||
-            is.na(x) ||
-            is.list(x) ||
-            !is.atomic(x)) {
-            .config_error("`assemblies.%s.description` must be a string", key)
-        }
-        trimws(as.character(x))
-    }
-
-    gc_indexes <- .config_gc_indexes(
-        assembly$gc_indexes, sprintf("Assembly '%s'", key), config_dir
-    )
-
-    contigs <- assembly$contigs
-    if (!is.list(contigs) || is.null(names(contigs))) {
-        .config_error(
-            "Assembly '%s': contigs must contain recipient and donor entries", key
-        )
-    }
-    unknown_roles <- setdiff(names(contigs), c("recipient", "donor"))
-    if (length(unknown_roles) > 0L) {
-        .config_error(
-            "Assembly '%s': unknown contigs role(s): %s",
-            key, paste(unknown_roles, collapse = ", ")
-        )
-    }
-    recipient <- .config_contig_entries(contigs$recipient, "recipient", key)
-    donor <- .config_contig_entries(contigs$donor, "donor", key)
-    if (nrow(recipient) == 0L) {
-        .config_error("Assembly '%s' must have at least one recipient contig", key)
-    }
-    if (nrow(donor) == 0L) {
-        .config_error("Assembly '%s' must have at least one donor contig", key)
-    }
-    if (anyDuplicated(c(donor$id, recipient$id))) {
-        duplicate <- unique(c(donor$id, recipient$id)[
-            duplicated(c(donor$id, recipient$id))
-        ])[[1L]]
-        .config_error(
-            "Assembly '%s': contig '%s' is configured in both roles", key, duplicate
-        )
-    }
-
-    shared_subgenomes <- intersect(
-        unique(recipient$subgenome), unique(donor$subgenome)
-    )
-    if (length(shared_subgenomes) > 0L) {
-        .config_error(
-            "Assembly '%s': donor and recipient subgenome labels must be disjoint; shared: %s",
-            key, paste(shared_subgenomes, collapse = ", ")
-        )
-    }
-
-    index_contigs <- .collect_index_contigs(gc_indexes, key)
-    what <- sprintf("Assembly '%s'", key)
-    recipient <- .attach_contig_lengths(recipient, index_contigs, what, "recipient")
-    donor <- .attach_contig_lengths(donor, index_contigs, what, "donor")
-    .check_contig_lengths(
-        rbind(recipient, donor), what, defaults$allowed_windows
-    )
-
-    pairs <- .config_pairs(assembly$pairs, donor, recipient, key)
-
-    list(
-        key = key,
-        label = label,
-        description = description,
-        gc_indexes = unname(gc_indexes),
-        contigs = list(
-            recipient = recipient[, c("id", "name", "subgenome", "length", "index_path")],
-            donor = donor[, c("id", "name", "subgenome", "length", "index_path")]
-        ),
-        pairs = pairs
-    )
-}
-
-.validate_defaults <- function(defaults) {
+.validate_defaults <- function(defaults, config_dir = getwd()) {
     if (is.null(defaults)) {
         defaults <- list()
     }
     if (!is.list(defaults)) {
         .config_error("`defaults` must be a mapping")
+    }
+    supported <- c(
+        "windows_per_chromosome", "allowed_windows", "mapq", "exclude_flags",
+        "gc_mmap", "gc_validate_crc", "metric", "score", "donor_aggregation",
+        "recipient_aggregation", "mask", "calibration"
+    )
+    unknown <- setdiff(names(defaults), supported)
+    if (length(unknown) > 0L) {
+        .config_error(
+            "Unknown `defaults` key(s): %s. Supported keys are: %s. See MIGRATION.md for the version 1 key changes.",
+            paste(unknown, collapse = ", "),
+            paste(supported, collapse = ", ")
+        )
     }
     out <- .config_defaults()
 
@@ -933,11 +813,6 @@ chr_number <- function(chr_name) {
             defaults$exclude_flags, "defaults.exclude_flags", 0L, 4095L
         )
     }
-    if (!is.null(defaults$max_fit_windows)) {
-        out$max_fit_windows <- .config_integer(
-            defaults$max_fit_windows, "defaults.max_fit_windows", min = 1L
-        )
-    }
     if (!is.null(defaults$gc_mmap)) {
         out$gc_mmap <- .config_logical(defaults$gc_mmap, "defaults.gc_mmap")
     }
@@ -946,15 +821,112 @@ chr_number <- function(chr_name) {
             defaults$gc_validate_crc, "defaults.gc_validate_crc"
         )
     }
-    if (!is.null(defaults$normalization_by_side)) {
-        out$normalization_by_side <- .config_logical(
-            defaults$normalization_by_side, "defaults.normalization_by_side"
+    if (!is.null(defaults$metric)) {
+        out$metric <- .validate_metric(defaults$metric, "defaults.metric")
+    }
+    if (!is.null(defaults$score)) {
+        out$score <- .config_string(defaults$score, "defaults.score")
+        if (!out$score %in% c("paired_log_ratio", "donor_only")) {
+            .config_error(
+                "`defaults.score` must be one of: paired_log_ratio, donor_only"
+            )
+        }
+    }
+    if (!is.null(defaults$donor_aggregation)) {
+        out$donor_aggregation <- .config_string(
+            defaults$donor_aggregation, "defaults.donor_aggregation"
         )
+        if (!out$donor_aggregation %in% c("mean", "max", "sum")) {
+            .config_error(
+                "`defaults.donor_aggregation` must be one of: mean, max, sum"
+            )
+        }
+    }
+    if (!is.null(defaults$recipient_aggregation)) {
+        out$recipient_aggregation <- .config_string(
+            defaults$recipient_aggregation, "defaults.recipient_aggregation"
+        )
+        if (!identical(out$recipient_aggregation, "mean")) {
+            .config_error("`defaults.recipient_aggregation` must be 'mean'")
+        }
+    }
+
+    if (!is.null(defaults$mask)) {
+        if (!is.list(defaults$mask)) {
+            .config_error("`defaults.mask` must be a mapping")
+        }
+        mask <- defaults$mask
+        unknown <- setdiff(
+            names(mask),
+            c("panel", "blacklist", "physical_fallback_mb",
+              "recurrence_threshold")
+        )
+        if (length(unknown) > 0L) {
+            .config_error("`defaults.mask` has unknown key(s): %s",
+                paste(unknown, collapse = ", "))
+        }
+        out$mask$panel <- .config_path_or_null(
+            mask$panel, "defaults.mask.panel", config_dir
+        )
+        out$mask$blacklist <- .config_path_or_null(
+            mask$blacklist, "defaults.mask.blacklist", config_dir
+        )
+        if (!is.null(mask$physical_fallback_mb)) {
+            out$mask$physical_fallback_mb <- .config_number(
+                mask$physical_fallback_mb, "defaults.mask.physical_fallback_mb",
+                min = 0
+            )
+        }
+        if (!is.null(mask$recurrence_threshold)) {
+            out$mask$recurrence_threshold <- .config_number(
+                mask$recurrence_threshold,
+                "defaults.mask.recurrence_threshold", min = 0, max = 1
+            )
+        }
+    }
+    if (!is.null(defaults$calibration)) {
+        if (!is.list(defaults$calibration)) {
+            .config_error("`defaults.calibration` must be a mapping")
+        }
+        calibration <- defaults$calibration
+        unknown <- setdiff(
+            names(calibration),
+            c("length_bins_mb", "fdr", "single_sample_floors")
+        )
+        if (length(unknown) > 0L) {
+            .config_error("`defaults.calibration` has unknown key(s): %s",
+                paste(unknown, collapse = ", "))
+        }
+        if (!is.null(calibration$length_bins_mb)) {
+            breaks <- as.numeric(unlist(calibration$length_bins_mb))
+            if (length(breaks) < 2L || anyNA(breaks) || any(!is.finite(breaks[-length(breaks)])) ||
+                any(diff(breaks) <= 0)) {
+                .config_error(
+                    "`defaults.calibration.length_bins_mb` must be increasing"
+                )
+            }
+            out$calibration$length_bins_mb <- breaks
+        }
+        if (!is.null(calibration$fdr)) {
+            out$calibration$fdr <- .config_number(
+                calibration$fdr, "defaults.calibration.fdr",
+                min = .Machine$double.eps, max = 1 - .Machine$double.eps
+            )
+        }
+        if (!is.null(calibration$single_sample_floors)) {
+            floors <- as.numeric(unlist(calibration$single_sample_floors))
+            if (anyNA(floors) || any(!is.finite(floors)) || any(floors < 0)) {
+                .config_error(
+                    "`defaults.calibration.single_sample_floors` must be non-negative numbers"
+                )
+            }
+            out$calibration$single_sample_floors <- floors
+        }
     }
     out
 }
 
-.validate_server <- function(server, config_dir) {
+.validate_server <- function(server) {
     if (is.null(server)) {
         server <- list()
     }
@@ -978,6 +950,9 @@ chr_number <- function(chr_name) {
 #' Reads the YAML configuration, resolves relative paths against the directory
 #' containing the YAML file, and validates the species registry, assemblies, GC
 #' indexes, contigs and pairs before returning a normalized configuration list.
+#'
+#' Version 2 is required. A version 1 file raises a migration error that points
+#' to `MIGRATION.md`.
 #'
 #' @param path Path to the YAML configuration file.
 #'
@@ -1050,7 +1025,20 @@ validateMaMaMIAConfig <- function(config) {
     if (is.null(config$version)) {
         .config_error("`version` is required in the MaMaMIA config")
     }
-    version <- .config_integer(config$version, "version", min = 1L)
+    version <- suppressWarnings(as.integer(config$version))
+    if (is.na(version)) {
+        .config_error("`version` must be an integer")
+    }
+    if (version == 1L) {
+        .config_error(
+            paste0(
+                "MaMaMIA config version 1 is no longer supported. ",
+                "Change `version: 1` to `version: 2` and see MIGRATION.md ",
+                "for the schema changes (multi-subgenome ploidy, metric, score, ",
+                "mask and calibration defaults)."
+            )
+        )
+    }
     if (!version %in% .MaMaMIASupportedConfigVersions) {
         .config_error(
             "Unsupported MaMaMIA config version %s (supported: %s)",
@@ -1058,8 +1046,8 @@ validateMaMaMIAConfig <- function(config) {
         )
     }
 
-    defaults <- .validate_defaults(config$defaults)
-    server <- .validate_server(config$server, config_dir)
+    defaults <- .validate_defaults(config$defaults, config_dir)
+    server <- .validate_server(config$server)
 
     species <- config$species
     if (is.null(species)) {
@@ -1087,64 +1075,40 @@ validateMaMaMIAConfig <- function(config) {
         names(species)
     }
 
-    assemblies <- config$assemblies
-    if (is.null(assemblies)) {
-        assemblies <- list()
-    }
-    if (!is.list(assemblies)) {
-        .config_error("`assemblies` must be a named mapping")
-    }
-    if (length(assemblies) > 0L &&
-        (is.null(names(assemblies)) || anyNA(names(assemblies)) ||
-            any(!nzchar(names(assemblies))))) {
-        .config_error("`assemblies` must be a named mapping")
-    }
-    if (anyDuplicated(names(assemblies))) {
-        .config_error("Assembly keys must be unique")
-    }
-    if (length(assemblies) == 0L && length(normalized_species) == 0L) {
+    if (!is.null(config$assemblies) && length(config$assemblies) > 0L) {
         .config_error(
-            "The config must define at least one `species` or one `assemblies` entry"
+            paste0(
+                "`assemblies` is not part of the registry schema: declare ",
+                "`species` only and pair them at run time with ",
+                "resolveSpeciesAssembly(). See MIGRATION.md."
+            )
         )
     }
-    if (length(assemblies) == 0L && length(normalized_species) < 2L) {
+    if (length(normalized_species) < 2L) {
         .config_error(
-            "A species-only config needs at least two `species` entries to form a donor/recipient pair"
+            "The config must define at least two `species` entries to form a donor/recipient pair"
         )
-    }
-
-    normalized <- lapply(seq_along(assemblies), function(i) {
-        .normalize_assembly(
-            assemblies[[i]],
-            names(assemblies)[[i]],
-            config_dir,
-            defaults,
-            species = normalized_species
-        )
-    })
-    names(normalized) <- if (length(normalized) == 0L) {
-        character(0)
-    } else {
-        names(assemblies)
     }
 
     out <- list(
         version = version,
         defaults = defaults,
         species = normalized_species,
-        assemblies = normalized,
+        assemblies = list(),
         server = server
     )
     attr(out, "config_path") <- config_path
     invisible(out)
 }
 
-#' List the assemblies in a MaMaMIA configuration
+#' List the assemblies resolved in a MaMaMIA configuration
 #'
-#' Returns one row per configured assembly for the application's assembly
-#' selector.
+#' Returns one row per assembly. A freshly read registry has none: assemblies
+#' are created by [resolveSpeciesAssembly()] and stored in the returned
+#' `config`, so pass that resolved configuration to list them.
 #'
-#' @param config A validated configuration list or a path to a YAML file.
+#' @param config A validated configuration list, usually the `config` element
+#'   returned by [resolveSpeciesAssembly()], or a path to a YAML file.
 #'
 #' @return A data frame with `key`, `label`, `description`, `n_donor`,
 #'   `n_recipient`, `n_pairs` and `n_gc_indexes`.
@@ -1177,6 +1141,12 @@ listMaMaMIAAssemblies <- function(config) {
         n_gc_indexes = vapply(assemblies, function(x) {
             length(x$gc_indexes)
         }, integer(1)),
+        recipient_subgenomes = vapply(assemblies, function(x) {
+            paste(x$recipient_subgenomes, collapse = ",")
+        }, character(1)),
+        donor_subgenomes = vapply(assemblies, function(x) {
+            paste(x$donor_subgenomes, collapse = ",")
+        }, character(1)),
         stringsAsFactors = FALSE
     )
     rownames(out) <- NULL
@@ -1229,40 +1199,45 @@ listMaMaMIASpecies <- function(config) {
 
 #' Build an assembly from a recipient and a donor species
 #'
-#' Selects one subgenome per species and pairs their contigs by chromosome
-#' group. The group is taken from the optional `group` field of a species
-#' contig, or from the first number in its `name` (for example `1A` and `1R`
-#' are both group 1). Only paired contigs are included in the assembly.
+#' Selects one or more subgenomes per species and pairs their contigs by
+#' chromosome group. The group is taken from the optional `group` field of a
+#' species contig, or from the first number in its `name` (for example `1A` and
+#' `1R` are both group 1). All contigs in the selected subgenomes are included;
+#' the scoring layer compares donor and recipient homoeologs within a group.
 #'
-#' `recipient_subgenome` and `donor_subgenome` are optional when a species has
-#' a single subgenome or a `default_subgenome`; otherwise they are required so
-#' that a polyploid side is not paired silently. `pairs` is an optional
-#' explicit donor-to-recipient override; when it is supplied, only the listed
-#' contigs are included.
+#' `recipient_subgenomes` and `donor_subgenomes` are optional when a species has
+#' a single subgenome or a `default_subgenome`; otherwise every subgenome is
+#' selected. The singular `recipient_subgenome` / `donor_subgenome` arguments
+#' are accepted as one-element shortcuts.
 #'
 #' @param config A validated configuration list or a path to a YAML file.
 #' @param donor Donor species key.
 #' @param recipient Recipient species key.
-#' @param donor_subgenome Optional donor subgenome label.
-#' @param recipient_subgenome Optional recipient subgenome label.
-#' @param pairs Optional named donor-to-recipient contig mapping that overrides
-#'   the chromosome-group rule.
+#' @param donor_subgenomes Optional donor subgenome labels.
+#' @param recipient_subgenomes Optional recipient subgenome labels.
+#' @param donor_subgenome Optional single donor subgenome (shortcut).
+#' @param recipient_subgenome Optional single recipient subgenome (shortcut).
 #' @param key Optional assembly key. Defaults to a key built from the species
 #'   and subgenome labels.
 #' @param label Optional assembly label.
 #' @param description Optional assembly description.
+#' @param default_sample_composition Optional named recipient copy-number
+#'   vector for the derived assembly.
 #'
 #' @return A list with `key`, `assembly`, `config` (the input configuration
 #'   with the derived assembly registered), `unpaired` (contigs excluded from
 #'   the pair, with a reason), `donor_species`, `recipient_species`,
-#'   `donor_subgenome` and `recipient_subgenome`.
+#'   `donor_subgenomes` and `recipient_subgenomes`.
 #'
 #' @export
 resolveSpeciesAssembly <- function(config, donor, recipient,
+                                   donor_subgenomes = NULL,
+                                   recipient_subgenomes = NULL,
                                    donor_subgenome = NULL,
                                    recipient_subgenome = NULL,
-                                   pairs = NULL, key = NULL,
-                                   label = NULL, description = NULL) {
+                                   key = NULL,
+                                   label = NULL, description = NULL,
+                                   default_sample_composition = NULL) {
     if (is.character(config)) {
         config <- readMaMaMIAConfig(config)
     }
@@ -1293,9 +1268,11 @@ resolveSpeciesAssembly <- function(config, donor, recipient,
         key = key,
         label = label,
         description = description,
+        recipient_subgenomes = recipient_subgenomes,
+        donor_subgenomes = donor_subgenomes,
         recipient_subgenome = recipient_subgenome,
         donor_subgenome = donor_subgenome,
-        pairs = pairs,
+        default_sample_composition = default_sample_composition,
         allowed_windows = config$defaults$allowed_windows
     )
 
@@ -1318,6 +1295,8 @@ resolveSpeciesAssembly <- function(config, donor, recipient,
         unpaired = built$unpaired,
         donor_species = donor,
         recipient_species = recipient,
+        donor_subgenomes = built$donor_subgenomes,
+        recipient_subgenomes = built$recipient_subgenomes,
         donor_subgenome = built$donor_subgenome,
         recipient_subgenome = built$recipient_subgenome
     )

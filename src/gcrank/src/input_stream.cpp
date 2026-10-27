@@ -6,7 +6,11 @@
 #include <cerrno>
 #include <cstdio>
 #include <cstring>
+#include <exception>
+#include <mutex>
+#include <thread>
 #include <utility>
+#include <vector>
 
 #include "gcrank/error.h"
 
@@ -118,26 +122,98 @@ std::size_t GzipInputStream::read(void* dst, std::size_t n) {
 
 // ---- HashingInputStream --------------------------------------------------
 
+namespace {
+// Bound the read-ahead so a slow hash (the scalar fallback) cannot grow the
+// queue in proportion to the genome. 32 x 64 KiB still gives the worker enough
+// slack to overlap a fast hash with the parser.
+constexpr std::size_t kMaxPendingHashBuffers = 32;
+}  // namespace
+
 HashingInputStream::HashingInputStream(std::unique_ptr<InputStream> inner)
     : inner_(std::move(inner)) {
   if (inner_ == nullptr) throw UsageError("HashingInputStream: null stream");
+  worker_ = std::thread([this] { worker_loop(); });
 }
 
-HashingInputStream::~HashingInputStream() = default;
+HashingInputStream::~HashingInputStream() {
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    stop_ = true;
+    queue_.clear();  // a failed or abandoned build need not finish the hash
+    idle_ = true;
+  }
+  cv_work_.notify_all();
+  if (worker_.joinable()) worker_.join();
+}
+
+void HashingInputStream::worker_loop() {
+  for (;;) {
+    std::vector<char> buffer;
+    {
+      std::unique_lock<std::mutex> lock(mutex_);
+      cv_work_.wait(lock, [&] { return stop_ || !queue_.empty(); });
+      if (stop_ && queue_.empty()) return;
+      buffer = std::move(queue_.front());
+      queue_.pop_front();
+    }
+    try {
+      hash_.update(buffer.data(), buffer.size());
+    } catch (...) {
+      std::lock_guard<std::mutex> lock(mutex_);
+      if (!error_) error_ = std::current_exception();
+    }
+    {
+      std::lock_guard<std::mutex> lock(mutex_);
+      --pending_;
+      // Keep a small pool: the parser usually reads in 64 KiB pieces and the
+      // worker keeps up, so a little reuse avoids allocating per read.
+      if (free_.size() < 16) free_.push_back(std::move(buffer));
+      if (queue_.empty()) idle_ = true;
+    }
+    cv_done_.notify_all();
+  }
+}
 
 std::size_t HashingInputStream::read(void* dst, std::size_t n) {
   const std::size_t got = inner_->read(dst, n);
-  if (got > 0) {
-    hash_.update(dst, got);
-    bytes_ += got;
+  if (got == 0) return 0;
+
+  std::vector<char> buffer;
+  {
+    std::unique_lock<std::mutex> lock(mutex_);
+    cv_done_.wait(lock, [&] { return pending_ < kMaxPendingHashBuffers; });
+    if (!free_.empty()) {
+      buffer = std::move(free_.back());
+      free_.pop_back();
+    }
   }
+  const char* const bytes = static_cast<const char*>(dst);
+  buffer.assign(bytes, bytes + got);
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    queue_.push_back(std::move(buffer));
+    ++pending_;
+    idle_ = false;
+  }
+  cv_work_.notify_one();
+  bytes_ += got;
   return got;
 }
 
 std::string HashingInputStream::sha256_hex() const {
+  // Wait until the worker has hashed everything read so far; the queue is FIFO,
+  // so this is the digest of the byte stream in read order.
+  std::unique_lock<std::mutex> lock(mutex_);
+  cv_done_.wait(lock, [&] { return idle_ && queue_.empty(); });
+  if (error_) {
+    const std::exception_ptr error = error_;
+    lock.unlock();
+    std::rethrow_exception(error);
+  }
   // SHA256::finish() mutates the state (it pads and finalizes), so finish a
   // copy; this keeps the accessor const and leaves the running hash usable.
   SHA256 copy = hash_;
+  lock.unlock();
   uint8_t digest[32];
   copy.finish(digest);
   return sha256_hex_from_digest(digest);

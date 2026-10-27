@@ -128,10 +128,14 @@ preflightBams <- function(paths, config, assembly = NULL) {
     if (is.character(config)) {
         config <- readMaMaMIAConfig(config)
     }
-    if (!is.list(config) || !is.list(config$assemblies) ||
-        length(config$assemblies) == 0L) {
+    if (!is.list(config) || is.null(config$assemblies)) {
         .config_error(
-            "`config` must be a validated MaMaMIA configuration with at least one assembly"
+            "`config` must be a validated MaMaMIA configuration"
+        )
+    }
+    if (length(config$assemblies) == 0L) {
+        .config_error(
+            "`config` has no assembly: pair the species first with resolveSpeciesAssembly()"
         )
     }
     if (!is.character(paths) || length(paths) == 0L || anyNA(paths) ||

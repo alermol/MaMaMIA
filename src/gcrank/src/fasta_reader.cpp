@@ -1,6 +1,7 @@
 #include "gcrank/detail/fasta_reader.h"
 
 #include <algorithm>
+#include <array>
 #include <format>
 
 #include "gcrank/error.h"
@@ -9,6 +10,25 @@
 namespace gcrank {
 
 namespace {
+
+// Class and normalized form of one input byte in a single table load. The
+// parser looks at every sequence byte, so folding the two lookups together
+// removes one dependent load from the hot loop.
+struct SequenceInfo {
+  BaseClass cls = BaseClass::Invalid;
+  char normalized = '\0';
+};
+
+constexpr std::array<SequenceInfo, 256> make_sequence_info() {
+  std::array<SequenceInfo, 256> table{};
+  for (int c = 0; c < 256; ++c) {
+    const char byte = static_cast<char>(c);
+    table[static_cast<std::size_t>(c)] = SequenceInfo{base_class(byte), normalized_base(byte)};
+  }
+  return table;
+}
+
+inline constexpr std::array<SequenceInfo, 256> kSequenceInfo = make_sequence_info();
 
 // Printable rendering of an offending byte for error messages.
 std::string describe_byte(char c) {
@@ -67,7 +87,8 @@ void FastaReader::parse_header() {
 
 bool FastaReader::all_whitespace(std::string_view piece, std::size_t begin) {
   for (std::size_t i = begin; i < piece.size(); ++i)
-    if (base_class(piece[i]) != BaseClass::Whitespace) return false;
+    if (kSequenceInfo[static_cast<unsigned char>(piece[i])].cls != BaseClass::Whitespace)
+      return false;
   return true;
 }
 
@@ -75,25 +96,40 @@ FastaReader::AppendResult FastaReader::append_sequence(std::string_view piece, s
                                                        std::size_t column_base) {
   AppendResult result;
   std::size_t i = begin;
-  while (i < piece.size()) {
-    const char c = piece[i];
-    const BaseClass cls = base_class(c);
-    if (cls == BaseClass::Invalid)
-      throw InputError(in_->name() + ": invalid character " + describe_byte(c) +
-                       " at line " + std::to_string(lines_->line_number()) + ", column " +
-                       std::to_string(column_base + i + 1) + invalid_byte_hint(c));
-    ++i;
-    if (cls == BaseClass::Whitespace) continue;
-    block_.push_back(normalized_base(c));
-    ++contig_bases_;
-    ++total_bases_;
-    if (block_.size() >= block_bases_) {
-      result.consumed = i;
-      result.full = true;
-      return result;
+  std::size_t written = block_.size();
+  const std::size_t capacity = static_cast<std::size_t>(block_bases_);
+  uint64_t contig_bases = contig_bases_;
+  uint64_t total_bases = total_bases_;
+
+  while (i < piece.size() && written < capacity) {
+    // Size the buffer for the bytes this pass may consume, then compact
+    // whitespace in place. Resizing once per line avoids a capacity check and
+    // a push_back call per base.
+    const std::size_t end = std::min(piece.size(), i + (capacity - written));
+    const std::size_t old_size = block_.size();
+    block_.resize(old_size + (end - i));
+    char* const dst = block_.data() + old_size;
+    std::size_t out = 0;
+    for (; i < end; ++i) {
+      const char c = piece[i];
+      const SequenceInfo& info = kSequenceInfo[static_cast<unsigned char>(c)];
+      if (info.cls == BaseClass::Invalid)
+        throw InputError(in_->name() + ": invalid character " + describe_byte(c) +
+                         " at line " + std::to_string(lines_->line_number()) + ", column " +
+                         std::to_string(column_base + i + 1) + invalid_byte_hint(c));
+      if (info.cls == BaseClass::Whitespace) continue;
+      dst[out++] = info.normalized;
+      ++contig_bases;
+      ++total_bases;
     }
+    block_.resize(old_size + out);
+    written = old_size + out;
   }
+
+  contig_bases_ = contig_bases;
+  total_bases_ = total_bases;
   result.consumed = i;
+  result.full = written == capacity;
   return result;
 }
 

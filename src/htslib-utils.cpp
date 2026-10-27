@@ -1,10 +1,9 @@
 // htslib helpers used by the BAM-first workflow.
 //
-// The package talks to BAM files through Rhtslib directly (D8): no
-// Rsamtools and no bamsignals dependency. This file reads headers, builds CSI
-// indexes and counts reads. bam_count_rg_cpp() serves the per-sample pipeline;
-// bam_count_ranges_cpp() serves the public countReads() helper and arbitrary
-// GRanges.
+// The package talks to BAM files through Rhtslib directly. This file reads
+// headers, builds CSI indexes and measures reads. bam_metrics_rg_cpp() serves
+// the pipeline; bam_count_ranges_cpp() serves the public countReads() helper
+// and arbitrary GRanges.
 
 #include <Rcpp.h>
 
@@ -86,13 +85,6 @@ const char* format_name(enum htsExactFormat format) {
 // [[Rcpp::export]]
 std::string htslib_version_cpp() {
   return std::string(hts_version());
-}
-
-// Minimal compile/load spike kept from T0.2. It proves that Rcpp, Rhtslib and
-// the C++23 build flags produce a loadable shared library.
-// [[Rcpp::export]]
-int build_stub_cpp() {
-  return 1;
 }
 
 // [[Rcpp::export]]
@@ -194,18 +186,20 @@ bool bam_index_build_cpp(const std::string& path,
   return true;
 }
 
-// Count reads per sample in one BAM.
+// Count alignments and covered bases per sample in exact-N windows.
 //
-// Reads are assigned to the window containing their 5' end: a forward read
-// uses its leftmost coordinate and a reverse read uses the last aligned base.
-// `exclude_flags` follows samtools `view -F`: a read is dropped when any mask
-// bit is set. A one-sample BAM counts every read and ignores the `RG` tag; a
-// multi-sample BAM assigns each read through its `RG` tag, which must name an
-// `@RG ID` from the header. `sample_index` is 1-based and aligned to
-// `read_group_ids`; the returned matrix has one row per `sample_names` entry
-// and one column per window.
+// This is the breadth backend. For every window it builds one bitset per
+// sample and marks every reference base covered by an aligned block (M, =, X
+// and, unless `count_deletions` is false, D). N, I, S, H and P do not cover a
+// reference base, so a spliced read leaves a gap. A window's `count` is the
+// number of alignments with at least one aligned base in the window, which is
+// the semantics of bedtools coverage -counts.
+//
+// `read_length <= 0` infers the aligned query length from the first passing
+// read. One sample counts every read and ignores RG; several samples require an
+// RG tag naming a declared read group.
 // [[Rcpp::export]]
-Rcpp::IntegerMatrix bam_count_rg_cpp(
+Rcpp::List bam_metrics_rg_cpp(
     const std::string& path,
     Rcpp::CharacterVector contig_names,
     Rcpp::NumericVector contig_lengths,
@@ -214,7 +208,9 @@ Rcpp::IntegerMatrix bam_count_rg_cpp(
     Rcpp::IntegerVector sample_index,
     Rcpp::CharacterVector sample_names,
     int mapq,
-    int exclude_flags) {
+    int exclude_flags,
+    int read_length,
+    bool count_deletions) {
   const int n_contigs = contig_names.size();
   const int n_samples = sample_names.size();
   const bool single_sample = n_samples == 1;
@@ -231,8 +227,7 @@ Rcpp::IntegerMatrix bam_count_rg_cpp(
     Rcpp::stop("contig_names and contig_lengths must have the same length");
   }
   if (read_group_ids.size() != sample_index.size()) {
-    Rcpp::stop(
-        "read_group_ids and sample_index must have the same length");
+    Rcpp::stop("read_group_ids and sample_index must have the same length");
   }
 
   std::unordered_map<std::string, int> rg_to_sample;
@@ -271,11 +266,17 @@ Rcpp::IntegerMatrix bam_count_rg_cpp(
     Rcpp::stop("The analysis window set is too large for per-sample counting");
   }
   Rcpp::IntegerMatrix counts(n_samples, static_cast<int>(n_windows));
+  Rcpp::IntegerMatrix covered(n_samples, static_cast<int>(n_windows));
   std::fill(counts.begin(), counts.end(), 0);
+  std::fill(covered.begin(), covered.end(), 0);
+
   BamPtr record(bam_init1());
   if (!record) {
     Rcpp::stop("Could not allocate a BAM record");
   }
+
+  std::vector<std::vector<uint64_t>> bits(n_samples);
+  int inferred_read_length = read_length > 0 ? read_length : 0;
 
   for (int contig = 0; contig < n_contigs; ++contig) {
     const std::string name = Rcpp::as<std::string>(contig_names[contig]);
@@ -297,81 +298,158 @@ Rcpp::IntegerMatrix bam_count_rg_cpp(
       Rcpp::stop("Contig '%s' in BAM '%s' has no length", name, path);
     }
 
-    ItrPtr itr(sam_itr_queryi(idx.get(), tid, 0, header_length));
-    if (!itr) {
-      Rcpp::stop("Could not iterate contig '%s' in BAM '%s'", name, path);
-    }
-    int ret = 0;
-    while ((ret = sam_itr_next(fp.get(), itr.get(), record.get())) >= 0) {
-      const bam1_t* b = record.get();
-      if ((b->core.flag & exclude_flags) != 0) {
+    for (int window = 0; window < n_per_chromosome; ++window) {
+      // Match makeAnalysisWindows() exactly: floor(i * L / n) with integer
+      // arithmetic, not a floating-point division.
+      const hts_pos_t start =
+          (static_cast<hts_pos_t>(window) * header_length) /
+          n_per_chromosome;
+      const hts_pos_t stop =
+          (static_cast<hts_pos_t>(window + 1) * header_length) /
+          n_per_chromosome;
+      if (stop <= start) {
         continue;
       }
-      if (b->core.qual < mapq) {
-        continue;
-      }
-      if (b->core.tid < 0) {
-        continue;
+      const size_t n_words =
+          static_cast<size_t>((stop - start + 63) / 64);
+      for (int sample = 0; sample < n_samples; ++sample) {
+        bits[sample].assign(n_words, 0);
       }
 
-      int sample = 0;
-      if (!single_sample) {
-        const uint8_t* rg_aux = bam_aux_get(b, "RG");
-        if (rg_aux == nullptr) {
-          Rcpp::stop(
-              "Read '%s' in BAM '%s' has no RG tag; multi-sample BAMs need an "
-              "RG tag on every read",
-              bam_get_qname(b), path);
+      ItrPtr itr(sam_itr_queryi(idx.get(), tid, start, stop));
+      if (!itr) {
+        Rcpp::stop("Could not iterate contig '%s' in BAM '%s'", name, path);
+      }
+      int ret = 0;
+      while ((ret = sam_itr_next(fp.get(), itr.get(), record.get())) >= 0) {
+        const bam1_t* b = record.get();
+        if ((b->core.flag & exclude_flags) != 0) {
+          continue;
         }
-        const char* rg = bam_aux2Z(rg_aux);
-        if (rg == nullptr) {
-          Rcpp::stop(
-              "Read '%s' in BAM '%s' has a malformed RG tag; RG must be a "
-              "string naming an @RG ID",
-              bam_get_qname(b), path);
+        if (b->core.qual < mapq) {
+          continue;
         }
-        const auto found = rg_to_sample.find(std::string(rg));
-        if (found == rg_to_sample.end()) {
-          Rcpp::stop(
-              "Read '%s' in BAM '%s' references read group '%s', which is "
-              "not declared in the @RG header lines",
-              bam_get_qname(b), path, rg);
+        if (b->core.tid < 0) {
+          continue;
         }
-        sample = found->second;
+
+        int sample = 0;
+        if (!single_sample) {
+          const uint8_t* rg_aux = bam_aux_get(b, "RG");
+          if (rg_aux == nullptr) {
+            Rcpp::stop(
+                "Read '%s' in BAM '%s' has no RG tag; multi-sample BAMs need "
+                "an RG tag on every read",
+                bam_get_qname(b), path);
+          }
+          const char* rg = bam_aux2Z(rg_aux);
+          if (rg == nullptr) {
+            Rcpp::stop(
+                "Read '%s' in BAM '%s' has a malformed RG tag; RG must be a "
+                "string naming an @RG ID",
+                bam_get_qname(b), path);
+          }
+          const auto found = rg_to_sample.find(std::string(rg));
+          if (found == rg_to_sample.end()) {
+            Rcpp::stop(
+                "Read '%s' in BAM '%s' references read group '%s', which is "
+                "not declared in the @RG header lines",
+                bam_get_qname(b), path, rg);
+          }
+          sample = found->second;
+        }
+
+        const uint32_t* cigar = bam_get_cigar(b);
+        const int n_cigar = b->core.n_cigar;
+        hts_pos_t ref_pos = b->core.pos;
+        bool overlaps = false;
+        int aligned_query = 0;
+        for (int k = 0; k < n_cigar; ++k) {
+          const int op = bam_cigar_op(cigar[k]);
+          const int len = bam_cigar_oplen(cigar[k]);
+          const bool covers = op == BAM_CMATCH || op == BAM_CEQUAL ||
+                              op == BAM_CDIFF ||
+                              (count_deletions && op == BAM_CDEL);
+          if (covers) {
+            const hts_pos_t block_start = ref_pos;
+            const hts_pos_t block_stop = ref_pos + len;
+            if (block_stop > start && block_start < stop) {
+              overlaps = true;
+              const hts_pos_t clipped_start = std::max(block_start, start);
+              const hts_pos_t clipped_stop = std::min(block_stop, stop);
+              const size_t offset =
+                  static_cast<size_t>(clipped_start - start);
+              size_t first = offset / 64;
+              const size_t last =
+                  static_cast<size_t>(clipped_stop - start - 1) / 64;
+              const uint64_t head =
+                  ~uint64_t{0} << (offset % 64);
+              const size_t tail_shift =
+                  63 - static_cast<size_t>(clipped_stop - start - 1) % 64;
+              const uint64_t tail = ~uint64_t{0} >> tail_shift;
+              if (first == last) {
+                bits[sample][first] |=
+                    head & tail;
+              } else {
+                bits[sample][first] |= head;
+                for (size_t w = first + 1; w < last; ++w) {
+                  bits[sample][w] = ~uint64_t{0};
+                }
+                bits[sample][last] |= tail;
+              }
+            }
+          }
+          if (op == BAM_CMATCH || op == BAM_CEQUAL || op == BAM_CDIFF) {
+            aligned_query += len;
+          }
+          if ((bam_cigar_type(op) & 2) != 0) {
+            ref_pos += len;
+          }
+        }
+        if (!overlaps) {
+          continue;
+        }
+        if (inferred_read_length <= 0 && aligned_query > 0) {
+          inferred_read_length = aligned_query;
+        }
+        const hts_pos_t column =
+            static_cast<hts_pos_t>(contig) * n_per_chromosome + window;
+        int& value = counts(sample, static_cast<int>(column));
+        if (value == INT32_MAX) {
+          Rcpp::stop("Read counts exceed R's integer range for sample '%s'",
+                     Rcpp::as<std::string>(sample_names[sample]));
+        }
+        ++value;
+      }
+      if (ret < -1) {
+        Rcpp::stop("Could not read alignments from contig '%s' in BAM '%s'",
+                   name, path);
       }
 
-      const hts_pos_t pos0 = (b->core.flag & BAM_FREVERSE) != 0
-                                 ? bam_endpos(b) - 1
-                                 : b->core.pos;
-      if (pos0 < 0 || pos0 >= header_length) {
-        continue;
+      for (int sample = 0; sample < n_samples; ++sample) {
+        uint64_t observed = 0;
+        for (size_t w = 0; w < bits[sample].size(); ++w) {
+          observed += static_cast<uint64_t>(
+              __builtin_popcountll(bits[sample][w]));
+        }
+        const hts_pos_t column =
+            static_cast<hts_pos_t>(contig) * n_per_chromosome + window;
+        if (observed > INT32_MAX) {
+          Rcpp::stop("Covered bases exceed R's integer range for sample '%s'",
+                     Rcpp::as<std::string>(sample_names[sample]));
+        }
+        covered(sample, static_cast<int>(column)) =
+            static_cast<int>(observed);
       }
-      // The windows are the integer intervals
-      // [floor(i * L / n), floor((i + 1) * L / n)). Deriving the window
-      // from the real-valued boundary floor(pos0 * n / L) would put a read
-      // on the first base of a window into the previous one whenever L is
-      // not divisible by n. The (pos0 + 1) form uses the same floor
-      // boundaries as makeAnalysisWindows().
-      const hts_pos_t window =
-          (((pos0 + 1) * n_per_chromosome) - 1) / header_length;
-      if (window < 0 || window >= n_per_chromosome) {
-        continue;
-      }
-      const hts_pos_t column =
-          static_cast<hts_pos_t>(contig) * n_per_chromosome + window;
-      int& value = counts(sample, static_cast<int>(column));
-      if (value == INT32_MAX) {
-        Rcpp::stop("Read counts exceed R's integer range for sample '%s'",
-                   Rcpp::as<std::string>(sample_names[sample]));
-      }
-      ++value;
-    }
-    if (ret < -1) {
-      Rcpp::stop("Could not read alignments from contig '%s' in BAM '%s'",
-                 name, path);
     }
   }
-  return counts;
+
+  return Rcpp::List::create(
+      Rcpp::Named("counts") = counts,
+      Rcpp::Named("covered") = covered,
+      Rcpp::Named("read_length") = inferred_read_length > 0
+                                       ? static_cast<double>(inferred_read_length)
+                                       : NA_REAL);
 }
 
 // Count reads in arbitrary half-open ranges.
@@ -379,9 +457,8 @@ Rcpp::IntegerMatrix bam_count_rg_cpp(
 // The ranges arrive in GRanges order. `range_contig` is a 1-based index into
 // `contig_names`; starts are 0-based and ends are exclusive. Each range gets
 // its own index iterator, so overlapping ranges are counted independently.
-// Reads are assigned by their 5' end, exactly as in bam_count_rg_cpp(): a
-// forward read uses its leftmost coordinate and a reverse read uses the last
-// aligned base. `exclude_flags` follows samtools `view -F`: a read is dropped
+// Reads are assigned by their 5' end: a forward read uses its leftmost
+// coordinate and a reverse read uses the last aligned base. `exclude_flags` follows samtools `view -F`: a read is dropped
 // when any mask bit is set.
 // [[Rcpp::export]]
 Rcpp::IntegerVector bam_count_ranges_cpp(

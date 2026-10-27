@@ -2,18 +2,20 @@
 % Please edit documentation in R/config.R
 \name{listMaMaMIAAssemblies}
 \alias{listMaMaMIAAssemblies}
-\title{List the assemblies in a MaMaMIA configuration}
+\title{List the assemblies resolved in a MaMaMIA configuration}
 \usage{
 listMaMaMIAAssemblies(config)
 }
 \arguments{
-\item{config}{A validated configuration list or a path to a YAML file.}
+\item{config}{A validated configuration list, usually the \code{config} element
+returned by \code{\link[=resolveSpeciesAssembly]{resolveSpeciesAssembly()}}, or a path to a YAML file.}
 }
 \value{
 A data frame with \code{key}, \code{label}, \code{description}, \code{n_donor},
 \code{n_recipient}, \code{n_pairs} and \code{n_gc_indexes}.
 }
 \description{
-Returns one row per configured assembly for the application's assembly
-selector.
+Returns one row per assembly. A freshly read registry has none: assemblies
+are created by \code{\link[=resolveSpeciesAssembly]{resolveSpeciesAssembly()}} and stored in the returned
+\code{config}, so pass that resolved configuration to list them.
 }

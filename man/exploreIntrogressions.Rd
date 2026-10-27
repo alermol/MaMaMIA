@@ -5,18 +5,14 @@
 \title{Explore introgression calls in an interactive dashboard}
 \usage{
 exploreIntrogressions(
-  ISA,
-  chr_ids = NULL,
+  result,
   host = "127.0.0.1",
   port = NULL,
   launch.browser = interactive()
 )
 }
 \arguments{
-\item{ISA}{An object of class \code{ISA}, as returned by \code{\link[=segments]{segments()}}.}
-
-\item{chr_ids}{Optional chromosome IDs to select initially. Defaults to
-all chromosomes present in \code{ISA}.}
+\item{result}{A \code{BamAnalysisResult}.}
 
 \item{host}{Host passed to \code{\link[shiny:runApp]{shiny::runApp()}}.}
 
@@ -25,43 +21,11 @@ all chromosomes present in \code{ISA}.}
 \item{launch.browser}{Logical passed to \code{\link[shiny:runApp]{shiny::runApp()}}.}
 }
 \value{
-The return value of \code{\link[shiny:runApp]{shiny::runApp()}}. Called for its side effect of
-launching the dashboard.
+The return value of \code{\link[shiny:runApp]{shiny::runApp()}}.
 }
 \description{
-Opens a small Shiny application for interactively inspecting an \code{ISA} object
-returned by \code{\link[=segments]{segments()}}. The app offers searchable chromosome and
-chromosome-pair filters, a circos overview built with \code{interacCircos}, a
-mirror or difference plot of the donor-recipient difference, a sortable
-\code{DT} segment table, and exports the currently selected table rows with
-\code{\link[=writeToBedpe]{writeToBedpe()}}.
-}
-\details{
-The circos view stacks the chromosome ideograms, the per-window
-donor-recipient difference, the called segment spans and links between the
-paired intervals. It follows the same chromosome, pair, width and putative
-filters as the plot and the table.
-
-Call and threshold filters re-flag the segments on the fly through
-\link{subset.ISA}, so the call threshold and the minimum segment width can be
-revisited without re-running segmentation.
-
-To run the whole pipeline (input files to dashboard) instead, use
-\code{\link[=runMaMaMIA]{runMaMaMIA()}}.
-
-Dashboard packages are optional MaMaMIA dependencies. Install them with
-\code{install.packages(c("shiny", "bslib", "shinyWidgets", "DT"))} and
-\code{remotes::install_github("rstudio/gridlayout")} before calling this function.
-}
-\examples{
-\dontrun{
-data(triticum)
-rca <- RCA(don_cov, don_gc, rec_cov, rec_gc, meta)
-rca <- correctReadCounts(rca, cores = 4L, verbose = FALSE)
-isa <- segments(rca, target_pairs = c("OY997261.1" = "CP155614.1"), verbose = FALSE)
-exploreIntrogressions(isa)
-}
-}
-\seealso{
-\code{\link[=runMaMaMIA]{runMaMaMIA()}}
+Opens a Shiny application for a \code{BamAnalysisResult} from
+\code{\link[=analyzeBamInput]{analyzeBamInput()}}. The dashboard offers chromosome-group, class,
+confidence and width filters, a score profile with called intervals, a
+sortable call table and a BEDPE export of the selected calls.
 }

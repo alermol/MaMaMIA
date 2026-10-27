@@ -25,10 +25,10 @@ test_that("extractWindowGc() fills a complete GC table in window order", {
     on.exit(gcrankClearCache(), add = TRUE)
     config <- readMaMaMIAConfig(tiny_config_path())
     windows <- makeAnalysisWindows(
-        config$assemblies$tiny, tiny_contigs(), 100L
+        tiny_assembly(config), tiny_contigs(), 100L
     )
 
-    gc <- MaMaMIA:::extractWindowGc(windows, config$assemblies$tiny)
+    gc <- MaMaMIA:::extractWindowGc(windows, tiny_assembly(config))
 
     expect_named(gc, c("chr_id", "start", "stop", "gc"))
     expect_identical(nrow(gc), 200L)
@@ -240,7 +240,7 @@ test_that("extractWindowGc() handles empty windows", {
     expect_identical(gc$gc, numeric(0))
 })
 
-test_that("real legacy GC windows match the old BED after rounding", {
+test_that("real GC windows match the reference BED after rounding", {
     root <- skip_if_no_test_data()
     recipient_bed <- file.path(
         root, "assemblies", "cs_t2t_se_cereale", "recipient.w1000.gc.bed"
@@ -254,11 +254,11 @@ test_that("real legacy GC windows match the old BED after rounding", {
     rye_index <- file.path(root, "gcidx", "secale-cereale", "index.gcrank")
     if (!all(file.exists(c(recipient_bed, donor_bed))) ||
         !dir.exists(wheat_index) || !dir.exists(rye_index)) {
-        testthat::skip("real GC indexes or legacy GC tables are missing")
+        testthat::skip("real GC indexes or reference GC tables are missing")
     }
     on.exit(gcrankClearCache(), add = TRUE)
 
-    read_legacy_gc_bed <- function(path) {
+    read_reference_gc_bed <- function(path) {
         utils::read.delim(
             path,
             header = FALSE,
@@ -268,9 +268,9 @@ test_that("real legacy GC windows match the old BED after rounding", {
             stringsAsFactors = FALSE
         )
     }
-    legacy <- rbind(
-        read_legacy_gc_bed(recipient_bed),
-        read_legacy_gc_bed(donor_bed)
+    reference <- rbind(
+        read_reference_gc_bed(recipient_bed),
+        read_reference_gc_bed(donor_bed)
     )
 
     chromosomes <- utils::read.delim(
@@ -288,41 +288,43 @@ test_that("real legacy GC windows match the old BED after rounding", {
         })
     }
     config <- validateMaMaMIAConfig(list(
-        version = 1L,
-        assemblies = list(cs_t2t_se_cereale = list(
-            label = "Triticum aestivum CS T2T + Secale cereale",
-            gc_indexes = list(wheat_index, rye_index),
-            contigs = list(
-                recipient = entries(chromosomes[chromosomes$subgenome != "R", ]),
-                donor = entries(chromosomes[chromosomes$subgenome == "R", ])
+        version = 2L,
+        species = list(
+            triticum_aestivum = list(
+                label = "Triticum aestivum CS T2T",
+                gc_indexes = list(wheat_index),
+                contigs = entries(
+                    chromosomes[chromosomes$subgenome != "R", ]
+                )
             ),
-            pairs = list(
-                OZ284382.1 = "CP155614.1",
-                OZ284383.1 = "CP155611.1",
-                OZ284384.1 = "CP155608.1",
-                OZ284385.1 = "CP155605.1",
-                OZ284386.1 = "CP155602.1",
-                OZ284387.1 = "CP155599.1",
-                OZ284388.1 = "CP155597.1"
+            secale_cereale = list(
+                label = "Secale cereale",
+                gc_indexes = list(rye_index),
+                contigs = entries(
+                    chromosomes[chromosomes$subgenome == "R", ]
+                )
             )
-        ))
+        )
     ))
-    assembly <- config$assemblies$cs_t2t_se_cereale
+    assembly <- resolveSpeciesAssembly(
+        config, donor = "secale_cereale", recipient = "triticum_aestivum",
+        key = "cs_t2t_se_cereale"
+    )$assembly
 
-    ## The legacy BED tables use the legacy tiling, so compare at those exact
-    ## intervals. makeAnalysisWindows() follows the plan's distributed-remainder
-    ## formula (T2.2), which differs from the legacy width after the first
-    ## window on most contigs.
+    ## The reference BED tables use their own tiling, so compare at those
+    ## exact intervals. makeAnalysisWindows() distributes the remainder
+    ## (T2.2), which differs from the reference width after the first window
+    ## on most contigs.
     gc <- MaMaMIA:::extractWindowGc(
-        list(table = legacy[, c("chr_id", "start", "stop")]),
+        list(table = reference[, c("chr_id", "start", "stop")]),
         assembly
     )
 
-    expect_identical(gc$chr_id, legacy$chr_id)
-    expect_identical(gc$start, as.integer(legacy$start))
-    expect_identical(gc$stop, as.integer(legacy$stop))
+    expect_identical(gc$chr_id, reference$chr_id)
+    expect_identical(gc$start, as.integer(reference$start))
+    expect_identical(gc$stop, as.integer(reference$stop))
     expect_identical(
         sprintf("%.6f", gc$gc),
-        sprintf("%.6f", legacy$gc)
+        sprintf("%.6f", reference$gc)
     )
 })

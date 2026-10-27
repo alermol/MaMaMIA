@@ -2,20 +2,21 @@
 % Please edit documentation in R/pipeline-bam.R
 \name{analyzeBamInput}
 \alias{analyzeBamInput}
-\title{Analyze one or more BAM files with the BAM-first workflow}
+\title{Analyze one or more BAM files with the MaMaMIA workflow}
 \usage{
 analyzeBamInput(
   bam_paths,
   config,
   assembly = NULL,
+  sample_composition = NULL,
+  metric = NULL,
+  score = NULL,
+  mask = NULL,
+  calibration = NULL,
   windows_per_chromosome = 1000L,
-  reference_sample = NULL,
-  normalization = c("median", "reference", "none"),
-  mapq = 20L,
-  exclude_flags = 2308L,
+  mapq = NULL,
+  exclude_flags = NULL,
   cores = 1L,
-  max_fit_windows = 50000L,
-  cache = NULL,
   progress = NULL
 )
 }
@@ -28,72 +29,47 @@ path to a YAML configuration.}
 \item{assembly}{Optional assembly key. Without it, the BAM headers select the
 most specific exact match.}
 
+\item{sample_composition}{Optional named recipient copy-number vector, for
+example \code{c(A = 2, B = 2, D = 2)}.}
+
+\item{metric}{\code{"breadth"}, \code{"count"} or \code{"combined"}.}
+
+\item{score}{\code{"paired_log_ratio"} or \code{"donor_only"}.}
+
+\item{mask}{Optional panel \code{MaskTable}/TSV path, or a list with \code{panel},
+\code{blacklist}, \code{physical_fallback_mb} and \code{recurrence_threshold}.}
+
+\item{calibration}{Optional list with \code{length_bins_mb}, \code{fdr}, \code{floors},
+\code{controls}, \code{alpha}, \code{undo_SD}, \code{min_width}, \code{merge_gap}, \code{merge_floor}
+and \code{min_mb}.}
+
 \item{windows_per_chromosome}{Number of windows per target contig.}
-
-\item{reference_sample}{Sample used as the denominator for
-\code{normalization = "reference"}. Required in that mode and ignored by
-\code{"median"} and \code{"none"}.}
-
-\item{normalization}{Normalization mode across samples: \code{"median"}
-(default), \code{"reference"} or \code{"none"}. A single BAM is always analyzed with
-\code{"none"}.}
 
 \item{mapq}{Minimum mapping quality.}
 
 \item{exclude_flags}{SAM flag mask; a read is excluded when any bit is set.}
 
-\item{cores}{Number of cores for the GC-bias fit.}
-
-\item{max_fit_windows}{Maximum number of ideal windows used for each
-sample's GC-bias fit. Larger ideal sets are subsampled deterministically by
-subgenome and GC decile with at least ten windows per non-empty stratum;
-predictions still cover every window. \code{Inf} disables subsampling. A cohort
-whose total window count exceeds this value also emits a performance
-warning.}
-
-\item{cache}{Optional fit-cache \code{.rds} path. \code{NULL} uses a per-process file
-in session temp; \code{FALSE} disables the cache.}
+\item{cores}{Number of cores for parallel BAM measurement.}
 
 \item{progress}{Optional \verb{function(stage, detail)} progress callback.}
 }
 \value{
 A \code{BamAnalysisResult} list with \code{assembly}, \code{config}, \code{bams},
-\code{samples}, \code{windows}, \code{gc}, \code{counts}, \code{rca}, \code{isa}, \code{normalization} and
-\code{provenance}. \code{samples} is a data frame with one row per sample (\code{sample},
-\code{path}, \code{assembly}, \code{index_path}, \code{reference}, \code{normalization}, \code{n_windows},
-\code{n_segments}, \code{n_putative_introgressions}).
+\code{samples}, \code{windows}, \code{gc}, \code{metrics}, \code{scores}, \code{masks}, \code{calibration},
+\code{calls} and \code{provenance}.
 }
 \description{
 Reads BAM headers, matches them to a configured assembly, ensures CSI
-indexes, generates exact-N analysis windows, extracts GC content from the
-configured gcrank indexes, counts reads with the htslib backend, builds the
-per-sample tables with \code{\link[=buildSampleTables]{buildSampleTables()}}, corrects GC bias with
-\code{\link[=correctReadCounts]{correctReadCounts()}} and segments the pairwise coverage differences with
-\code{\link[=segments]{segments()}}. A one-sample BAM counts every read; a BAM with several \verb{@RG SM} samples is counted per read group in one pass over the file.
+indexes, generates group-aware exact-N windows, extracts GC from the
+configured gcrank indexes, measures breadth and counts in one htslib pass,
+scores donor/recipient homoeologs, applies a window mask, segments with CBS,
+calibrates thresholds by segment length and classifies the calls.
 }
 \details{
-For a single BAM the normalization mode is always \code{"none"}; segmentation
-therefore consumes \code{cor.gc} (D7). For several BAMs, \code{normalization = "median"}
-(the default) or \code{"reference"} calls \code{\link[=normalizeReadCounts]{normalizeReadCounts()}} after every
-sample has been corrected and before any segmentation. \code{"reference"} requires
-\code{reference_sample}; the reference sample's dose is exactly 1.
-
-The optional \code{progress} callback is called as \code{progress(stage, detail)} after
-each completed stage. Stages are \code{"preflight"}, \code{"index"}, \code{"windows"},
-\code{"gc"}, \code{"counts"}, \code{"correction"} and \code{"segmentation"}. When a cohort is
-normalized, one \code{"normalization"} stage is reported between the corrections
-and the segmentations. \code{detail} is a list with stage-specific fields such as
-\code{sample}, \code{n_windows}, \code{n_ideal} or \code{n_segments}. An error raised by the
-callback aborts the analysis, which lets a Shiny session cancel a long run.
-
-A warning is emitted when the total analysis window count across samples
-(\code{length(bam_paths) * nrow(windows$table)}) exceeds \code{max_fit_windows}; this
-is a performance guard, not an error. The fit-window cap itself is applied
-per sample by \code{\link[=correctReadCounts]{correctReadCounts()}} and recorded in provenance and in each
-\code{RCA$fit_sampling}.
-
-BAMs whose directory is not writable are staged in session temp before
-indexing; the result records the staging decision in \code{provenance$staged}.
+A single sample is scored and calibrated on its own (single-sample mode).
+Several samples share a cohort median-polish correction and a cohort
+calibration. The result supports any number of donor and recipient
+subgenomes.
 }
 \examples{
 demo <- system.file("extdata", "bam-demo", package = "MaMaMIA")
@@ -105,12 +81,12 @@ result <- analyzeBamInput(
     file.path(demo, "demo.bam"), pair$config,
     assembly = pair$key,
     windows_per_chromosome = 100L,
-    normalization = "none",
     cores = 1L
 )
-result$samples[, c("sample", "n_windows", "n_segments")]
+result$samples[, c("sample", "n_windows", "n_calls")]
 
 }
 \seealso{
-\code{\link[=preflightBams]{preflightBams()}}, \code{\link[=countReads]{countReads()}}, \code{\link[=buildSampleTables]{buildSampleTables()}}
+\code{\link[=preflightBams]{preflightBams()}}, \code{\link[=countWindowMetrics]{countWindowMetrics()}}, \code{\link[=buildWindowMetrics]{buildWindowMetrics()}},
+\code{\link[=scoreIntrogression]{scoreIntrogression()}}, \code{\link[=segmentScores]{segmentScores()}}, \code{\link[=calibrateSegments]{calibrateSegments()}}
 }

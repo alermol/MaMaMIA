@@ -1,15 +1,13 @@
-version: 1
+version: 2
 defaults:
   windows_per_chromosome: 100
   allowed_windows:
   - 100
   - 1000
   mapq: 20
-  exclude_flags: 2308
-  max_fit_windows: 1000
+  exclude_flags: 1796
   gc_mmap: true
   gc_validate_crc: false
-  normalization_by_side: true
 server:
   max_bams: 4
   max_total_bytes: 2.097152e+07

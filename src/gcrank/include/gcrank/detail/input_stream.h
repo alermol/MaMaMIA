@@ -2,11 +2,17 @@
 //
 // Byte-oriented input streams (plain and gzip) and a read-only memory mapping.
 //
+#include <condition_variable>
 #include <cstddef>
 #include <cstdint>
 #include <cstdio>
+#include <deque>
+#include <exception>
 #include <memory>
+#include <mutex>
 #include <string>
+#include <thread>
+#include <vector>
 
 #include "gcrank/detail/sha256.h"
 
@@ -78,12 +84,28 @@ public:
   uint64_t bytes() const { return bytes_; }
   // Lowercase hex SHA-256 of everything read so far; safe to call once the
   // stream is exhausted (the digest is of the bytes actually consumed).
+  //
+  // Hashing runs on a helper thread so it overlaps the parse. The returned
+  // digest is always of the bytes in the order they were read.
   std::string sha256_hex() const;
 
 private:
+  void worker_loop();
+
   std::unique_ptr<InputStream> inner_;
-  SHA256 hash_;
   uint64_t bytes_ = 0;
+
+  mutable std::mutex mutex_;
+  mutable std::condition_variable cv_work_;
+  mutable std::condition_variable cv_done_;
+  mutable std::deque<std::vector<char>> queue_;
+  std::vector<std::vector<char>> free_;
+  std::size_t pending_ = 0;   // buffers queued or currently being hashed
+  mutable bool idle_ = true;  // worker has no queued or in-flight buffer
+  bool stop_ = false;
+  mutable std::exception_ptr error_;
+  mutable SHA256 hash_;
+  std::thread worker_;
 };
 
 // RAII read-only memory mapping of a whole file.

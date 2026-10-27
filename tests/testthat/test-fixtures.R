@@ -12,11 +12,12 @@ test_that("tiny fixtures are present and complete", {
 test_that("the tiny assembly config loads and points at the fixture index", {
     skip_if_no_tiny_fixtures()
 
-    config <- readMaMaMIAConfig(tiny_config_path())
+    config <- tiny_config()
 
-    expect_named(config$assemblies, "tiny")
-    assembly <- config$assemblies$tiny
-    expect_identical(assembly$pairs, c(d1 = "r1"))
+    expect_named(config$species, c("tiny_recipient", "tiny_donor"))
+    expect_length(config$assemblies, 0L)
+    assembly <- tiny_assembly(config)
+    expect_identical(unname(assembly$pairs), "r1")
     expect_identical(assembly$contigs$donor$id, "d1")
     expect_identical(assembly$contigs$recipient$id, "r1")
     expect_identical(assembly$contigs$donor$length, 20000)
@@ -25,7 +26,7 @@ test_that("the tiny assembly config loads and points at the fixture index", {
         assembly$contigs$donor$index_path,
         normalizePath(tiny_gcrank_index(), winslash = "/", mustWork = TRUE)
     )
-    expect_true(config$defaults$normalization_by_side)
+    expect_identical(config$defaults$metric, "breadth")
 })
 
 test_that("the tiny FASTA has the expected GC content", {
@@ -118,25 +119,23 @@ test_that("the tiny BAM has exact counts for MAPQ/flag assertions", {
 
 test_that("a tiny fixture can run the end-to-end BAM pipeline", {
     ## The committed tiny fixture has constant GC (40% and 60%), which cannot
-    ## support the ZINB smooth. The variable-GC fixture exercises the same
+    ## support the GC fit. The variable-GC fixture exercises the same
     ## contract with a GC profile the correction model can fit.
     fixture <- variable_gc_fixture()
     on.exit(unlink(fixture$directory, recursive = TRUE), add = TRUE)
 
     result <- suppressWarnings(analyzeBamInput(
-        fixture$bam_path, fixture$config_path,
-        normalization = "none", windows_per_chromosome = 100L,
-        cores = 1L
+        fixture$bam_path, fixture$config,
+        windows_per_chromosome = 100L, cores = 1L
     ))
 
     expect_named(result, c(
-        "assembly", "config", "bams", "samples", "windows", "gc", "counts",
-        "rca", "isa", "normalization", "provenance"
+        "assembly", "config", "bams", "samples", "windows", "gc", "metrics",
+        "scores", "masks", "calibration", "calls", "provenance"
     ))
     expect_identical(result$bams$sample, "synthetic")
     expect_identical(result$samples$sample, "synthetic")
     expect_identical(result$windows$n_per_chromosome, 100L)
-    expect_named(result$rca, "synthetic")
-    expect_named(result$isa, "synthetic")
-    expect_identical(result$normalization$mode, "none")
+    expect_identical(result$samples$mode, "single")
+    expect_identical(result$provenance$breadth_backend, "htslib")
 })

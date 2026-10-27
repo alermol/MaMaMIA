@@ -162,8 +162,8 @@ readContigsTsv <- function(path) {
 #' @param assembly An `AssemblyConfig` list.
 #' @param contigs Optional contigs table or path.
 #'
-#' @return A data frame with `chr_id`, `chr_name`, `subgenome`, `length`,
-#'   `role` and `index_path`.
+#' @return A data frame with `chr_id`, `chr_name`, `subgenome`, `group`,
+#'   `copy_number`, `length`, `role` and `index_path`.
 #' @noRd
 .assembly_target_contigs <- function(assembly, contigs = NULL) {
     if (!is.list(assembly) || !is.list(assembly$contigs)) {
@@ -185,10 +185,22 @@ readContigsTsv <- function(path) {
                 key, role, paste(required, collapse = ", ")
             )
         }
+        group <- if ("group" %in% names(x)) {
+            as.character(x$group)
+        } else {
+            chr_number(as.character(x$name))
+        }
+        copy_number <- if ("copy_number" %in% names(x)) {
+            as.numeric(x$copy_number)
+        } else {
+            rep(2, nrow(x))
+        }
         data.frame(
             chr_id = as.character(x$id),
             chr_name = as.character(x$name),
             subgenome = as.character(x$subgenome),
+            group = group,
+            copy_number = copy_number,
             length = as.numeric(x$length),
             role = role,
             index_path = if ("index_path" %in% names(x)) {
@@ -258,8 +270,9 @@ readContigsTsv <- function(path) {
 #' @param n_per_chromosome Number of windows per target contig.
 #'
 #' @return A list with `gr` (1-based inclusive `GRanges`), `table` (0-based
-#'   half-open data frame with `chr_id`, `start`, `stop`, `role`, `chr_name`,
-#'   `subgenome`) and `n_per_chromosome`.
+#'   half-open data frame with `chr_id`, `start`, `stop`, `iid`, `role`,
+#'   `chr_name`, `subgenome`, `group` and `copy_number`) and
+#'   `n_per_chromosome`.
 #'
 #' @examples
 #' demo <- system.file("extdata", "bam-demo", package = "MaMaMIA")
@@ -303,9 +316,12 @@ makeAnalysisWindows <- function(assembly, contigs, n_per_chromosome = 1000L) {
             chr_id = rep(chr_id, n),
             start = as.integer(start),
             stop = as.integer(stop),
+            iid = seq.int(0L, n - 1L),
             role = rep(targets$role[[i]], n),
             chr_name = rep(targets$chr_name[[i]], n),
             subgenome = rep(targets$subgenome[[i]], n),
+            group = rep(targets$group[[i]], n),
+            copy_number = rep(targets$copy_number[[i]], n),
             stringsAsFactors = FALSE
         )
     }

@@ -1,4 +1,4 @@
-version: 1
+version: 2
 defaults:
   windows_per_chromosome: 100
   allowed_windows:
@@ -6,28 +6,30 @@ defaults:
   - 1000
   - 10000
   mapq: 20
-  exclude_flags: 2308
-  max_fit_windows: 1000
+  exclude_flags: 1796
   gc_mmap: true
   gc_validate_crc: false
-  normalization_by_side: true
 server:
   max_bams: 4
   max_total_bytes: 1048576.0
-assemblies:
-  tiny:
-    label: Tiny synthetic assembly
+species:
+  tiny_recipient:
+    label: Tiny synthetic recipient
     description: Two 20 kb contigs with 40% and 60% GC
+    default_subgenome: R
     gc_indexes:
     - tiny.gcrank
     contigs:
-      recipient:
-      - id: r1
-        name: 1R
-        subgenome: R
-      donor:
-      - id: d1
-        name: 1D
-        subgenome: D
-    pairs:
-      d1: r1
+    - id: r1
+      name: 1R
+      subgenome: R
+  tiny_donor:
+    label: Tiny synthetic donor
+    description: Two 20 kb contigs with 40% and 60% GC
+    default_subgenome: D
+    gc_indexes:
+    - tiny.gcrank
+    contigs:
+    - id: d1
+      name: 1D
+      subgenome: D

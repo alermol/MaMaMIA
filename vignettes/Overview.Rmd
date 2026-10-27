@@ -1,738 +1,210 @@
 ---
-title: "Introduction to MaMaMIA"
-author: "Aleksey Ermolaev"
-output: rmarkdown::html_vignette
+title: "MaMaMIA: breadth-based introgression calling"
+output:
+  rmarkdown::html_vignette:
+    toc: true
 vignette: >
-  %\VignetteIndexEntry{Introduction to MaMaMIA}
-  %\VignetteEncoding{UTF-8}
+  %\VignetteIndexEntry{MaMaMIA: breadth-based introgression calling}
   %\VignetteEngine{knitr::rmarkdown}
-editor_options: 
-  markdown: 
-    wrap: 72
+  %\VignetteEncoding{UTF-8}
 ---
 
-```{r knit-param, include = FALSE}
-knitr::opts_chunk$set(
-    collapse = TRUE,
-    comment = "#>",
-    fig.width = 8,
-    fig.height = 2.5,
-    dpi = 96,
-    out.width = "100%"
-)
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+```
+
+```{r}
+library(MaMaMIA)
 ```
 
 # Overview
 
-**MaMaMIA** (Max Mapping for Meticulous Introgression Analysis) detects
-introgressed segments from Genotyping-by-Sequencing (GBS) coverage data.
+MaMaMIA detects interspecific introgression from coverage breadth and read
+counts. It is ploidy-aware: a donor and a recipient may each contribute any
+number of subgenomes, and homoeologs are compared within chromosome groups.
 
-The recommended **BAM-first workflow** starts from BAM files and a role-free
-species registry:
+The pipeline is:
 
-1.  Read BAM headers and create CSI indexes.
-2.  Tile the reference into windows and read GC content from `gcrank`.
-3.  Count reads and build a Read Count Array (RCA).
-4.  Correct GC bias with a zero-inflated negative binomial model.
-5.  Optionally normalize a cohort to dosage, then segment pairwise
-    donor-recipient differences with circular binary segmentation (CBS).
-6.  Inspect putative introgressions in the dashboard and export BEDPE.
-
-This vignette starts with that workflow on a small dataset bundled with the
-package. The following sections explain the `RCA` and `ISA` objects in detail
-using the packaged `triticum` tables; the BAM pipeline produces the same
-objects. The last section explains how to migrate from the removed
-directory-layout launcher.
-
-```{r setup}
-library(MaMaMIA)
+```
+preflightBams()
+  -> makeAnalysisWindows()          group-aware exact-N windows
+  -> extractWindowGc()              gcrank
+  -> countWindowMetrics()           counts + covered bases in one htslib pass
+  -> buildWindowMetrics()           breadth, lambdas
+  -> scoreIntrogression()           paired donor/recipient log-ratio
+  -> buildWindowMask()              panel / cohort / blacklist / physical
+  -> segmentScores()                CBS + gap merging
+  -> calibrateSegments()            length-stratified empirical null
+  -> classifyCalls()                substitution / addition / other
 ```
 
-# BAM-first workflow
+This release is not backward compatible with version 0.99. The configuration
+schema, the result object and the function surface all changed; see
+`MIGRATION.md`.
 
-`analyzeBamInput()` is the single pipeline entrypoint. It accepts one or more
-coordinate-sorted BAMs and a validated registry, and returns a
-`BamAnalysisResult` with the per-sample RCA and ISA objects.
+# Configuration
 
-## The species registry
-
-A registry declares **species**, not donor/recipient pairs. A species provides
-a label, one or more `gcrank` indexes, and its contigs. Contig lengths are read
-from the index, and relative paths are resolved against the directory that
-contains the YAML file.
+A version 2 registry declares species, their contigs and subgenomes, and one or
+more assemblies. Contigs are paired by chromosome group; `group` is read from
+the contig entry or from the first number in `name`.
 
 ```yaml
-version: 1
+version: 2
+
 defaults:
   windows_per_chromosome: 1000
   allowed_windows: [100, 1000, 10000]
-  max_fit_windows: 50000
+  mapq: 20
+  exclude_flags: 1796          # unmapped + secondary + QC-fail + duplicate
+  metric: breadth              # breadth | count | combined
+  score: paired_log_ratio      # paired_log_ratio | donor_only
+  donor_aggregation: mean      # mean | max | sum
+  mask:
+    panel: null
+    blacklist: null
+    physical_fallback_mb: 1.0
+    recurrence_threshold: 0.4
+  calibration:
+    length_bins_mb: [5, 10, 25, 50, 100, .inf]
+    fdr: 0.01
+    single_sample_floors: [2.0, 1.5, 1.2, 1.0, 0.5]
+
 species:
-  triticum_aestivum_cs_t2t:
-    label: "Triticum aestivum CS T2T"
-    default_subgenome: A
+  triticum_aestivum:
+    label: "Triticum aestivum"
     gc_indexes: [/srv/mamamia/gcidx/triticum-aestivum/index.gcrank]
     contigs:
-      - {id: CP155614.1, name: 1A, subgenome: A}
-      - {id: CP155611.1, name: 2A, subgenome: A}
-  secale_cereale:
-    label: "Secale cereale (rye)"
-    default_subgenome: R
-    gc_indexes: [/srv/mamamia/gcidx/secale-cereale/index.gcrank]
+      - {id: CP155614.1, name: 1A, subgenome: A, group: 1}
+      # ... 21 wheat contigs
+  aegilops_speltoides:
+    label: "Aegilops speltoides"
+    gc_indexes: [/srv/mamamia/gcidx/aegilops-speltoides/index.gcrank]
     contigs:
-      - {id: OZ284382.1, name: 1R, subgenome: R}
-      - {id: OZ284383.1, name: 2R, subgenome: R}
+      - {id: CH1S, name: 1S, subgenome: S, group: 1}
+      # ... 7 S contigs
+
 ```
 
-`readMaMaMIAConfig()` validates the registry, the index payloads and the
-contig metadata before any BAM work starts. Named `assemblies:` presets are
-optional and exist for scripted runs; the application does not expose a preset
-list.
+The registry declares species only. The donor and recipient are chosen at run
+time and the assembly is derived from them:
 
-## Roles are assigned at run time
+```{r, eval = FALSE}
+pair <- resolveSpeciesAssembly(
+    config,
+    recipient = "triticum_aestivum",
+    donor = "aegilops_speltoides",
+    recipient_subgenomes = c("A", "B", "D"),
+    donor_subgenomes = "S",
+    default_sample_composition = c(A = 2, B = 2, D = 2)
+)
+```
 
-A species has no donor or recipient role. `resolveSpeciesAssembly()` (and the
-app's two species selectors) assign the roles for one comparison:
+`recipient_subgenome` and `donor_subgenome` are accepted as one-element
+shortcuts. `copy_number` defaults to 2; `0` means absent. A runtime
+`sample_composition` overrides `default_sample_composition`.
 
-```{r bam-config}
+# Running the pipeline
+
+```{r, eval = FALSE}
+config <- readMaMaMIAConfig("assemblies.yml")
+pair <- resolveSpeciesAssembly(
+    config, donor = "aegilops_speltoides", recipient = "triticum_aestivum"
+)
+result <- analyzeBamInput(
+    bam_paths, pair$config,
+    assembly = pair$key,
+    windows_per_chromosome = 1000L,
+    cores = 8L
+)
+```
+
+The bundled demo runs the same path:
+
+```{r}
 demo <- system.file("extdata", "bam-demo", package = "MaMaMIA")
 config <- readMaMaMIAConfig(file.path(demo, "assemblies.yml"))
-listMaMaMIASpecies(config)[, c("key", "label", "subgenomes", "n_contigs")]
-
 pair <- resolveSpeciesAssembly(
     config, donor = "secale_like", recipient = "triticum_like"
 )
-pair$key
-pair$assembly$pairs
-pair$unpaired
-```
-
-`pair$key` names the derived assembly, `pair$assembly` contains only the paired
-contigs and `pair$unpaired` explains every excluded contig. The same species
-can be used on either side of different runs, but one run needs two different
-species. In the app, the **Swap donor and recipient** button reverses the
-comparison while carrying each species' subgenome choice; auto-detection from
-the BAM header is an optional checkbox when the registry declares named
-assemblies.
-
-Contigs are paired by chromosome group: the optional `group` field, otherwise
-the first number in `name`. Rye `1R` therefore pairs with wheat `1A`, `2R` with
-`2A`, and so on. An explicit `pairs` argument remains available when the group
-rule is not the intended comparison.
-
-## Run the pipeline
-
-The bundled demo has two species sharing one variable-GC index and a small BAM
-with a donor excess in the first half of chromosome 1:
-
-```{r bam-run}
 result <- analyzeBamInput(
     file.path(demo, "demo.bam"), pair$config,
     assembly = pair$key,
-    windows_per_chromosome = 100L,
-    normalization = "none",
-    cores = 1L
+    windows_per_chromosome = 100L
 )
-result$samples[, c(
-    "sample", "n_windows", "n_segments", "n_putative_introgressions"
-)]
-```
-
-The result contains the inputs and every intermediate object:
-
-```{r bam-result}
 names(result)
-result$rca[[1]]
-result$isa[[1]]
+result$samples[, c("sample", "mode", "n_windows", "n_calls")]
 ```
 
-With several BAMs, pass a vector of paths to `analyzeBamInput()`. A single
-multi-sample BAM works too: samples are read from its `@RG SM` tags and reads
-are counted per `RG` tag. Choose `"median"` or `"reference"` normalization;
-the per-sample RCAs are corrected first and then normalized together, so the
-dosage is comparable across the cohort:
+# The result contract
 
-```{r bam-cohort, eval = FALSE}
-result <- analyzeBamInput(
-    c("sample1.bam", "sample2.bam", "sample3.bam"), pair$config,
-    assembly = pair$key,
-    normalization = "median"
-)
+`BamAnalysisResult` has eleven fields:
 
-reference_run <- analyzeBamInput(
-    c("sample1.bam", "sample2.bam"), pair$config,
-    assembly = pair$key,
-    normalization = "reference",
-    reference_sample = "sample1"
-)
+| Field | Contents |
+|---|---|
+| `assembly`, `config` | resolved assembly and validated registry |
+| `bams`, `samples` | input metadata and per-sample call counts |
+| `windows`, `gc` | exact-N windows and reference GC |
+| `metrics` | one row per sample × window: count, covered, breadth, GC, lambdas |
+| `scores` | one row per sample × group × window: score and residuals |
+| `masks` | window-level mask with `source` and `version` |
+| `calibration` | thresholds by mode and segment-length bin |
+| `calls` | segments with class, confidence, method and `pass` |
+| `provenance` | versions, parameters, mask/calibration hashes |
+
+```{r}
+head(result$metrics)
+head(result$scores[, c("sample", "group", "iid", "score", "score_raw")])
+result$calibration
 ```
 
-## Export
+# Ploidy and scoring
 
-`writeCohortToBedpe()` writes every putative introgression with a `sample`
-column last; pass `selected` to export specific dashboard rows instead.
+The primary score is
 
-```{r bam-bedpe}
-bedpe_demo <- tempfile(fileext = ".bedpe")
-writeCohortToBedpe(result, bedpe_demo)
-read.table(bedpe_demo, header = TRUE, sep = "\t")
+```
+y = log(lambda_donor + eps) - log(lambda_recipient + eps)
 ```
 
-## Resolution and normalization
+where `lambda = -log(1 - breadth)` for `metric = "breadth"`. Recipient
+homoeologs are averaged within a group. Donor homoeologs are averaged, summed,
+or max-selected (`donor_aggregation`), which supports diploid, tetraploid,
+hexaploid and multi-donor designs. A single sample is GC-corrected with a
+natural spline and centred; a cohort uses median polish to remove the shared
+window effect and each sample's library/ploidy offset.
 
-`windows_per_chromosome` tiles every target contig into exactly that many
-contiguous half-open windows, and donor and recipient windows are matched by
-position index rather than by coordinates. Every contig must be at least as
-long as the resolution. The app offers 100, 1,000 and 10,000 windows per
-chromosome by default and disables Run with an explanation when a contig is
-too short.
+`score = "donor_only"` is the CNV-robust fallback: it scores donor depth
+without the recipient denominator.
 
-Normalization runs after GC correction and before segmentation:
+# Masks and calibration
 
-- `"none"`: segment `cor.gc.don - cor.gc.rec` (always used for a single BAM).
-- `"median"`: `dose = (C + eps) / (median(C) + eps)` across samples per window.
-- `"reference"`: `dose = (C + eps) / (C_ref + eps)` for a chosen sample.
+A mask is indexed by chromosome group and relative window. Sources are tried in
+order: a fixed panel mask, a cohort recurrence mask (multi-sample), a BED
+blacklist, and a physical terminal fallback. Masked windows are set to `NA`
+before CBS, so segment boundaries and gap merging still see the full grid.
 
-`eps` is `pseudocount` (default `0.5`), so a zero side stays finite and an
-all-zero window gets dose `1`. Donor and recipient windows are normalized
-independently by default (`normalization_by_side = true`), because they come
-from different genomes and mappability regimes. The high-resolution memory
-cap is `max_fit_windows`: larger ideal sets are subsampled deterministically by
-subgenome and GC decile, while prediction covers every window. See
-`?normalizeReadCounts` and `?analyzeBamInput` for the exact contracts.
+Calls are calibrated by segment length. The threshold is the empirical
+`1 - fdr` quantile of control segment means, raised to a per-bin floor. A
+single sample is its own control; a cohort uses all samples (or `controls`).
 
-## Counts, flags and boundary semantics
-
-Reads are counted at their 5' end: a forward-strand read belongs to the window
-containing its `POS`, a reverse-strand read to the window containing the
-alignment end. `mapq` defaults to 20 and `exclude_flags` to
-`2308 = 0x904` (unmapped, secondary, supplementary). As with `samtools view
--F`, a read is excluded when **any** bit in the mask is set. The pipeline
-applies the mask directly in one htslib pass. Both the pipeline and the
-exported `countReads()` helper use this same htslib implementation.
-
-`bedtools coverage -counts`, used by the legacy workflow, counts a read in
-every window it overlaps. The two counts therefore differ by the few reads
-whose 5' end lies outside a window while the alignment span crosses its
-boundary. This is expected and confined to boundary-crossing reads.
-
-Verify a count against `samtools` with the same MAPQ and flag filter:
-
-```sh
-samtools view -c -F 2308 -q 20 sample.bam d1:1-200
+```{r}
+result$calibration[, c("mode", "length_bin", "n_control", "threshold")]
 ```
 
-That command counts reads overlapping the region. To reproduce a window count,
-keep the reads whose 5' end is inside the window (forward: `POS`; reverse: the
-alignment end). The GC values come from `gcrank` and match `bedtools nuc` at
-the six-decimal precision stored in the legacy BED files.
+# Export and dashboard
 
-## Interactive dashboard
-
-Start the BAM-first app with a registry:
-
-```{r run-ma-ma-mia, eval = FALSE}
-runMaMaMIA(config = "assemblies.yml")
+```{r, eval = FALSE}
+writeCallsToBedpe(result, "calls.bedpe")
+exploreIntrogressions(result)
 ```
 
-Choose a recipient and a donor species, optionally swap them, upload one or
-more BAMs, choose a resolution and normalization, and run. The container mounts
-no BAM directory; every BAM is uploaded by the user. The cohort summary reports
-windows, segments and putative calls per sample. The explorer draws a circos
-overview with `interacCircos` (chromosome ideograms, the per-window
-donor-recipient difference, segment spans and links), keeps selections per
-sample and exports a per-sample BEDPE or a combined BEDPE with a `sample`
-column. The app runs on ShinyProxy with the image and registry described in
-`docs-source/shinyproxy.md`; the container entrypoint is
-`uvr run /app/deployment/start.R`.
-
-The bundled demo can be opened directly, or run without any upload by pressing
-the **Example data** button in the sidebar:
-
-```{r run-demo, eval = FALSE}
-runMaMaMIA(config = file.path(demo, "assemblies.yml"))
-```
-
-If the pipeline has already been run, `exploreIntrogressions()` opens the same
-explorer for an existing `ISA` object:
-
-```{r explore-isa, eval = FALSE}
-exploreIntrogressions(result$isa[[1]])
-```
-
-# Preparing tables for the core API
-
-> **BAM-first is the dashboard workflow.** The app now tiles contigs, reads GC
-> content and counts reads itself. This section is for scripts that already
-> have windowed tables and want to call `RCA()`, `correctReadCounts()` and
-> `segments()` directly. The directory-layout readers and launcher have been
-> removed.
-
-MaMaMIA's core analysis expects windowed coverage (mapped read counts) and
-GC-content tables for both the **donor** and **recipient** genomes. The same
-preprocessing is applied independently to each genome. Downstream comparison
-matches windows by position index, not by shared genomic coordinates, so every
-chromosome-donor and recipient-must be tiled into the **same number of
-windows**.
-
-## Competitive mapping
-
-Reads are mapped to a concatenated reference that merges the donor and
-recipient genomes into one FASTA. Competitive mapping assigns each read
-to the genome (and chromosome) where it aligns best, so coverage
-reflects genome-specific signal rather than ambiguous cross-mapping
-between related sequences. More background is given in [Feuerborn et al.
-(2020)](https://doi.org/10.1186/s12864-020-07229-y).
-
-Mapped reads are filtered with `samtools` to retain primary, mapped
-alignments (`-F 2308`) of sufficient mapping quality (e.g.
-$\mathrm{MAPQ} \ge 20$).
-
-## Windowed coverage and GC content
-
-Filtered BAMs are summarised in fixed genomic windows (we recommend
-100-1000 windows per chromosome, but it is up to you) with `bedtools`.
-For a chromosome length file in [Genome
-format](https://bedtools.readthedocs.io/en/latest/content/general-usage.html#genome-file-format)
-and a filtered BAM `sample.bam`:
-
-``` bash
-bedtools makewindows -g chrom.genome -n 1000 > windows.bed
-bedtools nuc -fi concatenated_genomes.fa -bed windows.bed | cut -f1-3,5 > sample.gc
-bedtools coverage -a windows.bed -b sample.bam -counts > sample.cov
-```
-
-`bedtools nuc` reports several columns; column 5 is the fraction of G/C
-bases in the window. Coverage and GC tables passed to `RCA()` must each
-have exactly four columns (names are ignored):
-
-| Column | Meaning                                       |
-|--------|-----------------------------------------------|
-| 1      | Chromosome ID                                 |
-| 2      | Start (0-based)                               |
-| 3      | End (exclusive)                               |
-| 4      | Value (read count or GC fraction in $[0, 1]$) |
-
-Within each genome, coverage and GC tables must use identical window
-coordinates. On each chromosome, windows must form contiguous half-open
-intervals in row order (no gaps or overlaps). A chromosome metadata
-table (`meta`) supplies three columns: chromosome ID, a short display
-name, and a subgenome label. Donor and recipient chromosome IDs must be
-disjoint, as must their subgenome labels.
-
-# Load example data
-
-```{r load-data}
-data(triticum)
-```
-
-`triticum` provides precomputed tables from this pipeline:
-
-- `don_cov`, `don_gc` — *T. timopheevii* coverage and GC (14
-  chromosomes; At and G subgenomes; 1000 windows each)
-- `rec_cov`, `rec_gc` — *T. aestivum* Chinese Spring T2T coverage and GC
-  (21 chromosomes; A, B, and D subgenomes; 1000 windows each)
-- `meta` — chromosome ID, short name (e.g. `"1At"`, `"1A"`), and
-  subgenome for all 35 chromosomes
-
-# Build an RCA object
-
-`RCA()` joins donor and recipient windowed coverage and GC-content with
-chromosome metadata into a Read Count Array. It validates tiled windows,
-matching coverage/GC coordinates within each genome, equal window counts
-across all chromosomes, and disjoint donor/recipient chromosome IDs and
-subgenome labels. The result starts with `corrected = FALSE`. Set
-`presorted = FALSE` only if input tables are not already ordered by
-chromosome and coordinates (bedtools output usually is).
-
-```{r create-rca}
-RCA.object <- RCA(
-    dcov = don_cov,
-    dgc = don_gc,
-    rcov = rec_cov,
-    rgc = rec_gc,
-    meta = meta
-)
-summary(RCA.object)
-```
-
-`print()` reports chromosome counts (total, donor, recipient), window
-count, and GC-correction status. `summary()` lists chromosomes per
-subgenome and whether correction has been applied (`corrected = FALSE`
-at this stage).
-
-# Correct GC bias
-
-`correctReadCounts()` marks outlier windows, fits a zero-inflated
-negative binomial (ZINB) model of coverage as a smooth function of GC
-content (with subgenome as a covariate), and stores GC-corrected
-coverage in `cor.gc`. Ideal windows (retained after outlier filtering)
-are used for model fitting and later for segmentation. Outlier cutoffs
-are fixed at the 1%/99% GC quantiles and the 99% coverage quantile.
-Increase `cores` to speed up `glmmTMB` fitting on larger datasets:
-
-```{r correct-gc}
-corrected_data <- correctReadCounts(RCA.object, cores = 4L)
-summary(corrected_data)
-```
-
-After correction, `summary()` also reports the GC and coverage bounds
-stored in `$outliers`, and marks `corrected = TRUE`. The fitted model is
-kept in `$fit`.
-
-## Resource use
-
-Fitting differentiates the likelihood window by window, so both runtime and peak
-memory scale with the number of windows that are fitted, and not with `cores`.
-Budget roughly **0.1 MB per window** (about 1 GB per 10,000 windows on top of a
-small baseline) and around 0.85 s per 1,000 windows at `cores = 4`. This
-walkthrough fits 34,000 windows and peaks near 3.6 GB, so fitting is practical up
-to a few tens of thousands of windows on a typical machine, while 350,000 windows
-would need roughly 36 GB. Raising `cores` shortens the fit substantially without
-changing the memory it needs.
-
-Fitted values also shift by around `1e-7` relative with `cores`, so a batch is
-better run as **one process per sample with `cores = 1`** than as one wide
-multi-threaded call. Results are then independent of the thread count, so a given
-sample gives the same answer whichever worker runs it; peak memory stays bounded
-per worker, and throughput comes from the number of workers rather than from
-threads, for example with `mirai` or `crew`, or a shell loop over samples with
-`OMP_NUM_THREADS=1` exported in each worker's environment.
-
-```{r batch-fits, eval = FALSE}
-# In each worker, with OMP_NUM_THREADS=1 exported in its environment:
-corrected <- correctReadCounts(rca, cores = 1L)
-```
-
-## Plotting coverage profiles
-
-`plot()` on an RCA object can show raw (`"orig_cov"`) or GC-corrected
-(`"corr_cov"`) coverage. By default only ideal windows are drawn; set
-`show_outliers = TRUE` to include filtered windows. If correction has
-not been run, `plot()` warns and falls back to raw coverage with
-outliers shown.
-
-```{r original-cov-plot}
-plot(corrected_data, plot.type = "orig_cov")
-```
-
-```{r corrected-cov-plot}
-plot(corrected_data, plot.type = "corr_cov")
-```
-
-```{r corrected-cov-plot-outliers}
-plot(corrected_data, plot.type = "orig_cov", show_outliers = TRUE)
-```
-
-## Zero-inflated negative binomial (ZINB) model
-
-Let $Y_i$ be the coverage in window $i$ with GC content $\mathrm{GC}_i$
-and subgenome $S_i$. Then
-
-$$Y_i \sim \mathrm{ZINB}(\mu_i, \theta, \pi_i)$$
-
-where
-
-$$\mu_i = f(\mathrm{GC}_i) + \beta_{S_i}, \qquad
-\operatorname{logit}(\pi_i) = g(\mathrm{GC}_i) + \gamma_{S_i}$$
-
-with $f$ and $g$ fitted as smooth splines. Corrected coverage scales the
-observed count by the ratio of expected coverage at a reference GC
-(median GC of ideal windows) to the fitted expectation at the window's
-own GC.
-
-# Subset coverage data to selected subgenomes or chromosomes
-
-Before segmentation, `subset()` can restrict an RCA object to selected
-donor and/or recipient chromosomes. Specify targets by subgenome label,
-by chromosome ID, or both (the two filters are combined as a union on
-each side). At least one argument must be non-`NULL`; omitting filters
-for one side leaves that side unchanged. The result must retain at least
-one donor and one recipient chromosome.
-
-By subgenome:
-
-```{r subset-subgenome-plot}
-subset_cd <- subset(
-    corrected_data,
-    don_subgenomes = "At",
-    rec_subgenomes = "A"
-)
-plot(subset_cd, plot.type = "corr_cov")
-```
-
-By chromosome ID:
-
-```{r subset-chromosome-plot, eval = FALSE}
-subset(
-    corrected_data,
-    don_chromlist = c("OY997261.1", "OY997263.1"),
-    rec_chromlist = c("CP155614.1", "CP155611.1")
-)
-```
-
-The rest of this vignette uses the subgenome-level subset (`At` / `A`)
-above.
-
-# Reversing chromosome orientation
-
-When the donor and recipient assemblies are built independently,
-homologous chromosomes may be assembled in opposite orientations. Their
-per-window coverage and GC vectors then run in opposite directions along
-the genome, so position-by-position comparison aligns the wrong windows.
-
-`reverseWindows()` flips the effective orientation of selected
-chromosomes so the two genomes can be compared directly. The window
-indexes (`iid`, `start`, `stop`, and the chromosome identifier) are
-kept unchanged; instead the value vectors (coverage, GC-corrected
-coverage, and the per-window validity flags) are reversed within each
-selected chromosome. Chromosomes are selected by their **ID** (the
-`chr_id` column of the meta table), not by their short display name
-(`chr_name`):
-
-```{r reverse-rca}
-# Reverse donor chromosome 1At
-subset_cd_rev1At <- reverseWindows(
-    subset_cd,
-    chr_ids = "OY997261.1"
-)
-# Compare with original 1At chromosome
-plot(subset_cd_rev1At, plot.type = "corr_cov")
-```
-
-This orientation marker is preserved when the chromosome is passed on:
-segmentation (`segments()`, below) and plotting see the reversed
-profile.
-
-# Segmentation of donor-recipient difference coverage
-
-For each donor-recipient chromosome pair, `segments()` computes the
-difference in GC-corrected coverage on aligned ideal windows and runs
-circular binary segmentation (CBS) via
-[`DNAcopy::segment()`](https://rdrr.io/bioc/DNAcopy/man/segment.html).
-CBS recursively partitions the difference profile into contiguous
-regions of constant mean ([Olshen et al.
-2004](https://doi.org/10.1093/biostatistics/kxh008); [Venkatraman &
-Olshen 2007](https://doi.org/10.1093/bioinformatics/btl646)). The result
-is an `ISA` (Introgression Segment Array) object.
-
-## Donor-recipient chromosome pairs
-
-Segmentation requires an explicit named vector `target_pairs`: names are
-donor chromosome IDs and values are recipient chromosome IDs. There is
-no default all-pairs expansion; only the listed pairs are analysed. Here
-each donor chromosome is paired with the corresponding recipient
-chromosome from the subset:
-
-```{r segments}
-don_chromosomes <- subset_cd$meta$don_chr_ids
-rec_chromosomes <- subset_cd$meta$rec_chr_ids
-target_pairs <- setNames(rec_chromosomes, don_chromosomes)
-aat_segments <- segments(subset_cd,
-    target_pairs = target_pairs
-)
-aat_segments
-```
-
-A single pair can be specified directly:
-
-```{r segments-one-pair, eval = FALSE}
-segments(
-    subset_cd,
-    target_pairs = c("OY997261.1" = "CP155614.1")
-)
-```
-
-## CBS parameters
-
-CBS behaviour is controlled by three arguments passed through to
-`DNAcopy::segment()` (with `undo.splits = "sdundo"`). Defaults are
-`alpha = 0.001`, `min_width = 2`, and `undo.SD = 1`.
-
-- `alpha` — significance level for the change-point test. Smaller values
-  accept fewer splits and yield coarser segments (`0 < alpha <= 1`).
-- `min_width` — minimum number of windows retained after segmentation;
-  shorter segments are dropped. Note that `DNAcopy::segment()` itself is
-  always called with `min.width = 2`; this value is applied as a
-  post-filter (`min_width >= 2`).
-- `undo.SD` — number of standard deviations between adjacent segment
-  means required to keep a split. Larger values prune more splits
-  attributed to local trends (`0 < undo.SD <= 10`).
-
-Custom parameters:
-
-```{r segments-custom-param, eval = FALSE}
-segments(
-    subset_cd,
-    target_pairs = target_pairs,
-    alpha = 0.01,
-    min_width = 5,
-    undo_SD = 1
-)
-```
-
-## Introgression detection thresholds
-
-After CBS, each segment is summarised by its mean (`seg.mean`) and
-median (`seg.median`) coverage difference. A segment is flagged as a
-putative introgression when the chosen statistic is at or above a
-threshold:
-
-- `threshold_type` — `"median"` (default) or `"mean"`.
-- `min_segment_median` — threshold when `threshold_type = "median"`
-  (default `0`).
-- `min_segment_mean` — threshold when `threshold_type = "mean"` (default
-  `0`).
-
-With the defaults, any segment whose median difference is non-negative
-is marked as a putative introgression. Raise the threshold to require a
-stronger donor excess, or switch to the mean:
-
-```{r segments-threshold, eval = FALSE}
-# Stricter median threshold
-segments(
-    subset_cd,
-    target_pairs = target_pairs,
-    min_segment_median = 5,
-    threshold_type = "median"
-)
-
-# Use segment mean instead of median
-segments(
-    subset_cd,
-    target_pairs = target_pairs,
-    threshold_type = "mean",
-    min_segment_mean = 5
-)
-```
-
-These flags can be revised later with `subset()` on the `ISA` object
-without re-running CBS (see `?subset.ISA`).
-
-## Reversing after segmentation
-
-`reverseWindows()` also operates on an `ISA` object. When a chromosome
-included in the pairwise comparison is reversed, the difference profile
-of every donor-recipient pair containing it changes, so segmentation is
-**recomputed** for those pairs automatically. Segments of pairs that do
-not involve a reversed chromosome are left untouched.
-
-```{r reverse-isa, eval = FALSE}
-aat_segments <- reverseWindows(
-    aat_segments,
-    chr_ids = "OY997261.1"
-)
-```
-
-Apply the reversal as early as possible - on the `RCA` object before
-`segments()` - and only use the `ISA` form when you need to flip a
-chromosome in an already-segmented result.
-
-# Plotting of segmentation result
-
-`plot()` on an `ISA` object draws the pairwise profiles already stored
-in that object (the pairs chosen at `segments()` time). Two styles are
-available via `plot.type`.
-
-## Mirrored coverage (`plot.type = "mirror"`)
-
-Donor GC-corrected coverage is plotted above zero and recipient coverage
-below, so shared structure and local excesses are easy to compare along
-the chromosome:
-
-```{r plot-mirror}
-plot(aat_segments, plot.type = "mirror")
-```
-
-## Coverage difference (`plot.type = "diff"`)
-
-The per-window difference is shown with a zero reference line.
-Horizontal bars mark the segment summary used for introgression calling
-(`seg.median` or `seg.mean`, as recorded in
-`aat_segments$meta$metrics`). By default only segments flagged as
-putative introgressions are drawn; set `all_segments = TRUE` to overlay
-every CBS segment:
-
-```{r plot-diff}
-plot(aat_segments, plot.type = "diff")
-```
-
-```{r plot-diff-all, eval = FALSE}
-plot(aat_segments, plot.type = "diff", all_segments = TRUE)
-```
-
-To restrict the plot to a subset of pairs, filter the `ISA` object first
-with `subset()` (see `?subset.ISA`), then call `plot()` on the result.
-
-# Inspecting putative introgressions
-
-`summary()` on an `ISA` object lists each putative introgression with
-donor and recipient chromosome, subgenome, start, end, and length.
-Coordinates can be reported in `bp`, `Kb`, `Mb`, or `Gb`:
-
-```{r summary-isa}
-summary(aat_segments, unit = "Mb", digits = 2)
-```
-
-Thresholds and pairs can be adjusted without re-running CBS. For
-example, keep only one pair and require a higher median difference:
-
-```{r subset-isa, eval = FALSE}
-aat_strict <- subset(
-    aat_segments,
-    target_pairs = c("OY997261.1" = "CP155614.1"),
-    min_segment_median = 5
-)
-summary(aat_strict, unit = "Mb")
-```
-
-# Export putative introgressions to BEDPE
-
-`writeToBedpe()` writes segments with `putative_introgression = TRUE` to
-a tab-separated BEDPE file. Each row is one donor–recipient interval
-pair. Columns include standard BEDPE fields plus chromosome names and
-subgenome labels; `score` is the active segment metric (`seg.median` or
-`seg.mean`):
-
-```{r export-bedpe}
-bedpe_file <- tempfile(fileext = ".bedpe")
-writeToBedpe(aat_segments, file = bedpe_file)
-read.table(bedpe_file, header = TRUE, sep = "\t")
-```
-
-If no putative introgressions remain after filtering, a header-only file
-is written and a warning is issued.
-
-# Migration from the directory layout
-
-The directory-layout launcher and its readers have been removed.
-`runMaMaMIA(config = ...)` is the single Shiny entrypoint, and
-`analyzeBamInput()` is the scripted pipeline. To migrate:
-
-1. Keep the BAMs and `gcrank` indexes; describe the two genomes as `species:`
-   in a registry.
-2. Drop the precomputed `analysis_dir` / `assemblies_dir` tables; the app tiles,
-   extracts GC and counts reads from the BAMs.
-3. Open the app with `runMaMaMIA(config = "assemblies.yml")`, or call
-   `analyzeBamInput()` from a script.
-
-If the windowed tables must be kept, pass them to `RCA()` as before;
-`buildSampleTables()` assembles them into the pipeline contract, and
-`defaultTargetPairs()` provides chromosome-number pairing when an assembly has
-no explicit `pairs`. The explorer remains available for any `ISA` object and
-now includes the `interacCircos` overview:
-
-```{r explore-isa-core, eval = FALSE}
-exploreIntrogressions(aat_segments)
-```
-
-It draws a searchable segment table and exports selected rows as BEDPE. The
-call threshold (`threshold_type` and its minimum) and the minimum segment width
-re-flag segments through `subset.ISA()` without re-running segmentation, and
-the chromosome pair pickers restrict the view.
-
-# Session info
-
-```{r session-info}
+`writeCallsToBedpe()` writes one row per passing call with donor and recipient
+intervals, `score_mean`, `class`, `confidence`, `method` and `mode`.
+`exploreIntrogressions()` opens the dashboard: chromosome-group, class,
+confidence and width filters, a score profile with called intervals, a call
+table, and a BEDPE export.
+
+# Session information
+
+```{r}
 sessionInfo()
 ```

@@ -69,16 +69,6 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-// build_stub_cpp
-int build_stub_cpp();
-RcppExport SEXP _MaMaMIA_build_stub_cpp() {
-BEGIN_RCPP
-    Rcpp::RObject rcpp_result_gen;
-    Rcpp::RNGScope rcpp_rngScope_gen;
-    rcpp_result_gen = Rcpp::wrap(build_stub_cpp());
-    return rcpp_result_gen;
-END_RCPP
-}
 // bam_header_info_cpp
 Rcpp::List bam_header_info_cpp(const std::string& path);
 RcppExport SEXP _MaMaMIA_bam_header_info_cpp(SEXP pathSEXP) {
@@ -104,9 +94,9 @@ BEGIN_RCPP
     return rcpp_result_gen;
 END_RCPP
 }
-// bam_count_rg_cpp
-Rcpp::IntegerMatrix bam_count_rg_cpp(const std::string& path, Rcpp::CharacterVector contig_names, Rcpp::NumericVector contig_lengths, int n_per_chromosome, Rcpp::CharacterVector read_group_ids, Rcpp::IntegerVector sample_index, Rcpp::CharacterVector sample_names, int mapq, int exclude_flags);
-RcppExport SEXP _MaMaMIA_bam_count_rg_cpp(SEXP pathSEXP, SEXP contig_namesSEXP, SEXP contig_lengthsSEXP, SEXP n_per_chromosomeSEXP, SEXP read_group_idsSEXP, SEXP sample_indexSEXP, SEXP sample_namesSEXP, SEXP mapqSEXP, SEXP exclude_flagsSEXP) {
+// bam_metrics_rg_cpp
+Rcpp::List bam_metrics_rg_cpp(const std::string& path, Rcpp::CharacterVector contig_names, Rcpp::NumericVector contig_lengths, int n_per_chromosome, Rcpp::CharacterVector read_group_ids, Rcpp::IntegerVector sample_index, Rcpp::CharacterVector sample_names, int mapq, int exclude_flags, int read_length, bool count_deletions);
+RcppExport SEXP _MaMaMIA_bam_metrics_rg_cpp(SEXP pathSEXP, SEXP contig_namesSEXP, SEXP contig_lengthsSEXP, SEXP n_per_chromosomeSEXP, SEXP read_group_idsSEXP, SEXP sample_indexSEXP, SEXP sample_namesSEXP, SEXP mapqSEXP, SEXP exclude_flagsSEXP, SEXP read_lengthSEXP, SEXP count_deletionsSEXP) {
 BEGIN_RCPP
     Rcpp::RObject rcpp_result_gen;
     Rcpp::RNGScope rcpp_rngScope_gen;
@@ -119,7 +109,9 @@ BEGIN_RCPP
     Rcpp::traits::input_parameter< Rcpp::CharacterVector >::type sample_names(sample_namesSEXP);
     Rcpp::traits::input_parameter< int >::type mapq(mapqSEXP);
     Rcpp::traits::input_parameter< int >::type exclude_flags(exclude_flagsSEXP);
-    rcpp_result_gen = Rcpp::wrap(bam_count_rg_cpp(path, contig_names, contig_lengths, n_per_chromosome, read_group_ids, sample_index, sample_names, mapq, exclude_flags));
+    Rcpp::traits::input_parameter< int >::type read_length(read_lengthSEXP);
+    Rcpp::traits::input_parameter< bool >::type count_deletions(count_deletionsSEXP);
+    rcpp_result_gen = Rcpp::wrap(bam_metrics_rg_cpp(path, contig_names, contig_lengths, n_per_chromosome, read_group_ids, sample_index, sample_names, mapq, exclude_flags, read_length, count_deletions));
     return rcpp_result_gen;
 END_RCPP
 }
@@ -148,10 +140,9 @@ static const R_CallMethodDef CallEntries[] = {
     {"_MaMaMIA_gcrank_contigs_cpp", (DL_FUNC) &_MaMaMIA_gcrank_contigs_cpp, 1},
     {"_MaMaMIA_gcrank_gc_cpp", (DL_FUNC) &_MaMaMIA_gcrank_gc_cpp, 5},
     {"_MaMaMIA_htslib_version_cpp", (DL_FUNC) &_MaMaMIA_htslib_version_cpp, 0},
-    {"_MaMaMIA_build_stub_cpp", (DL_FUNC) &_MaMaMIA_build_stub_cpp, 0},
     {"_MaMaMIA_bam_header_info_cpp", (DL_FUNC) &_MaMaMIA_bam_header_info_cpp, 1},
     {"_MaMaMIA_bam_index_build_cpp", (DL_FUNC) &_MaMaMIA_bam_index_build_cpp, 4},
-    {"_MaMaMIA_bam_count_rg_cpp", (DL_FUNC) &_MaMaMIA_bam_count_rg_cpp, 9},
+    {"_MaMaMIA_bam_metrics_rg_cpp", (DL_FUNC) &_MaMaMIA_bam_metrics_rg_cpp, 11},
     {"_MaMaMIA_bam_count_ranges_cpp", (DL_FUNC) &_MaMaMIA_bam_count_ranges_cpp, 8},
     {NULL, NULL, 0}
 };

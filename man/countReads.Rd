@@ -27,13 +27,13 @@ An integer vector aligned to \code{gr}.
 Counts reads whose 5' end falls inside each range using the package's
 htslib iterator. A valid CSI index is ensured first. This is the public
 helper for arbitrary \code{GRanges}; \code{\link[=analyzeBamInput]{analyzeBamInput()}} uses the same htslib
-rules through \code{.count_reads_by_sample()}.
+filters through \code{\link[=countWindowMetrics]{countWindowMetrics()}}.
 }
 \details{
 \code{exclude_flags} follows \verb{samtools view -F}: a read is excluded when \strong{any}
 bit in the mask is set. The default
-\code{2308 = 0x904 = unmapped + secondary + supplementary} matches the legacy
-\verb{samtools view -F 2308} filter.
+\code{2308 = 0x904 = unmapped + secondary + supplementary} drops the alignments
+that cannot contribute coverage.
 
 Counting is 5'-end based: a forward-strand read belongs to the range
 containing its leftmost coordinate and a reverse-strand read to the range

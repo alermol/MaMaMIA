@@ -6,6 +6,15 @@
 #include <fstream>
 #include <span>
 
+// GCRANK_DISABLE_SHA_NI exists so the scalar fallback can be built and tested
+// on a machine that supports the extension.
+#if (defined(__x86_64__) || defined(_M_X64)) && (defined(__GNUC__) || defined(__clang__)) && \
+    !defined(GCRANK_DISABLE_SHA_NI)
+#include <cpuid.h>
+#include <immintrin.h>
+#define GCRANK_HAVE_SHA_NI 1
+#endif
+
 #include "gcrank/error.h"
 
 namespace gcrank {
@@ -54,7 +63,9 @@ void SHA256::reset() {
   total_bits_ = 0;
 }
 
-void SHA256::transform(const uint8_t block[64]) {
+namespace {
+
+void transform_scalar(uint32_t state[8], const uint8_t block[64]) {
   uint32_t w[64];
   for (int i = 0; i < 16; ++i) {
     w[i] = (static_cast<uint32_t>(block[4 * i]) << 24) |
@@ -68,8 +79,8 @@ void SHA256::transform(const uint8_t block[64]) {
     w[i] = w[i - 16] + s0 + w[i - 7] + s1;
   }
 
-  uint32_t a = h_[0], b = h_[1], c = h_[2], d = h_[3];
-  uint32_t e = h_[4], f = h_[5], g = h_[6], h = h_[7];
+  uint32_t a = state[0], b = state[1], c = state[2], d = state[3];
+  uint32_t e = state[4], f = state[5], g = state[6], h = state[7];
   for (int i = 0; i < 64; ++i) {
     const uint32_t s1 = std::rotr(e, 6) ^ std::rotr(e, 11) ^ std::rotr(e, 25);
     const uint32_t ch = (e & f) ^ (~e & g);
@@ -86,14 +97,121 @@ void SHA256::transform(const uint8_t block[64]) {
     b = a;
     a = t1 + t2;
   }
-  h_[0] += a;
-  h_[1] += b;
-  h_[2] += c;
-  h_[3] += d;
-  h_[4] += e;
-  h_[5] += f;
-  h_[6] += g;
-  h_[7] += h;
+  state[0] += a;
+  state[1] += b;
+  state[2] += c;
+  state[3] += d;
+  state[4] += e;
+  state[5] += f;
+  state[6] += g;
+  state[7] += h;
+}
+
+#if defined(GCRANK_HAVE_SHA_NI)
+// SHA-256 using the x86 SHA extensions (SHA-NI). The transformation between
+// the A-H state and the ABEF/CDGH layout expected by sha256rnds2 is the
+// standard one from Intel's SHA extension guide; the message schedule uses
+// sha256msg1/sha256msg2, unrolled because the schedule registers must stay in
+// the register file.
+__attribute__((target("sha,sse4.1,ssse3"))) void transform_sha_ni(uint32_t state[8],
+                                                                  const uint8_t block[64]) {
+  __m128i state0, state1, msg, tmp;
+  __m128i m0, m1, m2, m3;
+  const __m128i mask =
+      _mm_set_epi64x(0x0c0d0e0f08090a0bULL, 0x0405060700010203ULL);
+
+  // State layout: [A B C D] and [E F G H] -> ABEF and CDGH.
+  tmp = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&state[0]));
+  state1 = _mm_loadu_si128(reinterpret_cast<const __m128i*>(&state[4]));
+  tmp = _mm_shuffle_epi32(tmp, 0xB1);
+  state1 = _mm_shuffle_epi32(state1, 0x1B);
+  state0 = _mm_alignr_epi8(tmp, state1, 8);
+  state1 = _mm_blend_epi16(state1, tmp, 0xF0);
+  const __m128i save0 = state0;
+  const __m128i save1 = state1;
+
+  m0 = _mm_shuffle_epi8(_mm_loadu_si128(reinterpret_cast<const __m128i*>(block + 0)), mask);
+  m1 = _mm_shuffle_epi8(_mm_loadu_si128(reinterpret_cast<const __m128i*>(block + 16)), mask);
+  m2 = _mm_shuffle_epi8(_mm_loadu_si128(reinterpret_cast<const __m128i*>(block + 32)), mask);
+  m3 = _mm_shuffle_epi8(_mm_loadu_si128(reinterpret_cast<const __m128i*>(block + 48)), mask);
+
+#if defined(__clang__)
+#pragma clang loop unroll(full)
+#elif defined(__GNUC__)
+#pragma GCC unroll 16
+#endif
+  for (int g = 0; g < 16; ++g) {
+    // The four message registers hold groups g%4, (g+1)%4, ...; a runtime
+    // index is fine here because the loop is unrolled and they become
+    // compile-time constants.
+    __m128i* const regs[4] = {&m0, &m1, &m2, &m3};
+    __m128i& cur = *regs[g & 3];
+    msg = _mm_add_epi32(
+        cur, _mm_loadu_si128(reinterpret_cast<const __m128i*>(kK + 4 * g)));
+    state1 = _mm_sha256rnds2_epu32(state1, state0, msg);
+    msg = _mm_shuffle_epi32(msg, 0x0E);
+    state0 = _mm_sha256rnds2_epu32(state0, state1, msg);
+
+    if (g == 1) {
+      m0 = _mm_sha256msg1_epu32(m0, m1);
+    } else if (g == 2) {
+      m1 = _mm_sha256msg1_epu32(m1, m2);
+    } else if (g >= 3) {
+      __m128i& next = *regs[(g + 1) & 3];
+      __m128i& prev = *regs[(g + 3) & 3];
+      tmp = _mm_alignr_epi8(cur, prev, 4);
+      next = _mm_add_epi32(next, tmp);
+      next = _mm_sha256msg2_epu32(next, cur);
+      prev = _mm_sha256msg1_epu32(prev, cur);
+    }
+  }
+
+  state0 = _mm_add_epi32(state0, save0);
+  state1 = _mm_add_epi32(state1, save1);
+
+  // ABEF and CDGH -> [A B C D] and [E F G H].
+  tmp = _mm_shuffle_epi32(state0, 0x1B);
+  state1 = _mm_shuffle_epi32(state1, 0xB1);
+  state0 = _mm_blend_epi16(tmp, state1, 0xF0);
+  state1 = _mm_alignr_epi8(state1, tmp, 8);
+  _mm_storeu_si128(reinterpret_cast<__m128i*>(&state[0]), state0);
+  _mm_storeu_si128(reinterpret_cast<__m128i*>(&state[4]), state1);
+}
+
+using TransformFn = void (*)(uint32_t*, const uint8_t*);
+
+// CPUID, rather than __builtin_cpu_supports: Clang 18 and earlier do not accept
+// any feature string for SHA, while the CPUID bits are the same everywhere.
+// SHA-NI implies SSE4.1, but check the prerequisites explicitly before using
+// the target("sha,sse4.1,ssse3") function.
+bool sha_ni_available() {
+  unsigned eax = 0;
+  unsigned ebx = 0;
+  unsigned ecx = 0;
+  unsigned edx = 0;
+  if (__get_cpuid(1, &eax, &ebx, &ecx, &edx) == 0) return false;
+  constexpr unsigned kSsse3 = 1u << 9;
+  constexpr unsigned kSse41 = 1u << 19;
+  if ((ecx & (kSsse3 | kSse41)) != (kSsse3 | kSse41)) return false;
+  if (__get_cpuid_count(7, 0, &eax, &ebx, &ecx, &edx) == 0) return false;
+  constexpr unsigned kSha = 1u << 29;
+  return (ebx & kSha) != 0;
+}
+
+TransformFn select_transform() {
+  return sha_ni_available() ? transform_sha_ni : transform_scalar;
+}
+#else
+using TransformFn = void (*)(uint32_t*, const uint8_t*);
+TransformFn select_transform() { return transform_scalar; }
+#endif
+
+}  // namespace
+
+void SHA256::transform(const uint8_t block[64]) {
+  // Resolved once on first use; static local initialization is thread-safe.
+  static const TransformFn transform_fn = select_transform();
+  transform_fn(h_, block);
 }
 
 void SHA256::update(const void* data, std::size_t n) {

@@ -168,7 +168,7 @@ test_that("the gcrank cache reuses handles and keeps at most two indexes", {
     )
 })
 
-test_that("real wheat and rye GC values match the legacy BED tables", {
+test_that("real wheat and rye GC values match the reference BED tables", {
     root <- skip_if_no_test_data()
     on.exit(gcrankClearCache(), add = TRUE)
 
@@ -176,7 +176,7 @@ test_that("real wheat and rye GC values match the legacy BED tables", {
         index_dir <- file.path(root, "gcidx", index_dir, "index.gcrank")
         bed_path <- file.path(root, "assemblies", "cs_t2t_se_cereale", bed_path)
         if (!dir.exists(index_dir) || !file.exists(bed_path)) {
-            testthat::skip("real gcrank indexes or legacy GC tables are missing")
+            testthat::skip("real gcrank indexes or reference GC tables are missing")
         }
         expected <- read_gc_bed(bed_path, 3L)
         gc <- gcrankGc(

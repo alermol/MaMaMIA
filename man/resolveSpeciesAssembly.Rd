@@ -8,12 +8,14 @@ resolveSpeciesAssembly(
   config,
   donor,
   recipient,
+  donor_subgenomes = NULL,
+  recipient_subgenomes = NULL,
   donor_subgenome = NULL,
   recipient_subgenome = NULL,
-  pairs = NULL,
   key = NULL,
   label = NULL,
-  description = NULL
+  description = NULL,
+  default_sample_composition = NULL
 )
 }
 \arguments{
@@ -23,12 +25,13 @@ resolveSpeciesAssembly(
 
 \item{recipient}{Recipient species key.}
 
-\item{donor_subgenome}{Optional donor subgenome label.}
+\item{donor_subgenomes}{Optional donor subgenome labels.}
 
-\item{recipient_subgenome}{Optional recipient subgenome label.}
+\item{recipient_subgenomes}{Optional recipient subgenome labels.}
 
-\item{pairs}{Optional named donor-to-recipient contig mapping that overrides
-the chromosome-group rule.}
+\item{donor_subgenome}{Optional single donor subgenome (shortcut).}
+
+\item{recipient_subgenome}{Optional single recipient subgenome (shortcut).}
 
 \item{key}{Optional assembly key. Defaults to a key built from the species
 and subgenome labels.}
@@ -36,23 +39,26 @@ and subgenome labels.}
 \item{label}{Optional assembly label.}
 
 \item{description}{Optional assembly description.}
+
+\item{default_sample_composition}{Optional named recipient copy-number
+vector for the derived assembly.}
 }
 \value{
 A list with \code{key}, \code{assembly}, \code{config} (the input configuration
 with the derived assembly registered), \code{unpaired} (contigs excluded from
 the pair, with a reason), \code{donor_species}, \code{recipient_species},
-\code{donor_subgenome} and \code{recipient_subgenome}.
+\code{donor_subgenomes} and \code{recipient_subgenomes}.
 }
 \description{
-Selects one subgenome per species and pairs their contigs by chromosome
-group. The group is taken from the optional \code{group} field of a species
-contig, or from the first number in its \code{name} (for example \verb{1A} and \verb{1R}
-are both group 1). Only paired contigs are included in the assembly.
+Selects one or more subgenomes per species and pairs their contigs by
+chromosome group. The group is taken from the optional \code{group} field of a
+species contig, or from the first number in its \code{name} (for example \verb{1A} and
+\verb{1R} are both group 1). All contigs in the selected subgenomes are included;
+the scoring layer compares donor and recipient homoeologs within a group.
 }
 \details{
-\code{recipient_subgenome} and \code{donor_subgenome} are optional when a species has
-a single subgenome or a \code{default_subgenome}; otherwise they are required so
-that a polyploid side is not paired silently. \code{pairs} is an optional
-explicit donor-to-recipient override; when it is supplied, only the listed
-contigs are included.
+\code{recipient_subgenomes} and \code{donor_subgenomes} are optional when a species has
+a single subgenome or a \code{default_subgenome}; otherwise every subgenome is
+selected. The singular \code{recipient_subgenome} / \code{donor_subgenome} arguments
+are accepted as one-element shortcuts.
 }

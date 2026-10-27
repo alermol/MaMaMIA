@@ -3,7 +3,7 @@ later (see LICENSE.md).
 
 This package includes a vendored copy of the gcrank library under
 src/gcrank/, pinned to upstream commit
-5019bff14c00eda0d53755eb60a222f1b0ca4ce6.
+aa3a32b4cd748ead4c933225d0c990689499f92f.
 
 gcrank is Copyright (c) 2026 The gcrank Authors and is released under the MIT
 license. A copy of the license is provided in src/gcrank/LICENSE, and the

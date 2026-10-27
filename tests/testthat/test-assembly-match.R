@@ -13,39 +13,33 @@ tiny_header <- function(names, lengths = rep(20000, length(names)),
     )
 }
 
-tiny_config <- function() {
-    readMaMaMIAConfig(tiny_config_path())
-}
-
 with_second_assembly <- function(config) {
-    second <- config$assemblies$tiny
+    second <- tiny_assembly(config)
     second$key <- "tiny2"
     second$label <- "Tiny synthetic assembly with a second donor"
     second$contigs$donor <- transform(
         second$contigs$donor,
         id = "d2", name = "2D"
     )
-    second$pairs <- c(d2 = "r1")
     config$assemblies$tiny2 <- second
     config
 }
 
 with_superset_assembly <- function(config) {
-    superset <- config$assemblies$tiny
+    superset <- tiny_assembly(config)
     superset$key <- "tiny_full"
     superset$label <- "Tiny assembly with two donor contigs"
     superset$contigs$donor <- rbind(
         superset$contigs$donor,
         transform(superset$contigs$donor, id = "d2", name = "2D")
     )
-    superset$pairs <- c(d1 = "r1")
     config$assemblies$tiny_full <- superset
     config
 }
 
 test_that("matchAssembly() selects an exact match and ignores extra contigs", {
     skip_if_no_tiny_fixtures()
-    config <- tiny_config()
+    config <- tiny_resolved_config()
 
     exact <- matchAssembly(tiny_header(c("d1", "r1")), config)
     expect_identical(exact$assembly, "tiny")
@@ -72,7 +66,7 @@ test_that("matchAssembly() selects an exact match and ignores extra contigs", {
 
 test_that("matchAssembly() distinguishes assemblies that share a recipient", {
     skip_if_no_tiny_fixtures()
-    config <- with_second_assembly(tiny_config())
+    config <- with_second_assembly(tiny_resolved_config())
 
     expect_identical(
         matchAssembly(tiny_header(c("d1", "r1")), config)$assembly,
@@ -91,7 +85,7 @@ test_that("matchAssembly() distinguishes assemblies that share a recipient", {
 
 test_that("matchAssembly() prefers the most specific exact match", {
     skip_if_no_tiny_fixtures()
-    config <- with_superset_assembly(tiny_config())
+    config <- with_superset_assembly(tiny_resolved_config())
 
     match <- matchAssembly(tiny_header(c("d1", "d2", "r1")), config)
     expect_identical(match$assembly, "tiny_full")
@@ -100,7 +94,7 @@ test_that("matchAssembly() prefers the most specific exact match", {
 
 test_that("matchAssembly() reports ambiguity between equal exact matches", {
     skip_if_no_tiny_fixtures()
-    config <- with_second_assembly(tiny_config())
+    config <- with_second_assembly(tiny_resolved_config())
 
     expect_error(
         matchAssembly(tiny_header(c("d1", "d2", "r1")), config),
@@ -111,7 +105,7 @@ test_that("matchAssembly() reports ambiguity between equal exact matches", {
 
 test_that("matchAssembly() validates an explicit assembly key", {
     skip_if_no_tiny_fixtures()
-    config <- tiny_config()
+    config <- tiny_resolved_config()
 
     expect_identical(
         matchAssembly(tiny_header(c("d1", "r1")), config,
@@ -130,7 +124,7 @@ test_that("matchAssembly() validates an explicit assembly key", {
 
 test_that("matchAssembly() reports length mismatches with contig context", {
     skip_if_no_tiny_fixtures()
-    config <- tiny_config()
+    config <- tiny_resolved_config()
     header <- tiny_header(c("d1", "r1"), lengths = c(19999, 20000))
 
     error <- tryCatch(
@@ -154,7 +148,7 @@ test_that("matchAssembly() reports length mismatches with contig context", {
 
 test_that("matchAssembly() reports a BAM that covers only one side", {
     skip_if_no_tiny_fixtures()
-    config <- tiny_config()
+    config <- tiny_resolved_config()
 
     error <- tryCatch(
         matchAssembly(tiny_header("r1"), config, assembly = "tiny"),
@@ -166,7 +160,7 @@ test_that("matchAssembly() reports a BAM that covers only one side", {
 
 test_that("matchAssembly() reports partial candidates when nothing matches", {
     skip_if_no_tiny_fixtures()
-    config <- tiny_config()
+    config <- tiny_resolved_config()
 
     error <- tryCatch(
         matchAssembly(tiny_header("d1"), config),
@@ -182,7 +176,7 @@ test_that("matchAssembly() reports partial candidates when nothing matches", {
 
 test_that("matchAssemblyCohort() requires one assembly for all BAMs", {
     skip_if_no_tiny_fixtures()
-    config <- with_second_assembly(tiny_config())
+    config <- with_second_assembly(tiny_resolved_config())
 
     matches <- matchAssemblyCohort(
         list(
@@ -231,28 +225,32 @@ test_that("matchAssembly() matches the real Sq54 BAM exactly", {
         })
     }
     config <- validateMaMaMIAConfig(list(
-        version = 1L,
-        assemblies = list(cs_t2t_se_cereale = list(
-            label = "Triticum aestivum CS T2T + Secale cereale",
-            gc_indexes = list(
-                file.path(root, "gcidx", "triticum-aestivum", "index.gcrank"),
-                file.path(root, "gcidx", "secale-cereale", "index.gcrank")
+        version = 2L,
+        species = list(
+            triticum_aestivum = list(
+                label = "Triticum aestivum CS T2T",
+                gc_indexes = list(
+                    file.path(root, "gcidx", "triticum-aestivum", "index.gcrank")
+                ),
+                contigs = entries(
+                    chromosomes[chromosomes$subgenome != "R", ]
+                )
             ),
-            contigs = list(
-                recipient = entries(chromosomes[chromosomes$subgenome != "R", ]),
-                donor = entries(chromosomes[chromosomes$subgenome == "R", ])
-            ),
-            pairs = list(
-                OZ284382.1 = "CP155614.1",
-                OZ284383.1 = "CP155611.1",
-                OZ284384.1 = "CP155608.1",
-                OZ284385.1 = "CP155605.1",
-                OZ284386.1 = "CP155602.1",
-                OZ284387.1 = "CP155599.1",
-                OZ284388.1 = "CP155597.1"
+            secale_cereale = list(
+                label = "Secale cereale",
+                gc_indexes = list(
+                    file.path(root, "gcidx", "secale-cereale", "index.gcrank")
+                ),
+                contigs = entries(
+                    chromosomes[chromosomes$subgenome == "R", ]
+                )
             )
-        ))
+        )
     ))
+    config <- resolveSpeciesAssembly(
+        config, donor = "secale_cereale", recipient = "triticum_aestivum",
+        key = "cs_t2t_se_cereale"
+    )$config
 
     match <- matchAssembly(bamHeaderInfo(bam_path), config)
     expect_identical(match$assembly, "cs_t2t_se_cereale")

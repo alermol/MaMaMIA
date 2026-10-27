@@ -44,7 +44,7 @@ proxy:
     - id: mamamia
       display-name: MaMaMIA
       description: BAM-first introgression analysis
-      container-image: mamamia:0.99.1
+      container-image: mamamia:0.99.2
       container-cmd:
         - "uvr"
         - "run"

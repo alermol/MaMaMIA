@@ -58,9 +58,9 @@ species the registry must provide:
   have to ask which subgenome to use.
 
 A species has no donor/recipient role. The user chooses the recipient and the
-donor in the app. A registry may also declare named `assemblies:` presets;
-these may reference species (`recipient: wheat`, `donor: rye`) or use inline
-contigs. A species-only registry needs at least two species.
+donor in the app, and the assembly is derived from those two species. The
+registry declares no `assemblies:` section; a registry with one is rejected at
+startup. A registry needs at least two species.
 
 - a largest `allowed_windows` value no longer than the shortest contig that
   can enter an analysis;
@@ -74,7 +74,7 @@ Rscript tools/validate-config.R /srv/mamamia/config/assemblies.yml
 The script calls `readMaMaMIAConfig()` (the same validation as application
 startup) and additionally checks the index payload files. It exits non-zero on
 the first problem. Do not ship a registry that only works on the recipient
-side: every donor contig used in `pairs` must be present in an index.
+side: every contig that can pair with a homoeolog must be present in an index.
 
 The indexes validated for this deployment are recorded in
 `deployment/gcidx-checksums.txt`: format version, contig/bp totals, SHA-256 for
@@ -142,24 +142,20 @@ than one subgenome, the sidebar also asks which subgenome to use (the registry
 Contigs are paired by chromosome group within the selected subgenomes. The
 group is the optional `group` field or the first number in `name`, so rye `1R`
 pairs with wheat `1A`, `2R` with `2A`, and so on. Only paired contigs enter the
-analysis; the card shows which contigs were excluded and why. An explicit
-`pairs:` mapping remains available in a named preset for cases where the group
-rule is not the intended comparison.
+analysis; the card shows which contigs were excluded and why.
 
 The sidebar has no predefined-assembly selector. A "Swap donor and recipient"
 button reverses the comparison without reselecting the species, and keeps each
 species' subgenome choice. These selectors live in the **Assembly** panel,
-which appears after preflight succeeds. When the registry also declares named
-assemblies, a checkbox enables BAM-header auto-detection; a registry with no
-`species:` section falls back to auto-detection automatically. The resolution,
-upload limits, resource limits and registry-growth caveats are unchanged.
+which appears after preflight succeeds. The resolution, upload limits,
+resource limits and registry-growth caveats are unchanged.
 
 ## 2. Build the image
 
 From the repository root:
 
 ```sh
-docker build -f deployment/Dockerfile -t mamamia:0.99.1 .
+docker build -f deployment/Dockerfile -t mamamia:0.99.2 .
 ```
 
 If the build host cannot reach `bioconductor.org`, pass a mirror (the package
@@ -168,7 +164,7 @@ checksums still come from the committed lockfile):
 ```sh
 docker build --network=host \
   --build-arg BIOC_MIRROR=https://bioconductor.statistik.tu-dortmund.de/packages \
-  -f deployment/Dockerfile -t mamamia:0.99.1 .
+  -f deployment/Dockerfile -t mamamia:0.99.2 .
 ```
 
 The validation sandbox needed `--network=host` and
@@ -178,7 +174,7 @@ hosts; the default build path remains the public bioconductor.org URLs.
 The build:
 
 1. installs the compiler and system libraries needed by Rhtslib,
-   Bioconductor, TMB/glmmTMB, Matrix, stringi and xml2;
+   Bioconductor, Matrix, stringi and xml2;
 2. downloads uvr 0.4.7 for `x86_64-unknown-linux-gnu` and verifies its SHA-256
    before installing it;
 3. creates the unprivileged `mamamia` user and installs R 4.6.1 under its home;
@@ -205,7 +201,7 @@ docker run --rm -p 3838:3838 \
   -e MAMAMIA_CONFIG=/srv/mamamia/config/assemblies.yml \
   -v "$PWD/inst/config/assemblies.example.yml:/srv/mamamia/config/assemblies.yml:ro" \
   -v "$PWD/test_data/gcidx:/srv/mamamia/gcidx:ro" \
-  mamamia:0.99.1
+  mamamia:0.99.2
 ```
 
 Open `http://127.0.0.1:3838/`, confirm that the calculation log shows the two
@@ -223,23 +219,23 @@ BAM or registry mount (set `MAMAMIA_SMOKE_BAM` and `MAMAMIA_CONFIG` to exercise
 a production registry instead):
 
 ```sh
-docker run --rm mamamia:0.99.1 uvr run /app/deployment/smoke-test.R
+docker run --rm mamamia:0.99.2 uvr run /app/deployment/smoke-test.R
 ```
 
 The script resolves the first two species when an external registry is used.
 Override the pair with `MAMAMIA_SMOKE_RECIPIENT` and `MAMAMIA_SMOKE_DONOR` when
 the registry order is not the intended comparison. Expected output on the demo
-at resolution 1000: 2,000 windows, a non-zero segment count, `putative:` calls,
-and a `plot:` line with a non-zero PNG size. The script prints every pipeline
-stage and fails if the result is not a `BamAnalysisResult` with at least one
-segment. It renders a cairo text probe before the pipeline and the real ISA
-plot at the end, so an image without fontconfig or fonts fails in the smoke
-test rather than in the dashboard.
+at resolution 1000: 2,000 windows, a non-zero segment count, a
+`calibrated calls:` line, and a `plot:` line with a non-zero PNG size. The
+script prints every pipeline stage and fails if the result is not a
+`BamAnalysisResult` with at least one segment. It renders a cairo text probe
+before the pipeline and the real score profile at the end, so an image without
+fontconfig or fonts fails in the smoke test rather than in the dashboard.
 
 Check the image without starting the app:
 
 ```sh
-docker run --rm mamamia:0.99.1 uvr doctor --unattended
+docker run --rm mamamia:0.99.2 uvr doctor --unattended
 ```
 
 For a startup-only check with the real mounts, run the full command above and
@@ -296,10 +292,10 @@ in-app cancellation.
 
 ## 6. Resources and concurrency
 
-- Medium resolution (28,000 windows): about 4-6 GB peak for the GC fit plus R
-  and index mappings.
-- High resolution (280,000 windows) with `max_fit_windows: 50000`: about
-  8-12 GB peak.
+- Medium resolution (28,000 windows): one BAM completes in about 20 s on one
+  core; peak memory is dominated by R, htslib and the gcrank index mappings.
+- High resolution (280,000 windows): about ten times the window table; the
+  per-window measurements are bounded by one bitset per sample and window.
 - `container-memory-limit: 16g` and `container-cpu-limit: 4` match the
   documented high-resolution budget.
 - `max-instances: 1` allows one analysis per user; `max-total-instances: 2`
@@ -335,7 +331,7 @@ in-app cancellation.
 | Configuration error card | run `tools/validate-config.R` on the mounted registry; paths are resolved relative to the YAML file |
 | `uvr: ... package(s) not installed` | the build did not finish `uvr sync --frozen`; rebuild without a cached layer |
 | Upload rejected before the app | the nginx body limit or `shiny.maxRequestSize`; raise both |
-| Container killed during a run | `container-memory-limit`; lower the resolution or `max_fit_windows` |
+| Container killed during a run | `container-memory-limit`; lower the resolution at run time |
 | App stopped while running | `heartbeat-timeout`/session timeout; raise them for long runs |
 | `permission denied` reading indexes | the host mounts must be readable by the container's `mamamia` user (UID 1000) |
 | `Fontconfig error: Cannot load default config file` followed by a segfault in `grid.Call(C_stringMetric, ...)` | the image has no fontconfig configuration or fonts. Install `fontconfig` and `fonts-dejavu-core` (both are in `deployment/Dockerfile`) and rebuild; the build-time cairo render and `deployment/smoke-test.R` now fail before a user hits it |

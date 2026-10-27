@@ -1,270 +1,103 @@
-test_that("dashboard helpers annotate segment coordinates", {
-    isa <- seg_step()
-    dash <- isa_dashboard_segments(isa)
+## Shiny launcher and result helpers.
 
-    expect_equal(dash$.row_id, seq_len(nrow(isa$segments)))
-    expect_true(all(c("start.don", "stop.don", "start.rec", "stop.rec") %in% names(dash)))
-    expect_true(all(dash$start.don <= dash$stop.don))
-    expect_true(all(dash$start.rec <= dash$stop.rec))
-})
-
-test_that("dashboard filtering respects chromosomes, pairs, and putative flag", {
-    isa <- seg_step()
-    dash <- isa_dashboard_segments(isa)
-
-    expect_equal(nrow(filter_dashboard_segments(dash, "d1", "d1 -> r1", FALSE)), 0L)
-    filtered <- filter_dashboard_segments(dash, c("d1", "r1"), "d1 -> r1", TRUE)
-    expect_true(all(filtered$putative_introgression))
-    expect_equal(nrow(filtered), sum(dash$putative_introgression))
-})
-
-test_that("selected_isa_for_bedpe() marks selected source rows only", {
-    isa <- seg_step()
-    selected <- selected_isa_for_bedpe(isa, c(1L, 3L))
-
-    expect_s3_class(selected, "ISA")
-    expect_equal(which(selected$segments$putative_introgression), intersect(c(1L, 3L), seq_len(nrow(isa$segments))))
-    expect_false(identical(selected$segments$putative_introgression, isa$segments$putative_introgression))
-})
-
-test_that("filter_dashboard_isa() follows the table filters", {
-    isa <- seg_step()
-    filtered <- filter_dashboard_isa(
-        isa,
-        chr_ids = c("d1", "r1"),
-        pair_ids = "d1 -> r1",
-        min_width = 2L
+test_that("bam_run_parameters() resolves the run controls", {
+    config <- readMaMaMIAConfig(
+        system.file("extdata", "bam-demo", "assemblies.yml",
+            package = "MaMaMIA")
     )
-
-    expect_s3_class(filtered, "ISA")
-    expect_true(all(filtered$out$chr_id.don == "d1"))
-    expect_true(all(filtered$out$chr_id.rec == "r1"))
-    expect_equal(nrow(filtered$segments), nrow(isa$segments))
-
-    expect_null(filter_dashboard_isa(isa, chr_ids = "nope"))
-    expect_null(filter_dashboard_isa(isa, pair_ids = "nope"))
-    expect_null(filter_dashboard_isa(isa, chr_ids = character()))
-
-    wide <- filter_dashboard_isa(isa, min_width = 1e9)
-    expect_s3_class(wide, "ISA")
-    expect_equal(nrow(wide$segments), 0L)
+    params <- bam_run_parameters(
+        list(resolution = 100), config, samples = "demo-sample"
+    )
+    expect_identical(params$resolution, 100L)
+    expect_identical(params$metric, config$defaults$metric)
+    expect_identical(params$score, config$defaults$score)
+    expect_named(params, c(
+        "resolution", "mapq", "exclude_flags", "cores", "metric", "score"
+    ))
 })
 
-test_that("dashboard genome uses chromosome lengths from ISA windows", {
-    isa <- seg_step()
-    genome <- isa_dashboard_genome(isa)
-
-    expect_named(genome, c("d1", "r1"), ignore.order = TRUE)
-    expect_true(all(unlist(genome) > 0))
-    expect_named(isa_dashboard_genome(isa, "d1"), "d1")
+test_that("an unknown progress stage does not abort the analysis", {
+    expect_silent(
+        label <- bam_progress_label("metrics_done", list(n_windows = 10))
+    )
+    expect_identical(label, "metrics_done")
+    expect_silent(bam_progress_label("brand_new_stage", list()))
 })
 
-test_that("the results card exposes the plot controls", {
-    testthat::skip_if_not_installed("shiny")
-    testthat::skip_if_not_installed("bslib")
-    testthat::skip_if_not_installed("DT")
-
-    html <- as.character(explorer_results_ui("explorer"))
-    expect_true(any(grepl("explorer-plot_type", html)))
-    expect_true(any(grepl("explorer-isa_plot", html)))
-})
-
-test_that("the explorer renders mirror and difference plots", {
-    testthat::skip_if_not_installed("shiny")
-    testthat::skip_if_not_installed("DT")
-    testthat::skip_if_not_installed("shinyWidgets")
-
-    isa <- seg_step()
-    shiny::testServer(
-        explorer_server,
-        args = list(ISA = shiny::reactive(isa)),
-        {
-            session$setInputs(
-                chr_ids = c("d1", "r1"),
-                pair_ids = "d1 -> r1",
-                putative_only = TRUE,
-                threshold_type = "median",
-                threshold_value = 0,
-                min_width = 2,
-                plot_type = "mirror"
-            )
-            expect_match(output$isa_plot$src, "^data:image/png")
-
-            session$setInputs(plot_type = "diff")
-            expect_match(output$isa_plot$src, "^data:image/png")
-
-            session$setInputs(plot_type = "unexpected")
-            expect_match(output$isa_plot$src, "^data:image/png")
-        }
+test_that("progress labels cover the pipeline stages", {
+    stages <- bam_progress_stages(2L)
+    expect_true(all(c(
+        "preflight", "index", "windows", "gc", "metrics", "score", "mask",
+        "segmentation", "calibration"
+    ) %in% stages))
+    expect_identical(sum(stages == "metrics"), 2L)
+    expect_match(bam_progress_label("metrics", list(total = 1000)), "reads")
+    expect_match(
+        bam_progress_label("score", list(mode = "single", metric = "breadth")),
+        "single"
+    )
+    expect_match(
+        bam_progress_label("mask", list(masked_fraction = 0.1)),
+        "10%"
+    )
+    expect_match(
+        bam_progress_label("calibration", list(n_calls = 3)),
+        "3 calibrated"
     )
 })
 
-test_that("the explorer plot validates without data or filters", {
-    testthat::skip_if_not_installed("shiny")
-    testthat::skip_if_not_installed("DT")
-    testthat::skip_if_not_installed("shinyWidgets")
-
-    shiny::testServer(
-        explorer_server,
-        args = list(ISA = shiny::reactive(NULL)),
-        {
-            session$setInputs(plot_type = "mirror")
-            expect_error(output$isa_plot, "Run the analysis to plot")
-        }
-    )
-
-    isa <- seg_step()
-    shiny::testServer(
-        explorer_server,
-        args = list(ISA = shiny::reactive(isa)),
-        {
-            session$setInputs(
-                chr_ids = character(),
-                pair_ids = character(),
-                threshold_type = "median",
-                threshold_value = 0,
-                min_width = 2,
-                plot_type = "mirror"
-            )
-            expect_error(
-                output$isa_plot,
-                "Select at least one chromosome and pair to plot"
-            )
-        }
-    )
-})
-
-test_that("the explorer download carries the sample name", {
-    testthat::skip_if_not_installed("shiny")
-    testthat::skip_if_not_installed("DT")
-    testthat::skip_if_not_installed("shinyWidgets")
-
-    isa <- seg_step()
-    target <- tempfile(fileext = ".bedpe")
-    on.exit(unlink(target), add = TRUE)
-    shiny::testServer(
-        explorer_server,
-        args = list(ISA = shiny::reactive(isa), sample = shiny::reactive("sample-a")),
-        {
-            session$setInputs(
-                chr_ids = c("d1", "r1"),
-                pair_ids = "d1 -> r1",
-                putative_only = TRUE,
-                threshold_type = "median",
-                threshold_value = 0,
-                min_width = 2,
-                segments_rows_selected = 1L
-            )
-            ## The mock session removes its download files when it closes, so
-            ## copy the export while the session is still alive.
-            expect_true(file.copy(output$download_bedpe, target))
-        }
-    )
-
-    header <- strsplit(readLines(target)[1L], "\t")[[1L]]
-    expect_identical(header[[length(header)]], "sample")
-    out <- utils::read.table(target, header = TRUE, sep = "\t")
-    expect_identical(nrow(out), 1L)
-    expect_identical(out$sample, "sample-a")
-})
-
-test_that("the explorer download keeps the legacy layout without a sample", {
-    testthat::skip_if_not_installed("shiny")
-    testthat::skip_if_not_installed("DT")
-    testthat::skip_if_not_installed("shinyWidgets")
-
-    isa <- seg_step()
-    target <- tempfile(fileext = ".bedpe")
-    on.exit(unlink(target), add = TRUE)
-    shiny::testServer(
-        explorer_server,
-        args = list(ISA = shiny::reactive(isa)),
-        {
-            session$setInputs(
-                chr_ids = c("d1", "r1"),
-                pair_ids = "d1 -> r1",
-                putative_only = TRUE,
-                threshold_type = "median",
-                threshold_value = 0,
-                min_width = 2,
-                segments_rows_selected = 1L
-            )
-            expect_true(file.copy(output$download_bedpe, target))
-        }
-    )
-
-    header <- strsplit(readLines(target)[1L], "\t")[[1L]]
-    expect_identical(length(header), 14L)
-    expect_false("sample" %in% header)
-})
-
-test_that("the explorer preselects rows from a selection map", {
-    testthat::skip_if_not_installed("shiny")
-    testthat::skip_if_not_installed("DT")
-    testthat::skip_if_not_installed("shinyWidgets")
-
-    isa <- seg_step()
-    shiny::testServer(
-        explorer_server,
-        args = list(
-            ISA = shiny::reactive(isa),
-            selection = shiny::reactive(c(1L, 2L))
+test_that("cohort summaries and warnings read WindowMetrics", {
+    result <- list(
+        samples = data.frame(
+            sample = c("A", "B"),
+            n_windows = c(2L, 2L),
+            n_calls = c(1L, 0L),
+            n_high_confidence = c(1L, 0L),
+            masked_fraction = c(0.1, 0.1),
+            mode = c("multi", "multi"),
+            stringsAsFactors = FALSE
         ),
-        {
-            session$setInputs(
-                chr_ids = c("d1", "r1"),
-                pair_ids = "d1 -> r1",
-                putative_only = FALSE,
-                threshold_type = "median",
-                threshold_value = 0,
-                min_width = 2
-            )
-            rendered <- jsonlite::fromJSON(
-                output$segments,
-                simplifyVector = FALSE
-            )
-            expect_identical(
-                as.integer(unlist(rendered$x$selection$selected)),
-                c(1L, 2L)
-            )
-        }
+        metrics = data.frame(
+            sample = c("A", "A", "B", "B"),
+            role = c("donor", "recipient", "donor", "recipient"),
+            count = c(10L, 20L, 0L, 0L),
+            stringsAsFactors = FALSE
+        )
+    )
+    summary <- bam_cohort_summary(result)
+    expect_identical(summary$reads_total, c(30, 0))
+    expect_identical(summary$n_calls, c(1L, 0L))
+    warnings <- bam_coverage_warnings(result)
+    expect_true(any(grepl("Sample 'B' has no reads", warnings)))
+    expect_false(any(grepl("Sample 'A' has no reads", warnings)))
+})
+
+test_that("the launcher builds with the demo registry", {
+    config <- system.file("extdata", "bam-demo", "assemblies.yml",
+        package = "MaMaMIA")
+    expect_true(file.exists(config))
+    app <- bam_launcher_app(config = config)
+    expect_s3_class(app, "shiny.appobj")
+})
+
+test_that("exploreIntrogressions() requires a BamAnalysisResult", {
+    expect_error(
+        exploreIntrogressions(list()),
+        "BamAnalysisResult"
     )
 })
 
-test_that("the explorer reports selections with the current sample", {
-    testthat::skip_if_not_installed("shiny")
-    testthat::skip_if_not_installed("DT")
-    testthat::skip_if_not_installed("shinyWidgets")
+test_that("the explorer score profile renders to a device", {
+    skip_if_not(bam_example_available(), "bundled example is not installed")
+    result <- bam_example_result(100)
+    calls <- result$calls[result$calls$pass, , drop = FALSE]
+    plot <- explorer_score_plot(result$scores, calls)
+    expect_s3_class(plot, "ggplot")
 
-    isa <- seg_step()
-    seen <- list()
-    shiny::testServer(
-        explorer_server,
-        args = list(
-            ISA = shiny::reactive(isa),
-            sample = shiny::reactive("sample-a"),
-            selection = shiny::reactive(integer()),
-            on_selection = function(rows, sample) {
-                seen[[length(seen) + 1L]] <<- list(
-                    rows = rows, sample = sample
-                )
-            }
-        ),
-        {
-            session$setInputs(
-                chr_ids = c("d1", "r1"),
-                pair_ids = "d1 -> r1",
-                putative_only = FALSE,
-                threshold_type = "median",
-                threshold_value = 0,
-                min_width = 2,
-                segments_rows_selected = c(1L, 2L)
-            )
-            picked <- Filter(function(x) {
-                identical(x$sample, "sample-a") &&
-                    identical(x$rows, c(1L, 2L))
-            }, seen)
-            expect_gt(length(picked), 0L)
-        }
-    )
+    output <- tempfile(fileext = ".png")
+    on.exit(unlink(output), add = TRUE)
+    grDevices::png(output, width = 900, height = 500, type = "cairo")
+    print(plot)
+    grDevices::dev.off()
+    expect_gt(file.info(output)$size, 0)
 })

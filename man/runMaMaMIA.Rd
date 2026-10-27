@@ -5,7 +5,6 @@
 \title{Run MaMaMIA as a local Shiny dashboard}
 \usage{
 runMaMaMIA(
-  cache = NULL,
   config = NULL,
   max_request_size = 5 * 1024^3,
   host = "127.0.0.1",
@@ -14,10 +13,6 @@ runMaMaMIA(
 )
 }
 \arguments{
-\item{cache}{Optional path to an \code{.rds} file used to memoise the GC-bias
-model fit, passed to \code{\link[=correctReadCounts]{correctReadCounts()}}. Defaults to a file in the
-user cache directory.}
-
 \item{config}{Optional assembly registry: a path to a YAML configuration or
 a validated configuration list from \code{\link[=readMaMaMIAConfig]{readMaMaMIAConfig()}}. The app falls
 back to the \code{MAMAMIA_CONFIG} environment variable when this is \code{NULL}.}
@@ -39,8 +34,8 @@ launching the dashboard.
 \code{runMaMaMIA()} is the main entry point of the package and opens the
 BAM-first Shiny application. The app reads BAM headers, matches them to the
 configured species registry, stages the files in session temporary storage,
-and runs \code{\link[=analyzeBamInput]{analyzeBamInput()}} before handing the per-sample \code{ISA} objects to
-the introgression explorer of \code{\link[=exploreIntrogressions]{exploreIntrogressions()}}.
+and runs \code{\link[=analyzeBamInput]{analyzeBamInput()}} before handing the \code{BamAnalysisResult} to the
+introgression explorer of \code{\link[=exploreIntrogressions]{exploreIntrogressions()}}.
 }
 \details{
 The app reads its assembly registry from \code{config} or, when that is \code{NULL},
@@ -62,17 +57,16 @@ example BAM in the container.
 
 The analysis runs in the R session, so the session blocks while it runs; the
 progress bar reports the pipeline stages (headers, indexes, windows, GC,
-counts, correction, normalization, segmentation). Errors are reported with
-the failing stage and a suggested fix.
+breadth/counts, scoring, masking, segmentation, calibration). Errors are
+reported with the failing stage and a suggested fix.
 
-The explorer shows an \code{interacCircos} overview of the visible calls, the
-mirror/difference plot, the segment table with the BEDPE export, and, for a
-cohort, a per-sample selector, a cohort summary and a combined BEDPE download
-carrying the \code{sample} column.
+The explorer shows the score profile, the call table with the BEDPE export,
+and, for a cohort, a per-sample selector, a cohort summary and a combined
+BEDPE download carrying the \code{sample} column.
 
 Dashboard packages are optional MaMaMIA dependencies. Install them with
-\code{install.packages(c("shiny", "bslib", "shinyWidgets", "DT"))} and
-\code{remotes::install_github("rstudio/gridlayout")} before calling this function.
+\code{install.packages(c("shiny", "bslib", "shinyWidgets", "DT"))} before calling
+this function.
 }
 \examples{
 \dontrun{

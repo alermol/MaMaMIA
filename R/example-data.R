@@ -235,7 +235,7 @@ bam_example_progress <- function(result, progress, pause = 0) {
         progress(stage, detail)
     }
 
-    samples <- names(result$isa)
+    samples <- bam_sample_choices(result)
     n_bams <- length(unique(result$bams$path))
     n_samples <- length(samples)
     n_windows <- nrow(result$windows$table)
@@ -256,39 +256,29 @@ bam_example_progress <- function(result, progress, pause = 0) {
         n_windows = nrow(result$gc),
         n_indexes = length(result$assembly$gc_indexes)
     ))
-
     for (sample in samples) {
-        donor <- result$counts$donor[, sample]
-        recipient <- result$counts$recipient[, sample]
-        position <- match(sample, result$samples$sample)
-        report("counts", list(
-            sample = sample,
-            path = result$samples$path[[position]],
-            total = sum(as.numeric(donor)) + sum(as.numeric(recipient))
-        ))
-        report("correction", list(
-            sample = sample,
-            n_ideal = sum(result$rca[[sample]]$data$ideal)
-        ))
+        total <- sum(result$metrics$count[result$metrics$sample == sample])
+        report("metrics", list(sample = sample, total = total))
     }
-
-    mode <- result$normalization$mode
-    if (!is.null(mode) && length(mode) == 1L && !is.na(mode) &&
-        !identical(mode, "none")) {
-        report("normalization", list(
-            mode = mode,
-            reference = result$normalization$reference,
-            n_samples = length(samples)
-        ))
-    }
-
+    report("score", list(
+        mode = result$samples$mode[[1L]],
+        metric = result$provenance$metric,
+        n_windows = nrow(result$scores)
+    ))
+    report("mask", list(
+        masked = sum(result$masks$mask, na.rm = TRUE),
+        masked_fraction = mean(result$masks$mask, na.rm = TRUE),
+        source = unique(result$masks$source[result$masks$mask])
+    ))
     for (sample in samples) {
-        isa <- result$isa[[sample]]
         report("segmentation", list(
             sample = sample,
-            n_segments = nrow(isa$segments),
-            value_col = isa$meta$value_col
+            n_segments = sum(result$calls$sample == sample, na.rm = TRUE)
         ))
     }
+    report("calibration", list(
+        n_calls = sum(result$calls$pass, na.rm = TRUE),
+        fdr = result$provenance$fdr
+    ))
     invisible(NULL)
 }

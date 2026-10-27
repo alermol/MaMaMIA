@@ -90,12 +90,19 @@ test_that("the package is compiled as C++23", {
     expect_true(any(grepl("gcrank/src/", makevars)))
 })
 
+test_that("the recorded pipeline version matches DESCRIPTION", {
+    root <- package_root()
+    expect_identical(
+        MaMaMIA:::.MaMaMIAPipelineVersion,
+        unname(read.dcf(file.path(root, "DESCRIPTION"))[1L, "Version"])
+    )
+})
+
 test_that("the shared library loads and reports htslib", {
     version <- MaMaMIA:::htslib_version_cpp()
     expect_type(version, "character")
     expect_length(version, 1L)
     expect_match(version, "^[0-9]+\\.[0-9]+")
-    expect_identical(MaMaMIA:::build_stub_cpp(), 1L)
 })
 
 test_that("gcrank is vendored with attribution and a pinned commit", {

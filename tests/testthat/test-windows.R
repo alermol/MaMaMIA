@@ -141,14 +141,15 @@ test_that("makeAnalysisWindows() builds both representations in target order", {
     skip_if_no_tiny_fixtures()
     config <- readMaMaMIAConfig(tiny_config_path())
     windows <- makeAnalysisWindows(
-        config$assemblies$tiny, tiny_contigs(), 1000L
+        tiny_assembly(config), tiny_contigs(), 1000L
     )
 
     expect_named(windows, c("gr", "table", "n_per_chromosome"))
     expect_identical(windows$n_per_chromosome, 1000L)
     table <- windows$table
     expect_named(table, c(
-        "chr_id", "start", "stop", "role", "chr_name", "subgenome"
+        "chr_id", "start", "stop", "iid", "role", "chr_name", "subgenome",
+        "group", "copy_number"
     ))
     expect_identical(nrow(table), 2000L)
     expect_identical(unique(table$chr_id), c("r1", "d1"))
@@ -181,7 +182,7 @@ test_that("makeAnalysisWindows() supports 100, 1000 and 10000 windows", {
 
     for (n in c(100L, 1000L, 10000L)) {
         windows <- makeAnalysisWindows(
-            config$assemblies$tiny, tiny_contigs(), n
+            tiny_assembly(config), tiny_contigs(), n
         )
         expect_identical(nrow(windows$table), 2L * n)
         expect_exact_tiling(windows$table, "r1", 20000, n)
@@ -260,16 +261,16 @@ test_that("makeAnalysisWindows() validates N and accepts a contigs path", {
     path <- file.path(tiny_gcrank_index(), "contigs.tsv")
 
     expect_error(
-        makeAnalysisWindows(config$assemblies$tiny, path, 0L),
+        makeAnalysisWindows(tiny_assembly(config), path, 0L),
         "n_per_chromosome",
         class = "MaMaMIAWindowError"
     )
     expect_error(
-        makeAnalysisWindows(config$assemblies$tiny, path, 2.5),
+        makeAnalysisWindows(tiny_assembly(config), path, 2.5),
         "n_per_chromosome",
         class = "MaMaMIAWindowError"
     )
-    windows <- makeAnalysisWindows(config$assemblies$tiny, path, 100L)
+    windows <- makeAnalysisWindows(tiny_assembly(config), path, 100L)
     expect_identical(nrow(windows$table), 200L)
 })
 

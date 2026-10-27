@@ -16,8 +16,9 @@ makeAnalysisWindows(assembly, contigs, n_per_chromosome = 1000L)
 }
 \value{
 A list with \code{gr} (1-based inclusive \code{GRanges}), \code{table} (0-based
-half-open data frame with \code{chr_id}, \code{start}, \code{stop}, \code{role}, \code{chr_name},
-\code{subgenome}) and \code{n_per_chromosome}.
+half-open data frame with \code{chr_id}, \code{start}, \code{stop}, \code{iid}, \code{role},
+\code{chr_name}, \code{subgenome}, \code{group} and \code{copy_number}) and
+\code{n_per_chromosome}.
 }
 \description{
 Tiles every target contig into exactly \code{n_per_chromosome} contiguous

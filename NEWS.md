@@ -1,3 +1,59 @@
+# MaMaMIA 0.99.2
+
+## Breaking changes
+
+* **One pipeline.** `analyzeBamInput()` now runs the breadth-based pipeline. The
+  count -> ZINB -> dose -> difference -> CBS path and its `pipeline` switch are
+  gone.
+* **Configuration version 2 is required.** `version: 1` is rejected with a
+  migration error; see `MIGRATION.md`. The `max_fit_windows` and
+  `normalization_by_side` defaults were removed.
+* **New result contract.** `BamAnalysisResult` now exposes `metrics`, `scores`,
+  `masks`, `calibration` and `calls`. The `counts`, `rca`, `isa` and
+  `normalization` fields were removed.
+* **Removed API.** `RCA()`, `correctReadCounts()`, `normalizeReadCounts()`,
+  `segments()`, `buildSampleTables()`, `writeCohortToBedpe()` and
+  `writeToBedpe()` were removed, together with the `RCA`/`ISA` S3 methods.
+  Use `writeCallsToBedpe()` for export.
+* **Removed dependencies.** `glmmTMB`, `mgcv`, `dplyr`, `purrr`,
+  `ggnewscale`, `htmlwidgets` and `interacCircos` are no longer dependencies.
+* **Dashboard.** The RCA/ISA circos and mirror/difference view were replaced by
+  a score profile and call table. `exploreIntrogressions()` now accepts a
+  `BamAnalysisResult`.
+
+## New method
+
+* **Breadth and counts in one pass.** `bam_metrics_rg_cpp()` returns both the
+  number of alignments overlapping each exact-N window and the number of
+  covered bases. Breadth is `covered / length`; count depth is
+  `count * read_length / length`. No covidx index or binary is used.
+* **Ploidy-agnostic scoring.** Assemblies select one or more recipient and
+  donor subgenomes. The paired donor/recipient log-ratio averages recipient
+  homoeologs and supports `mean`, `max` and `sum` donor aggregation. A
+  donor-only fallback is available for CNV-rich material.
+* **GC correction.** A single sample uses a natural spline and centring; a
+  cohort uses median polish. The vendored gcrank library remains the only GC
+  backend.
+* **Window masks.** Panel, cohort recurrence, BED blacklist and physical
+  terminal fallback masks are applied before CBS.
+* **Length-stratified calibration.** Segment thresholds are the empirical
+  `1 - fdr` quantile of control segments per length bin, raised to a floor.
+* **BEDPE export.** `writeCallsToBedpe()` writes donor and recipient intervals
+  with `score_mean`, `class`, `confidence`, `method` and `mode`.
+
+## Validation
+
+* The paired log-ratio recovers **6/6** reference events on the 24
+  *Aegilops speltoides* BAMs (Sq74 7S; Sq75 7S/2S/6S/5S; Sq76 7S), with one
+  control call >= 20 Mb.
+* The donor-only fallback also recovers 6/6, with two control calls >= 20 Mb.
+* Single-sample analysis recovers the same six events, including the distal
+  Sq75 5S and Sq76 5S segments.
+* The 24-BAM run takes about 185 s with 30 cores; one 28,000-window BAM takes
+  about 19 s on one core.
+* The 24-sample panel mask masks 16.3% of windows, masks terminal artifacts and
+  shortens (does not delete) the Sq76 5S event.
+
 # MaMaMIA 0.99.1
 
 ## Unified BAM counting
@@ -15,13 +71,16 @@
   the contig length is not divisible by the window count. Provenance records
   `count_backend = "htslib"` and `count_semantics = "five_prime_start_based"`.
 
-## Vendored gcrank 0.2.0
+## Vendored gcrank 0.3.1
 
-* Updated the vendored gcrank sources from 0.1.0 to 0.2.0 (upstream commit
-  `5019bff`). The release removes unused internal helpers only; the public API
-  is unchanged and the on-disk `format_version` stays `0.1.0`, so existing
-  indexes remain valid. New indexes record `builder_version = "0.2.0"`, and
+* Updated the vendored gcrank sources from 0.1.0 to 0.3.1 (upstream commit
+  `aa3a32b`). The on-disk `format_version` stays `0.1.0`, so existing indexes
+  remain valid, while new indexes record `builder_version = "0.3.1"` and
   provenance records the new commit.
+* gcrank 0.3.0 adds `GcRank::stats()` and speeds up index builds (SHA-NI
+  hashing and hashing overlapped with parsing) and window queries; 0.3.1 fixes
+  SHA-NI detection on Clang 18. MaMaMIA's wrapper keeps using
+  `gc_fraction()` and `contigs()`, so the computed GC content is unchanged.
 
 ## Grid dashboard layout
 

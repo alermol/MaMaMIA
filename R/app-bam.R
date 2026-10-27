@@ -1,8 +1,8 @@
 ## BAM-first Shiny application (T6.1-T6.4).
 ##
 ## The app is deliberately thin: configuration, preflight, run orchestration
-## and cohort export live here, while counting, correction, normalization and
-## segmentation stay in the pipeline. Uploaded BAMs are staged by symlink into
+## and cohort export live here, while measurement, scoring, masking,
+## segmentation and calibration stay in the pipeline. Uploaded BAMs are staged by symlink into
 ## a per-session directory before preflight, so the pipeline never writes an
 ## index into the upload directory and the session can remove every staged
 ## file and index when it ends. A bundled pre-computed example is available
@@ -35,21 +35,25 @@
         "Check that every gcrank index in the configuration exists",
         "and has a supported format_version."
     ),
-    counts = paste(
+    metrics = paste(
         "Check MAPQ and the exclude flags;",
         "verify that the BAM is intact and indexed."
     ),
-    correction = paste(
-        "Too few valid or ideal windows for the GC fit: lower the resolution,",
-        "raise the max fit windows cap, or inspect coverage and GC outliers."
+    score = paste(
+        "Check that donor and recipient windows share chromosome groups",
+        "and that every group has at least one donor and one recipient."
     ),
-    normalization = paste(
-        "Pick a reference sample from the input BAMs,",
-        "or use median normalization."
+    mask = paste(
+        "Rebuild the panel mask with the same window grid,",
+        "or check the blacklist BED coordinates."
     ),
     segmentation = paste(
         "Check that both the donor and the recipient side",
-        "have enough ideal windows."
+        "have enough finite windows."
+    ),
+    calibration = paste(
+        "Check the calibration length bins and the control segments;",
+        "a very small cohort needs the configured single-sample floors."
     ),
     limits = paste(
         "Reduce the number of BAMs or their total size; the limits come from",
@@ -79,8 +83,21 @@ bam_error_stage <- function(e) {
     if (inherits(e, "MaMaMIAGcrankError")) {
         return("GC")
     }
-    if (inherits(e, "MaMaMIACountError")) {
-        return("counts")
+    if (inherits(e, "MaMaMIACountError") ||
+        inherits(e, "MaMaMIAWindowMetricsError")) {
+        return("metrics")
+    }
+    if (inherits(e, "MaMaMIAScoringError")) {
+        return("score")
+    }
+    if (inherits(e, "MaMaMIAMaskError")) {
+        return("mask")
+    }
+    if (inherits(e, "MaMaMIACalibrationError")) {
+        return("calibration")
+    }
+    if (inherits(e, "MaMaMIASegmentationError")) {
+        return("segmentation")
     }
     if (inherits(e, "MaMaMIALimitError")) {
         return("limits")
@@ -100,19 +117,17 @@ bam_error_stage <- function(e) {
         )
         if (!identical(stage, message)) {
             return(switch(stage,
-                counts = "counts",
-                RCA = "counts",
-                "GC correction" = "correction",
+                metrics = "metrics",
+                score = "score",
+                mask = "mask",
                 segmentation = "segmentation",
+                calibration = "calibration",
                 stage
             ))
         }
         return("analysis")
     }
-    if (inherits(e, "MaMaMIAAnalysisError") &&
-        grepl("^(Normalization failed|Reference sample)", message)) {
-        return("normalization")
-    }
+
     "analysis"
 }
 
@@ -607,7 +622,7 @@ bam_log_entry <- function(message, time = Sys.time()) {
 #' This must not read or write a reactive value: it runs during server
 #' creation, before Shiny has entered a reactive consumer context.
 #' @noRd
-bam_initial_log <- function(config, time = Sys.time()) {
+bam_initial_log <- function(time = Sys.time()) {
     c(
         bam_log_entry("MaMaMIA session started.", time),
         bam_log_entry("Configuration validated.", time),
@@ -855,8 +870,6 @@ bam_run_parameters <- function(input, config, samples) {
     }
     defaults <- config$defaults
     resolution <- bam_resolution_value(input$resolution, defaults)
-    ## The BAM is processed as-is. MAPQ, flag filtering and fit limits come
-    ## from the validated registry; the dashboard no longer exposes them.
     mapq <- bam_integer(defaults$mapq, "MAPQ", 0L, 255L)
     exclude_flags <- bam_integer(
         defaults$exclude_flags, "Exclude flags", 0L, 4095L
@@ -864,60 +877,23 @@ bam_run_parameters <- function(input, config, samples) {
     cores <- bam_integer(
         min(30L, bam_max_cores()), "Cores", 1L, bam_max_cores()
     )
-    max_fit_windows <- defaults$max_fit_windows
-    if (length(max_fit_windows) != 1L || is.na(max_fit_windows) ||
-        !is.numeric(max_fit_windows) || max_fit_windows <= 0 ||
-        (!is.infinite(max_fit_windows) &&
-            max_fit_windows != floor(max_fit_windows))) {
-        .mamamia_error(
-            "MaMaMIAAnalysisError",
-            "Max fit windows must be a positive whole number"
-        )
-    }
-    if (is.finite(max_fit_windows) &&
-        max_fit_windows > .Machine$integer.max) {
-        max_fit_windows <- .Machine$integer.max
-    }
-
-    reference <- input$reference_sample
-    if (length(samples) == 1L) {
-        normalization <- "none"
-        reference <- NULL
-    } else if (length(reference) == 1L && !is.na(reference) &&
-        nzchar(reference)) {
-        if (!reference %in% samples) {
-            .mamamia_error(
-                "MaMaMIAAnalysisError",
-                "Reference sample '%s' is not one of: %s",
-                reference, paste(samples, collapse = ", ")
-            )
-        }
-        normalization <- "reference"
-    } else {
-        normalization <- "median"
-        reference <- NULL
-    }
-
     list(
         resolution = resolution,
         mapq = mapq,
         exclude_flags = exclude_flags,
         cores = cores,
-        max_fit_windows = max_fit_windows,
-        normalization = normalization,
-        reference_sample = reference
+        metric = defaults$metric,
+        score = defaults$score
     )
 }
 
 #' @noRd
-bam_progress_stages <- function(n_samples, normalization = "none") {
+bam_progress_stages <- function(n_samples, ...) {
     n_samples <- max(1L, as.integer(n_samples))
     c(
         "preflight", "index", "windows", "gc",
-        rep("counts", n_samples),
-        rep("correction", n_samples),
-        if (!identical(normalization, "none")) "normalization",
-        rep("segmentation", n_samples)
+        rep("metrics", n_samples),
+        "score", "mask", "segmentation", "calibration"
     )
 }
 
@@ -926,10 +902,11 @@ bam_progress_stages <- function(n_samples, normalization = "none") {
     index = "Ensuring CSI indexes",
     windows = "Generating analysis windows",
     gc = "Reading GC content",
-    counts = "Counting reads",
-    correction = "Correcting GC bias",
-    normalization = "Normalizing samples",
-    segmentation = "Segmenting chromosome pairs"
+    metrics = "Measuring breadth and counts",
+    score = "Scoring donor/recipient windows",
+    mask = "Masking recurrent windows",
+    segmentation = "Segmenting score profiles",
+    calibration = "Calibrating call thresholds"
 )
 
 #' @noRd
@@ -937,9 +914,13 @@ bam_progress_label <- function(stage, detail = list()) {
     if (!is.list(detail)) {
         detail <- list()
     }
-    label <- .bam_progress_labels[[stage]]
-    if (is.null(label) || is.na(label)) {
-        label <- stage
+    ## `[[` on a named character vector throws "subscript out of bounds" for
+    ## an unknown name. Progress stages are an open set (a pipeline stage, a
+    ## sample count, a future event), so an unknown one must not abort the
+    ## analysis.
+    label <- unname(.bam_progress_labels[stage])
+    if (length(label) != 1L || is.na(label)) {
+        label <- as.character(stage)[[1L]]
     }
 
     count <- function(x) {
@@ -1004,38 +985,37 @@ bam_progress_label <- function(stage, detail = list()) {
             }
             sprintf("%s for %s windows", label, n)
         },
-        counts = {
+        metrics = {
             total <- count(detail$total)
             if (is.null(total)) {
                 return(paste0(label, sample_suffix))
             }
             sprintf("%s%s (%s reads)", label, sample_suffix, total)
         },
-        correction = {
-            ideal <- count(detail$n_ideal)
-            if (is.null(ideal)) {
-                return(paste0(label, sample_suffix))
-            }
-            sprintf("%s%s (%s ideal windows)", label, sample_suffix, ideal)
-        },
-        normalization = {
-            n <- count(detail$n_samples)
+        score = {
             mode <- detail$mode
-            if (is.null(n) || is.null(mode) || length(mode) != 1L ||
+            metric <- detail$metric
+            if (is.null(mode) || is.null(metric) || length(mode) != 1L ||
                 is.na(mode) || !nzchar(mode)) {
                 return(label)
             }
-            reference <- detail$reference
-            detail_text <- if (identical(mode, "reference") &&
-                !is.null(reference) && length(reference) == 1L &&
-                !is.na(reference) && nzchar(reference)) {
-                sprintf("reference %s", reference)
-            } else {
-                mode
+            sprintf("%s (%s, %s)", label, mode, metric)
+        },
+        mask = {
+            fraction <- detail$masked_fraction
+            if (is.null(fraction) || length(fraction) != 1L ||
+                !is.finite(fraction)) {
+                return(label)
             }
-            sprintf("%s (%s sample%s, %s)", label, n,
-                if (isTRUE(detail$n_samples == 1)) "" else "s",
-                detail_text
+            sprintf("%s (%s%% of windows)", label, round(100 * fraction, 1))
+        },
+        calibration = {
+            n <- count(detail$n_calls)
+            if (is.null(n)) {
+                return(label)
+            }
+            sprintf("%s (%s calibrated call%s)", label, n,
+                if (isTRUE(detail$n_calls == 1)) "" else "s"
             )
         },
         segmentation = {
@@ -1052,9 +1032,8 @@ bam_progress_label <- function(stage, detail = list()) {
 }
 
 #' @noRd
-bam_progress_callback <- function(n_samples, normalization = "none",
-                                  total_steps = NULL) {
-    stages <- length(bam_progress_stages(n_samples, normalization))
+bam_progress_callback <- function(n_samples, total_steps = NULL) {
+    stages <- length(bam_progress_stages(n_samples))
     total <- suppressWarnings(as.integer(total_steps))
     if (length(total) != 1L || is.na(total) || total < 1L) {
         total <- stages
@@ -1075,80 +1054,51 @@ bam_progress_callback <- function(n_samples, normalization = "none",
 
 #' @noRd
 bam_sample_choices <- function(result) {
-    if (is.null(result) || is.null(result$isa)) {
+    if (is.null(result) || is.null(result$samples) ||
+        !"sample" %in% names(result$samples)) {
         return(character())
     }
-    names(result$isa)
+    unique(as.character(result$samples$sample))
 }
 
-#' One row per sample with reads on targets, calls and normalization
+#' One row per sample with measured reads, calls and mask burden
 #' @noRd
 bam_cohort_summary <- function(result) {
     samples <- bam_sample_choices(result)
     if (length(samples) == 0L) {
         return(data.frame(
-            sample = character(),
-            reads_donor = numeric(),
-            reads_recipient = numeric(),
-            reads_total = numeric(),
-            n_segments = integer(),
-            n_putative_introgressions = integer(),
-            normalization = character(),
-            reference = character(),
-            stringsAsFactors = FALSE
+            sample = character(), reads_donor = numeric(),
+            reads_recipient = numeric(), reads_total = numeric(),
+            n_windows = integer(), n_calls = integer(),
+            n_high_confidence = integer(), masked_fraction = numeric(),
+            mode = character(), stringsAsFactors = FALSE
         ))
     }
-
-    side_reads <- function(counts) {
-        if (is.null(counts) || is.null(dim(counts))) {
-            return(rep(NA_real_, length(samples)))
-        }
-        present <- samples %in% colnames(counts)
-        out <- rep(NA_real_, length(samples))
-        out[present] <- as.numeric(colSums(counts[, samples[present], drop = FALSE]))
-        out
+    metrics <- result$metrics
+    reads <- function(role) {
+        vapply(samples, function(sample) {
+            sum(
+                as.numeric(metrics$count[
+                    metrics$sample == sample & metrics$role == role
+                ]),
+                na.rm = TRUE
+            )
+        }, numeric(1))
     }
-    reads_donor <- side_reads(result$counts$donor)
-    reads_recipient <- side_reads(result$counts$recipient)
-
-    n_segments <- vapply(
-        result$isa[samples],
-        function(x) as.integer(nrow(x$segments)),
-        integer(1L)
-    )
-    n_putative <- vapply(
-        result$isa[samples],
-        function(x) {
-            as.integer(sum(x$segments$putative_introgression, na.rm = TRUE))
-        },
-        integer(1L)
-    )
-
+    donor <- reads("donor")
+    recipient <- reads("recipient")
     meta <- result$samples
-    mode <- result$normalization$mode
-    if (is.null(mode) || length(mode) != 1L || is.na(mode)) {
-        mode <- "none"
-    }
-    normalization <- rep(as.character(mode), length(samples))
-    reference <- rep(FALSE, length(samples))
-    if (is.data.frame(meta) && all(c("sample", "normalization") %in% names(meta))) {
-        position <- match(samples, meta$sample)
-        known <- !is.na(position)
-        normalization[known] <- as.character(meta$normalization[position[known]])
-        if ("reference" %in% names(meta)) {
-            reference[known] <- as.logical(meta$reference[position[known]])
-        }
-    }
-
+    position <- match(samples, meta$sample)
     data.frame(
         sample = samples,
-        reads_donor = reads_donor,
-        reads_recipient = reads_recipient,
-        reads_total = reads_donor + reads_recipient,
-        n_segments = n_segments,
-        n_putative_introgressions = n_putative,
-        normalization = normalization,
-        reference = ifelse(reference, "yes", ""),
+        reads_donor = donor,
+        reads_recipient = recipient,
+        reads_total = donor + recipient,
+        n_windows = as.integer(meta$n_windows[position]),
+        n_calls = as.integer(meta$n_calls[position]),
+        n_high_confidence = as.integer(meta$n_high_confidence[position]),
+        masked_fraction = as.numeric(meta$masked_fraction[position]),
+        mode = as.character(meta$mode[position]),
         stringsAsFactors = FALSE
     )
 }
@@ -1156,8 +1106,7 @@ bam_cohort_summary <- function(result) {
 #' Coverage warnings for zero or near-zero samples
 #'
 #' A side is near zero when it has fewer than `near_zero` reads per analysis
-#' window on average. Reference samples with all-zero windows are reported too,
-#' because the dose there follows the pseudocount rule.
+#' window on average.
 #'
 #' @param result A `BamAnalysisResult`.
 #' @param near_zero Minimum average reads per window.
@@ -1170,72 +1119,27 @@ bam_coverage_warnings <- function(result, near_zero = 1) {
     if (length(samples) == 0L) {
         return(warnings)
     }
-    donor <- result$counts$donor
-    recipient <- result$counts$recipient
-    reference <- rep(FALSE, length(samples))
-    if (is.data.frame(result$samples) &&
-        all(c("sample", "reference") %in% names(result$samples))) {
-        position <- match(samples, result$samples$sample)
-        known <- !is.na(position)
-        reference[known] <- as.logical(result$samples$reference[position[known]])
-    }
-    reference[is.na(reference)] <- FALSE
-
-    side_values <- function(counts, sample) {
-        if (is.null(counts) || is.null(dim(counts)) ||
-            !sample %in% colnames(counts)) {
-            return(numeric())
-        }
-        as.numeric(counts[, sample])
-    }
-
-    for (i in seq_along(samples)) {
-        sample <- samples[[i]]
+    for (sample in samples) {
         for (side in c("donor", "recipient")) {
-            values <- if (identical(side, "donor")) {
-                side_values(donor, sample)
-            } else {
-                side_values(recipient, sample)
-            }
+            values <- as.numeric(result$metrics$count[
+                result$metrics$sample == sample &
+                    result$metrics$role == side
+            ])
             n_windows <- length(values)
             total <- sum(values, na.rm = TRUE)
             if (n_windows == 0L) {
                 next
             }
             if (total <= 0) {
-                warnings <- c(
-                    warnings,
-                    sprintf(
-                        "Sample '%s' has no reads on the %s targets.",
-                        sample, side
-                    )
-                )
+                warnings <- c(warnings, sprintf(
+                    "Sample '%s' has no reads on the %s targets.",
+                    sample, side
+                ))
             } else if (total / n_windows < near_zero) {
-                warnings <- c(
-                    warnings,
-                    sprintf(
-                        "Sample '%s' has near-zero coverage on the %s side (%s reads over %d windows).",
-                        sample, side,
-                        format(total, scientific = FALSE), n_windows
-                    )
-                )
-            }
-        }
-        if (isTRUE(reference[[i]])) {
-            zero_donor <- sum(side_values(donor, sample) == 0)
-            zero_recipient <- sum(side_values(recipient, sample) == 0)
-            if (zero_donor > 0L || zero_recipient > 0L) {
-                warnings <- c(
-                    warnings,
-                    sprintf(
-                        paste0(
-                            "Reference sample '%s' has %d donor and %d recipient",
-                            " all-zero window(s); the dose there follows the",
-                            " pseudocount rule."
-                        ),
-                        sample, zero_donor, zero_recipient
-                    )
-                )
+                warnings <- c(warnings, sprintf(
+                    "Sample '%s' has near-zero coverage on the %s side (%s reads over %d windows).",
+                    sample, side, format(total, scientific = FALSE), n_windows
+                ))
             }
         }
     }
@@ -1307,7 +1211,7 @@ bam_result_cache <- function(max_entries = 3L) {
 #' [analyzeBamInput()] and changes the result.
 #'
 #' @noRd
-bam_analysis_key <- function(preflight, resolution, reference_sample) {
+bam_analysis_key <- function(preflight, resolution) {
     if (!isTRUE(preflight$ok) || is.null(preflight$table) ||
         !all(c("path", "sample") %in% names(preflight$table))) {
         return(NULL)
@@ -1317,115 +1221,22 @@ bam_analysis_key <- function(preflight, resolution, reference_sample) {
         defaults <- list()
     }
     samples <- unique(as.character(preflight$table$sample))
-    ## Normalize to the value the run will actually use. A radio input can
-    ## briefly arrive as "" or as a character/numeric variant; both must map to
-    ## the same cache entry as the completed run.
     resolution_key <- tryCatch(
         as.character(bam_resolution_value(resolution, defaults)),
         error = function(e) as.character(resolution)
     )
-    reference <- if (length(samples) > 1L &&
-        length(reference_sample) == 1L &&
-        !is.na(reference_sample) &&
-        nzchar(reference_sample)) {
-        as.character(reference_sample)
-    } else {
-        NULL
-    }
     hash_object(list(
         example = isTRUE(preflight$example),
         paths = unique(as.character(preflight$table$path)),
         samples = samples,
         assembly = as.character(preflight$assembly),
         resolution = resolution_key,
-        reference = reference,
         mapq = as.integer(defaults$mapq),
         exclude_flags = as.integer(defaults$exclude_flags),
-        max_fit_windows = as.numeric(defaults$max_fit_windows),
-        normalization_by_side = isTRUE(defaults$normalization_by_side)
+        metric = as.character(defaults$metric),
+        score = as.character(defaults$score),
+        donor_aggregation = as.character(defaults$donor_aggregation)
     ))
-}
-
-#' Valid subgenome combinations for a species pair
-#'
-#' Returns every combination of one recipient subgenome and one donor
-#' subgenome whose labels are disjoint, which is the invariant [RCA()] needs.
-#' The caller still resolves each combination to check that chromosome groups
-#' pair and that contig lengths fit the selected resolution.
-#'
-#' @noRd
-bam_subgenome_combinations <- function(config, recipient, donor) {
-    recipient_species <- config$species[[recipient]]
-    donor_species <- config$species[[donor]]
-    if (is.null(recipient_species) || is.null(donor_species)) {
-        return(data.frame(
-            recipient_subgenome = character(),
-            donor_subgenome = character(),
-            stringsAsFactors = FALSE
-        ))
-    }
-    recipient_values <- unique(as.character(
-        recipient_species$contigs$subgenome
-    ))
-    donor_values <- unique(as.character(donor_species$contigs$subgenome))
-    if (length(recipient_values) == 0L || length(donor_values) == 0L) {
-        return(data.frame(
-            recipient_subgenome = character(),
-            donor_subgenome = character(),
-            stringsAsFactors = FALSE
-        ))
-    }
-    combinations <- expand.grid(
-        recipient_subgenome = recipient_values,
-        donor_subgenome = donor_values,
-        stringsAsFactors = FALSE
-    )
-    disjoint <- combinations$recipient_subgenome !=
-        combinations$donor_subgenome
-    combinations <- combinations[disjoint, , drop = FALSE]
-    rownames(combinations) <- NULL
-    combinations
-}
-
-#' @noRd
-bam_selection_map <- function(result) {
-    samples <- bam_sample_choices(result)
-    stats::setNames(rep(list(integer(0)), length(samples)), samples)
-}
-
-#' @noRd
-bam_selection_update <- function(map, sample, rows) {
-    if (is.null(sample) || length(sample) != 1L || is.na(sample) ||
-        !nzchar(sample)) {
-        return(map)
-    }
-    if (is.null(map) || !is.list(map)) {
-        map <- list()
-    }
-    rows <- if (is.null(rows)) integer(0) else suppressWarnings(as.integer(rows))
-    rows <- rows[!is.na(rows)]
-    map[[as.character(sample)]] <- sort(unique(rows))
-    map
-}
-
-## A per-sample export uses the rows selected for that sample. When nothing
-## is selected yet, `NULL` asks writeCohortToBedpe() for the sample's putative
-## calls, which is more useful than an empty header.
-#' @noRd
-bam_sample_selection <- function(map, sample) {
-    if (is.null(map) || !is.list(map) || is.null(sample) ||
-        length(sample) != 1L || is.na(sample)) {
-        return(NULL)
-    }
-    rows <- map[[as.character(sample)]]
-    rows <- rows[!is.na(rows)]
-    if (length(rows) == 0L) {
-        return(NULL)
-    }
-    stats::setNames(
-        list(sort(unique(as.integer(rows)))),
-        as.character(sample)
-    )
 }
 
 #' @noRd
@@ -1587,10 +1398,7 @@ bam_dashboard_css <- function() {
     #mamamia-grid.mamamia-footer-collapsed .mamamia-footer .shiny-text-output {
         display: none;
     }
-    #mamamia-grid.mamamia-footer-collapsed #explorer-circos {
-        height: calc(100vh - 271px) !important;
-    }
-    #mamamia-grid.mamamia-footer-collapsed #explorer-isa_plot {
+    #mamamia-grid.mamamia-footer-collapsed #explorer-score_plot {
         height: calc(100vh - 341px) !important;
     }
     @media (max-width: 500px) {
@@ -1798,7 +1606,6 @@ bam_sidebar_details_ui <- function(config) {
                     choices = bam_resolution_choices(defaults),
                     selected = bam_default_resolution(defaults)
                 ),
-                shiny::uiOutput("reference_ui")
             ),
             bslib::accordion_panel(
                 "Assembly",
@@ -1832,36 +1639,25 @@ bam_results_ui <- function() {
         bslib::navset_card_tab(
             id = ns("tabs"),
             bslib::nav_panel(
-                "Introgression circos",
-                isa_dashboard_circos_output(
-                    ns("circos"), height = "calc(100vh - 335px)"
-                )
-            ),
-            bslib::nav_panel(
-                "Coverage / dosage",
-                shiny::radioButtons(
-                    ns("plot_type"), "Plot",
-                    choices = c("Mirror" = "mirror", "Difference" = "diff"),
-                    inline = TRUE
-                ),
+                "Score profile",
                 shiny::plotOutput(
-                    ns("isa_plot"), height = "calc(100vh - 405px)"
+                    ns("score_plot"), height = "calc(100vh - 335px)"
                 )
             ),
             bslib::nav_panel(
-                "Segments",
+                "Calls",
                 shiny::div(
                     class = "mamamia-segment-controls",
                     explorer_call_filters_ui("explorer"),
                     explorer_selection_ui("explorer")
                 ),
-                DT::DTOutput(ns("segments"))
+                DT::DTOutput(ns("calls"))
             ),
             bslib::nav_panel(
                 "Export",
                 shiny::div(
                     class = "mamamia-export-panel",
-                    shiny::h5("Selected segments"),
+                    shiny::h5("Selected calls"),
                     explorer_export_ui("explorer"),
                     shiny::h5("Cohort"),
                     shiny::uiOutput("cohort_ui")
@@ -2037,7 +1833,7 @@ bam_launcher_ui <- function(state) {
 ## Server --------------------------------------------------------------------
 
 #' @noRd
-bam_launcher_server <- function(state, cache = NULL) {
+bam_launcher_server <- function(state) {
     if (!isTRUE(state$ok)) {
         return(function(input, output, session) {})
     }
@@ -2058,11 +1854,10 @@ bam_launcher_server <- function(state, cache = NULL) {
 
         result <- shiny::reactiveVal(NULL)
         last_error <- shiny::reactiveVal(NULL)
-        selection_map <- shiny::reactiveVal(list())
         result_cache <- bam_result_cache()
         active_key <- shiny::reactiveVal(NULL)
 
-        log_entries <- shiny::reactiveVal(bam_initial_log(config))
+        log_entries <- shiny::reactiveVal(bam_initial_log())
         log_line <- function(...) {
             entry <- bam_log_entry(paste0(...))
             if (is.null(entry)) {
@@ -2107,9 +1902,9 @@ bam_launcher_server <- function(state, cache = NULL) {
                     n_samples,
                     if (n_samples == 1L) "" else "s",
                     if (n_samples > 1L) {
-                        "; choose a reference or use median normalization."
+                        "; cohort median-polish correction is used."
                     } else {
-                        "; normalization is off."
+                        "; single-sample GC correction is used."
                     }
                 )
             )
@@ -2742,26 +2537,6 @@ bam_launcher_server <- function(state, cache = NULL) {
             )
         })
 
-        output$reference_ui <- shiny::renderUI({
-            pf <- preflight_state()
-            if (isTRUE(pf$example) || !isTRUE(pf$ok) || nrow(pf$table) < 2L) {
-                return(NULL)
-            }
-            samples <- unique(pf$table$sample)
-            choices <- c(
-                "None (median normalization)" = "",
-                stats::setNames(samples, samples)
-            )
-            current <- shiny::isolate(input$reference_sample)
-            if (is.null(current) || !current %in% unname(choices)) {
-                current <- ""
-            }
-            shiny::selectInput(
-                "reference_sample", "Reference sample",
-                choices = choices, selected = current
-            )
-        })
-
         example_resolution_problem <- function(resolution) {
             if (!example_mode()) {
                 return(NULL)
@@ -2814,8 +2589,7 @@ bam_launcher_server <- function(state, cache = NULL) {
         analysis_key <- shiny::reactive({
             bam_analysis_key(
                 preflight_state(),
-                resolution = input$resolution,
-                reference_sample = input$reference_sample
+                input$resolution
             )
         })
 
@@ -2843,10 +2617,6 @@ bam_launcher_server <- function(state, cache = NULL) {
                 )
             }
         }, ignoreInit = TRUE)
-
-        shiny::observeEvent(result(), {
-            selection_map(bam_selection_map(result()))
-        }, ignoreNULL = FALSE)
 
         ## Samples are known as soon as preflight succeeds, so the selector can
         ## appear before the run and keep the chosen sample through the run.
@@ -2897,13 +2667,8 @@ bam_launcher_server <- function(state, cache = NULL) {
             value
         })
 
-        result_isa <- shiny::reactive({
-            res <- result()
-            sample <- result_sample()
-            if (is.null(res) || is.null(sample)) {
-                return(NULL)
-            }
-            res$isa[[sample]]
+        result_view <- shiny::reactive({
+            result()
         })
 
         shiny::observeEvent(input$run, {
@@ -2988,95 +2753,19 @@ bam_launcher_server <- function(state, cache = NULL) {
                 return()
             }
             log_line(sprintf(
-                "Starting analysis: %d sample%s, %s windows/chromosome, normalization '%s'%s.",
+                "Starting analysis: %d sample%s, %s windows/chromosome, metric '%s', score '%s'.",
                 length(samples),
                 if (length(samples) == 1L) "" else "s",
                 format(params$resolution, big.mark = ",", scientific = FALSE),
-                params$normalization,
-                if (!is.null(params$reference_sample)) {
-                    sprintf(", reference '%s'", params$reference_sample)
-                } else {
-                    ""
-                }
+                params$metric, params$score
             ))
 
-            ## A first run also computes the other valid subgenome
-            ## combinations for this species pair, so switching a subgenome
-            ## later is a cache hit instead of another full pipeline.
             extra_jobs <- list()
-            if (!isTRUE(pf$example) && species_available) {
-                recipient_key <- recipient_species()
-                donor_key <- donor_species()
-                combinations <- bam_subgenome_combinations(
-                    pf$config, recipient_key, donor_key
-                )
-                for (i in seq_len(nrow(combinations))) {
-                    recipient_subgenome <-
-                        combinations$recipient_subgenome[[i]]
-                    donor_subgenome <- combinations$donor_subgenome[[i]]
-                    resolved <- tryCatch(
-                        resolveSpeciesAssembly(
-                            pf$config,
-                            donor = donor_key,
-                            recipient = recipient_key,
-                            donor_subgenome = donor_subgenome,
-                            recipient_subgenome = recipient_subgenome
-                        ),
-                        error = function(e) e
-                    )
-                    if (inherits(resolved, "condition")) {
-                        log_line(sprintf(
-                            "Skipping subgenome pair %s / %s: %s",
-                            recipient_subgenome, donor_subgenome,
-                            conditionMessage(resolved)
-                        ))
-                        next
-                    }
-                    if (identical(resolved$key, pf$assembly)) {
-                        next
-                    }
-                    extra_preflight <- pf
-                    extra_preflight$assembly <- resolved$key
-                    extra_preflight$config <- resolved$config
-                    extra_key <- bam_analysis_key(
-                        extra_preflight,
-                        input$resolution,
-                        input$reference_sample
-                    )
-                    if (!is.null(result_cache$get(extra_key))) {
-                        log_line(sprintf(
-                            "Subgenome pair %s / %s is already cached.",
-                            recipient_subgenome, donor_subgenome
-                        ))
-                        next
-                    }
-                    extra_jobs[[length(extra_jobs) + 1L]] <- list(
-                        key = resolved$key,
-                        config = resolved$config,
-                        cache_key = extra_key,
-                        label = sprintf(
-                            "%s / %s", recipient_subgenome, donor_subgenome
-                        )
-                    )
-                }
-                if (length(extra_jobs) > 0L) {
-                    log_line(sprintf(
-                        paste0(
-                            "Precomputing %d other subgenome combination%s; ",
-                            "the first run will take longer."
-                        ),
-                        length(extra_jobs),
-                        if (length(extra_jobs) == 1L) "" else "s"
-                    ))
-                }
-            }
             result_cache$reserve(
                 result_cache$size() + 1L + length(extra_jobs)
             )
 
-            stages_per_run <- length(bam_progress_stages(
-                length(samples), params$normalization
-            ))
+            stages_per_run <- length(bam_progress_stages(length(samples)))
             total_steps <- stages_per_run * (1L + length(extra_jobs))
             run_analysis <- function(assembly_config, assembly_key, progress) {
                 if (isTRUE(pf$example)) {
@@ -3091,19 +2780,17 @@ bam_launcher_server <- function(state, cache = NULL) {
                     assembly_config,
                     assembly = assembly_key,
                     windows_per_chromosome = params$resolution,
-                    reference_sample = params$reference_sample,
-                    normalization = params$normalization,
+                    metric = params$metric,
+                    score = params$score,
                     mapq = params$mapq,
                     exclude_flags = params$exclude_flags,
                     cores = params$cores,
-                    max_fit_windows = params$max_fit_windows,
-                    cache = cache,
                     progress = progress
                 )
             }
             progress_for <- function(prefix = "") {
                 raw_progress <- bam_progress_callback(
-                    length(samples), params$normalization,
+                    length(samples),
                     total_steps = total_steps
                 )
                 function(stage, detail = list()) {
@@ -3114,7 +2801,6 @@ bam_launcher_server <- function(state, cache = NULL) {
                 }
             }
 
-            precomputed <- 0L
             new_result <- tryCatch(
                 shiny::withProgress(
                     message = "MaMaMIA analysis", value = 0,
@@ -3122,50 +2808,6 @@ bam_launcher_server <- function(state, cache = NULL) {
                         primary <- run_analysis(
                             pf$config, pf$assembly, progress_for()
                         )
-                        for (job in extra_jobs) {
-                            log_line(sprintf(
-                                "Precomputing subgenome pair %s.",
-                                job$label
-                            ))
-                            outcome <- tryCatch(
-                                {
-                                    extra <- run_analysis(
-                                        job$config, job$key,
-                                        progress_for("Precompute: ")
-                                    )
-                                    result_cache$set(job$cache_key, extra)
-                                    log_line(sprintf(
-                                        paste0(
-                                            "Precomputed subgenome pair %s: ",
-                                            "%d sample(s), %d segment(s), ",
-                                            "%d putative introgression(s)."
-                                        ),
-                                        job$label,
-                                        length(extra$isa),
-                                        sum(extra$samples$n_segments),
-                                        sum(extra$samples[["n_putative_introgressions"]])
-                                    ))
-                                    TRUE
-                                },
-                                error = function(e) e
-                            )
-                            if (inherits(outcome, "condition")) {
-                                info <- bam_error_info(
-                                    outcome,
-                                    files = pf$table$source,
-                                    table = pf$table
-                                )
-                                log_line(sprintf(
-                                    paste0(
-                                        "Precomputation of subgenome pair %s ",
-                                        "skipped at stage '%s': %s"
-                                    ),
-                                    job$label, info$stage, info$message
-                                ))
-                                next
-                            }
-                            precomputed <- precomputed + 1L
-                        }
                         result_cache$set(key, primary)
                         active_key(key)
                         primary
@@ -3197,41 +2839,19 @@ bam_launcher_server <- function(state, cache = NULL) {
             active_key(key)
             result(new_result)
             log_line(sprintf(
-                "Analysis finished: %d sample(s), %d segment(s), %d putative introgression(s).",
-                length(new_result$isa),
-                sum(new_result$samples$n_segments),
-                sum(new_result$samples$n_putative_introgressions)
+                "Analysis finished: %d sample(s), %d calibrated call(s).",
+                length(bam_sample_choices(new_result)),
+                sum(new_result$samples$n_calls, na.rm = TRUE)
             ))
-            if (precomputed > 0L) {
-                log_line(sprintf(
-                    paste0(
-                        "Cached %d other subgenome combination%s; ",
-                        "switching to them needs no recalculation."
-                    ),
-                    precomputed,
-                    if (precomputed == 1L) "" else "s"
-                ))
-            }
             run_summary <- sprintf(
-                "%d sample(s), %d segment(s), %d putative introgression(s)",
-                length(new_result$isa),
-                sum(new_result$samples$n_segments),
-                sum(new_result$samples$n_putative_introgressions)
+                "%d sample(s), %d calibrated call(s)",
+                length(bam_sample_choices(new_result)),
+                sum(new_result$samples$n_calls, na.rm = TRUE)
             )
-            if (precomputed > 0L) {
-                run_summary <- paste0(
-                    run_summary,
-                    sprintf(
-                        "; cached %d other subgenome combination%s",
-                        precomputed,
-                        if (precomputed == 1L) "" else "s"
-                    )
-                )
-            }
             shiny::showNotification(
                 run_summary,
                 type = "message",
-                duration = if (precomputed > 0L) 8 else 6
+                duration = 6
             )
             coverage <- bam_coverage_warnings(new_result)
             for (warning in coverage) {
@@ -3240,8 +2860,8 @@ bam_launcher_server <- function(state, cache = NULL) {
         })
 
         ## The sample selector belongs to the main result area: it controls the
-        ## circos, coverage plot, segment table and exports. It is only useful
-        ## when the input BAM contains several @RG SM samples.
+        ## score profile, call table and exports. It is only useful when the
+        ## input BAM contains several @RG SM samples.
         output$sample_selector_ui <- shiny::renderUI({
             samples <- result_samples()
             if (length(samples) <= 1L) {
@@ -3295,7 +2915,7 @@ bam_launcher_server <- function(state, cache = NULL) {
                     class = "text-muted small",
                     paste(
                         "The per-sample export uses the rows selected for the",
-                        "current sample, or all putative calls when none are",
+                        "current sample, or all calibrated calls when none are",
                         "selected. The cohort export includes only selected",
                         "rows and adds a `sample` column."
                     )
@@ -3330,10 +2950,10 @@ bam_launcher_server <- function(state, cache = NULL) {
                         call. = FALSE
                     )
                 }
-                writeCohortToBedpe(
+                writeCallsToBedpe(
                     res, file,
                     samples = sample,
-                    selected = bam_sample_selection(selection_map(), sample)
+                    pass_only = TRUE
                 )
             }
         )
@@ -3350,35 +2970,26 @@ bam_launcher_server <- function(state, cache = NULL) {
                         call. = FALSE
                     )
                 }
-                writeCohortToBedpe(
+                writeCallsToBedpe(
                     res, file,
-                    selected = selection_map()
+                    pass_only = TRUE
                 )
             }
         )
 
         explorer_server(
             "explorer",
-            ISA = result_isa,
-            sample = result_sample,
-            selection = shiny::reactive({
-                rows <- selection_map()[[result_sample()]]
-                if (is.null(rows)) integer() else as.integer(rows)
-            }),
-            on_selection = function(rows, sample) {
-                selection_map(
-                    bam_selection_update(selection_map(), sample, rows)
-                )
-            }
+            result = result_view,
+            sample = result_sample
         )
     }
 }
 
 #' @noRd
-bam_launcher_app <- function(config = NULL, cache = NULL) {
+bam_launcher_app <- function(config = NULL) {
     require_dashboard_packages()
     state <- bam_launcher_state(config)
     ui <- bam_launcher_ui(state)
-    server <- bam_launcher_server(state, cache)
+    server <- bam_launcher_server(state)
     shiny::shinyApp(ui, server)
 }

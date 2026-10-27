@@ -74,23 +74,29 @@ void BitVector::append_bits(std::span<const uint64_t> src, uint64_t nbits) {
     throw UsageError("BitVector::append_bits: source holds fewer than nbits bits");
   const uint64_t rem = size_ & 63u;
   if (rem == 0) {
-    const std::span<const uint64_t> head = src.first(static_cast<std::size_t>(nsrc));
-    words_.insert(words_.end(), head.begin(), head.end());
+    // Whole words: copy the block directly instead of inserting word by word.
+    const std::size_t old_words = words_.size();
+    words_.resize(old_words + static_cast<std::size_t>(nsrc));
+    if (nsrc > 0)
+      std::memcpy(words_.data() + old_words, src.data(),
+                  static_cast<std::size_t>(nsrc) * sizeof(uint64_t));
     num_words_ = words_.size();
     size_ += nbits;
     return;
   }
   const unsigned shift = static_cast<unsigned>(64 - rem);
+  const std::size_t old_words = words_.size();
   words_.back() |= src[0] >> rem;
+  const std::size_t appended = static_cast<std::size_t>(nsrc - 1);
+  words_.resize(old_words + appended);
   uint64_t carry = src[0] << shift;
-  const uint64_t old_words = static_cast<uint64_t>(words_.size());
-  for (uint64_t i = 1; i < nsrc; ++i) {
-    words_.push_back(carry | (src[static_cast<std::size_t>(i)] >> rem));
-    carry = src[static_cast<std::size_t>(i)] << shift;
+  for (std::size_t i = 1; i < static_cast<std::size_t>(nsrc); ++i) {
+    words_[old_words + i - 1] = carry | (src[i] >> rem);
+    carry = src[i] << shift;
   }
   size_ += nbits;
   const uint64_t new_words = (size_ + 63) / 64;
-  if (new_words > old_words + nsrc - 1) words_.push_back(carry);
+  if (new_words > old_words + appended) words_.push_back(carry);
   num_words_ = words_.size();
 }
 

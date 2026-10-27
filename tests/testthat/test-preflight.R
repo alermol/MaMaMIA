@@ -2,7 +2,7 @@
 
 preflight_tiny_config <- function() {
     skip_if_no_tiny_fixtures()
-    readMaMaMIAConfig(tiny_config_path())
+    tiny_resolved_config()
 }
 
 write_header_bam <- function(path, targets = c("d1", "r1"),
@@ -19,7 +19,7 @@ write_header_bam <- function(path, targets = c("d1", "r1"),
 
 test_that("preflightBams() describes the tiny fixture", {
     skip_if_no_tiny_fixtures()
-    config <- readMaMaMIAConfig(tiny_config_path())
+    config <- preflight_tiny_config()
 
     table <- preflightBams(tiny_bam_path(), config)
 
@@ -51,7 +51,7 @@ test_that("preflightBams() describes the tiny fixture", {
     expect_true(table$valid)
 })
 
-test_that("preflightBams() accepts a config path and several samples", {
+test_that("preflightBams() accepts a resolved config and several samples", {
     skip_if_no_tiny_fixtures()
     skip_if_no_samtools()
     second <- tempfile("second-sample-", fileext = ".bam")
@@ -59,7 +59,7 @@ test_that("preflightBams() accepts a config path and several samples", {
     write_header_bam(second, rg = "@RG\tID:second\tSM:second-sample")
 
     table <- preflightBams(
-        c(tiny_bam_path(), second), tiny_config_path()
+        c(tiny_bam_path(), second), preflight_tiny_config()
     )
     expect_identical(table$sample, c("tiny-sample", "second-sample"))
     expect_identical(table$assembly, c("tiny", "tiny"))
@@ -212,9 +212,8 @@ test_that("preflightBams() accepts uploads without a server BAM root", {
     expect_true(file.copy(tiny_bam_path(), upload))
 
     config <- preflight_tiny_config()
-    ## Old registries may still carry the removed key; it must not restrict
-    ## uploads or fail validation.
-    config$server$bam_root <- tempfile("legacy-root-")
+    ## An unknown server key must not restrict uploads or fail validation.
+    config$server$bam_root <- tempfile("unknown-root-")
     expect_no_error(preflightBams(upload, config))
 })
 
@@ -294,7 +293,7 @@ test_that("preflightBams() warns about extra header targets", {
     table <- preflightBams(path, preflight_tiny_config())
     expect_match(
         table$warnings,
-        "1 target\\(s\\) not in assembly 'Tiny synthetic assembly'",
+        "1 target\\(s\\) not in assembly",
         fixed = FALSE
     )
 })

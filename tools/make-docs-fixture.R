@@ -9,8 +9,8 @@
 ##       [--gcrank-build /path/to/gcrank-build]
 ##
 ## Unlike tests/testthat/fixtures/tiny.gcrank, the two contigs have variable
-## GC content, so the ZINB GC-bias fit can be constructed and the complete
-## pipeline (BAM -> RCA -> correction -> segmentation -> BEDPE) runs. The
+## GC content, so the GC model can be fitted and the complete pipeline
+## (BAM -> metrics -> scoring -> segmentation -> BEDPE) runs. The
 ## sequences, read positions and manifest timestamp are fixed.
 
 args <- commandArgs(trailingOnly = TRUE)
@@ -175,16 +175,14 @@ if (is.na(old_epoch)) {
 }
 
 config <- list(
-    version = 1L,
+    version = 2L,
     defaults = list(
         windows_per_chromosome = 100L,
         allowed_windows = c(100L, 1000L, 10000L),
         mapq = 20L,
-        exclude_flags = 2308L,
-        max_fit_windows = 1000L,
+        exclude_flags = 1796L,
         gc_mmap = TRUE,
-        gc_validate_crc = FALSE,
-        normalization_by_side = TRUE
+        gc_validate_crc = FALSE
     ),
     server = list(
         max_bams = 4L,

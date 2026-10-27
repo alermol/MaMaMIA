@@ -29,6 +29,16 @@ struct ContigInfo {
   uint64_t offset = 0;  // 0-based offset of the first base
 };
 
+// Counts and GC fraction for one window, computed with one rank lookup pair
+// per bitvector. `gc_fraction` is NaN when the fraction is undefined: an empty
+// window, or remove_ambiguous with no unambiguous A/C/G/T base.
+struct WindowStats {
+  uint64_t length = 0;
+  uint64_t gc = 0;
+  uint64_t valid = 0;
+  double gc_fraction = 0.0;
+};
+
 // Severity of a message handed to a user-installed log sink.
 enum class LogLevel { Info, Warning };
 
@@ -46,7 +56,8 @@ struct BuildOptions {
   // thread counts on memory-constrained machines.
   uint64_t chunk_bits = 16000000ull;
   unsigned threads = 0;  // worker threads; 0 means auto = default_threads(),
-                         // the producer and the assembling caller are extra
+                         // the producer, the hash helper and the assembling
+                         // caller are extra
   bool verbose = false;  // progress messages through the log sink
   LogSink log;           // optional; silent when empty
 };
@@ -75,9 +86,10 @@ public:
 
   // Parses `fasta_path` (plain or gzip; "-" reads stdin) and builds both
   // bitvectors and their rank indices in memory. Parallel: one producer
-  // thread, `threads` workers, and the calling thread assembles. The result is
-  // byte-identical for any thread count. The source is hashed while it is
-  // parsed (one pass). Throws InputError for unreadable/malformed input.
+  // thread, `threads` packers, a hash helper, and the calling thread
+  // assembles. The result is byte-identical for any thread count. The source
+  // is hashed while it is parsed (one pass, no second read). Throws
+  // InputError for unreadable/malformed input.
   void build(const std::string& fasta_path, const BuildOptions& options = {});
 
   // Writes the index to `<out_dir>/<name>.gcrank/`. The index is written to a
@@ -130,6 +142,16 @@ public:
   [[nodiscard]] double gc_fraction(std::string_view contig, uint64_t start, uint64_t end,
                                    bool remove_ambiguous = false) const;
 
+  // All per-window values in one call. This is the efficient choice for a
+  // bedtools-style row (pct_gc, num_gc, num_valid, seq_len): it resolves the
+  // contig once and reads each rank index once, instead of once per column.
+  // Unlike gc_fraction(), an undefined fraction is reported as NaN rather than
+  // thrown, so callers that print "nan" can use the result directly.
+  [[nodiscard]] WindowStats stats(uint64_t start, uint64_t end,
+                                  bool remove_ambiguous = false) const;
+  [[nodiscard]] WindowStats stats(std::string_view contig, uint64_t start, uint64_t end,
+                                  bool remove_ambiguous = false) const;
+
   // ---- metadata ----------------------------------------------------------
 
   [[nodiscard]] uint64_t total_bases() const;
@@ -147,6 +169,9 @@ private:
   void check_range(uint64_t start, uint64_t end) const;
   // Shared by both gc_fraction overloads; rejects a zero denominator.
   [[nodiscard]] double fraction(uint64_t start, uint64_t end, bool remove_ambiguous) const;
+  // Shared by both stats overloads; the range is already validated.
+  [[nodiscard]] WindowStats stats_global(uint64_t start, uint64_t end,
+                                         bool remove_ambiguous) const;
   // Resolves `name`, checks the contig-relative window, and returns the
   // equivalent global window. Throws QueryError when the name is unknown, the
   // index is not built, or the window leaves the contig.

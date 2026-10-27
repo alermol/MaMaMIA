@@ -262,11 +262,16 @@ matchAssembly <- function(header, config, assembly = NULL) {
     if (is.character(config)) {
         config <- readMaMaMIAConfig(config)
     }
-    if (!is.list(config) || !is.list(config$assemblies) ||
-        length(config$assemblies) == 0L) {
+    if (!is.list(config) || is.null(config$assemblies)) {
         .mamamia_error(
             "MaMaMIAAssemblyMatchError",
-            "`config` must be a validated MaMaMIA configuration with at least one assembly"
+            "`config` must be a validated MaMaMIA configuration"
+        )
+    }
+    if (length(config$assemblies) == 0L) {
+        .mamamia_error(
+            "MaMaMIAAssemblyMatchError",
+            "`config` has no assembly: pair the species first with resolveSpeciesAssembly()"
         )
     }
     header_path <- if (is.null(header$path)) "<unknown BAM>" else header$path

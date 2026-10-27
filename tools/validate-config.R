@@ -47,13 +47,13 @@ if (inherits(config, "condition")) {
 }
 
 cat("Registry:", normalizePath(config_path, mustWork = TRUE), "\n")
-config_dir <- dirname(normalizePath(config_path, mustWork = TRUE))
 cat("Config version:", config$version, "\n")
 cat(
     "Defaults: windows/contig =", config$defaults$windows_per_chromosome,
     "| allowed =", paste(config$defaults$allowed_windows, collapse = ", "),
     "| mapq =", config$defaults$mapq,
-    "| max_fit_windows =", config$defaults$max_fit_windows, "\n"
+    "| metric =", config$defaults$metric,
+    "| score =", config$defaults$score, "\n"
 )
 cat("Server limits: max_bams =", config$server$max_bams,
     "| max_total_bytes =", format(config$server$max_total_bytes, scientific = FALSE),
@@ -113,32 +113,48 @@ for (key in names(config$species)) {
     }
 }
 
-for (key in names(config$assemblies)) {
-    assembly <- config$assemblies[[key]]
-    donor <- assembly$contigs$donor
-    recipient <- assembly$contigs$recipient
-    cat("Assembly:", key, "-", assembly$label, "\n")
-    cat(
-        "  contigs:", nrow(donor), "donor /", nrow(recipient), "recipient",
-        "| pairs:", length(assembly$pairs), "\n"
-    )
-    cat(
-        "  target length:",
-        format(sum(donor$length) + sum(recipient$length), scientific = FALSE),
-        "bp\n"
-    )
-
-    for (index_path in assembly$gc_indexes) {
-        check_index(index_path, sprintf("assembly '%s'", key))
+## The registry is species-only. Check that every ordered species pair the
+## application can select resolves to an assembly with at least one paired
+## chromosome group, and report the contigs that would be ignored.
+species_keys <- names(config$species)
+checked <- 0L
+for (recipient_key in species_keys) {
+    for (donor_key in species_keys) {
+        if (identical(recipient_key, donor_key)) {
+            next
+        }
+        pair <- tryCatch(
+            MaMaMIA::resolveSpeciesAssembly(
+                config, donor = donor_key, recipient = recipient_key
+            ),
+            error = function(e) e
+        )
+        if (inherits(pair, "condition")) {
+            cat(
+                "Pair", recipient_key, "<-", donor_key,
+                ": not usable (", conditionMessage(pair), ")\n"
+            )
+            next
+        }
+        assembly <- pair$assembly
+        checked <- checked + 1L
+        cat(
+            "Pair", recipient_key, "<-", donor_key, ":",
+            nrow(assembly$contigs$donor), "donor /",
+            nrow(assembly$contigs$recipient), "recipient contigs,",
+            length(assembly$pairs), "groups,",
+            nrow(pair$unpaired), "unpaired\n"
+        )
+        if (length(assembly$pairs) == 0L) {
+            fail(
+                "pair '%s' + '%s' has no paired chromosome group",
+                recipient_key, donor_key
+            )
+        }
     }
-
-    duplicate <- anyDuplicated(c(donor$id, recipient$id))
-    if (duplicate != 0L) {
-        fail("assembly '%s' uses a contig id on both sides", key)
-    }
-    if (any(donor$subgenome %in% recipient$subgenome)) {
-        fail("assembly '%s' shares a subgenome label between sides", key)
-    }
+}
+if (checked == 0L) {
+    fail("no species pair resolves to an assembly")
 }
 
 cat("\nRegistry is valid.\n")

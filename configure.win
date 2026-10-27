@@ -1,0 +1,8 @@
+#!/bin/sh
+set -e
+rscript="${R_HOME}/bin/Rscript.exe"
+cppflags=`"${rscript}" --vanilla -e 'cat(Rhtslib::pkgconfig("PKG_CPPFLAGS"))'`
+libs=`"${rscript}" --vanilla -e 'cat(Rhtslib::pkgconfig("PKG_LIBS"))'`
+sed -e "s|@RHTLIBS_CPPFLAGS@|${cppflags}|g" \
+    -e "s|@RHTLIBS@|${libs}|g" \
+    src/Makevars.in > src/Makevars.win

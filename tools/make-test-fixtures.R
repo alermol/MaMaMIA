@@ -169,28 +169,30 @@ if (is.na(old_epoch)) {
 }
 
 config <- list(
-    version = 1L,
+    version = 2L,
     defaults = list(
         windows_per_chromosome = 100L,
         allowed_windows = c(100L, 1000L, 10000L),
         mapq = 20L,
-        exclude_flags = 2308L,
-        max_fit_windows = 1000L,
+        exclude_flags = 1796L,
         gc_mmap = TRUE,
-        gc_validate_crc = FALSE,
-        normalization_by_side = TRUE
+        gc_validate_crc = FALSE
     ),
     server = list(max_bams = 4L, max_total_bytes = 1024^2),
-    assemblies = list(
-        tiny = list(
-            label = "Tiny synthetic assembly",
+    species = list(
+        tiny_recipient = list(
+            label = "Tiny synthetic recipient",
             description = "Two 20 kb contigs with 40% and 60% GC",
+            default_subgenome = "R",
             gc_indexes = list("tiny.gcrank"),
-            contigs = list(
-                recipient = list(list(id = "r1", name = "1R", subgenome = "R")),
-                donor = list(list(id = "d1", name = "1D", subgenome = "D"))
-            ),
-            pairs = list(d1 = "r1")
+            contigs = list(list(id = "r1", name = "1R", subgenome = "R"))
+        ),
+        tiny_donor = list(
+            label = "Tiny synthetic donor",
+            description = "Two 20 kb contigs with 40% and 60% GC",
+            default_subgenome = "D",
+            gc_indexes = list("tiny.gcrank"),
+            contigs = list(list(id = "d1", name = "1D", subgenome = "D"))
         )
     )
 )

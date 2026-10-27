@@ -15,7 +15,7 @@ count_test_bam <- function() {
 tiny_count_windows <- function() {
     skip_if_no_tiny_fixtures()
     config <- readMaMaMIAConfig(tiny_config_path())
-    windows <- makeAnalysisWindows(config$assemblies$tiny, tiny_contigs(), 1L)
+    windows <- makeAnalysisWindows(tiny_assembly(config), tiny_contigs(), 1L)
     ## makeAnalysisWindows() orders recipient (r1) first, then donor (d1).
     expect_identical(windows$table$chr_id, c("r1", "d1"))
     windows$gr
@@ -258,18 +258,18 @@ test_that("countReads() refuses a corrupt index in a read-only directory", {
     )
 })
 
-test_that("countReads() matches legacy tables within boundary effects", {
+test_that("countReads() matches the reference tables within boundary effects", {
     root <- skip_if_no_test_data()
     bam_path <- file.path(root, "bam_files", "Sq54", "cs_t2t_se_cereale.bam")
-    legacy_dir <- file.path(root, "mamamia_analysis", "arsenal", "Sq54")
+    reference_dir <- file.path(root, "mamamia_analysis", "arsenal", "Sq54")
     recipient_bed <- file.path(
-        legacy_dir, "cs_t2t_se_cereale.w1000.rcov.bed"
+        reference_dir, "cs_t2t_se_cereale.w1000.rcov.bed"
     )
     donor_bed <- file.path(
-        legacy_dir, "cs_t2t_se_cereale.w1000.dcov.bed"
+        reference_dir, "cs_t2t_se_cereale.w1000.dcov.bed"
     )
     if (!all(file.exists(c(bam_path, recipient_bed, donor_bed)))) {
-        testthat::skip("Sq54 BAM or legacy count tables are missing")
+        testthat::skip("Sq54 BAM or reference count tables are missing")
     }
 
     read_counts <- function(path) {
@@ -283,7 +283,7 @@ test_that("countReads() matches legacy tables within boundary effects", {
     }
     recipient <- read_counts(recipient_bed)
     donor <- read_counts(donor_bed)
-    legacy <- rbind(recipient, donor)
+    reference <- rbind(recipient, donor)
 
     ## Contig lengths come from the gcrank index metadata, not from the BED.
     wheat <- readContigsTsv(file.path(
@@ -295,13 +295,13 @@ test_that("countReads() matches legacy tables within boundary effects", {
     contig_lengths <- stats::setNames(
         c(wheat$length, rye$length), c(wheat$name, rye$name)
     )
-    missing <- setdiff(unique(legacy$chr_id), names(contig_lengths))
+    missing <- setdiff(unique(reference$chr_id), names(contig_lengths))
     expect_length(missing, 0L)
-    seqlengths <- contig_lengths[unique(legacy$chr_id)]
+    seqlengths <- contig_lengths[unique(reference$chr_id)]
 
     gr <- GenomicRanges::GRanges(
-        legacy$chr_id,
-        IRanges::IRanges(legacy$start + 1, legacy$stop),
+        reference$chr_id,
+        IRanges::IRanges(reference$start + 1, reference$stop),
         seqlengths = seqlengths
     )
 
@@ -313,133 +313,13 @@ test_that("countReads() matches legacy tables within boundary effects", {
     counts <- countReads(
         staged, gr, mapq = 20L, exclude_flags = 2308L
     )
-    expected <- as.integer(legacy$count)
+    expected <- as.integer(reference$count)
     delta <- counts - expected
 
-    expect_identical(length(counts), nrow(legacy))
+    expect_identical(length(counts), nrow(reference))
     expect_true(all(delta <= 0L))
     expect_identical(delta[seq_len(3L)], c(0L, 0L, 0L))
     expect_lte(mean(delta != 0L), 0.02)
     expect_lte(max(abs(delta)), 20L)
     expect_lt(sum(abs(delta)) / sum(expected), 0.001)
-})
-
-test_that("countReads() and .count_reads_by_sample() agree on a one-sample BAM", {
-    skip_if_no_samtools()
-    demo <- system.file("extdata", "bam-demo", package = "MaMaMIA")
-    if (!nzchar(demo) || !file.exists(file.path(demo, "demo.bam"))) {
-        testthat::skip("the bundled demo BAM is not installed")
-    }
-    directory <- tempfile("counts-per-sample-")
-    dir.create(directory)
-    on.exit(unlink(directory, recursive = TRUE), add = TRUE)
-    bam <- file.path(directory, "demo.bam")
-    expect_true(file.copy(file.path(demo, "demo.bam"), bam))
-
-    config <- readMaMaMIAConfig(file.path(demo, "assemblies.yml"))
-    pair <- resolveSpeciesAssembly(
-        config, donor = "secale_like", recipient = "triticum_like"
-    )
-    contigs <- readContigsTsv(file.path(demo, "demo.gcrank", "contigs.tsv"))
-    windows <- makeAnalysisWindows(pair$assembly, contigs, 100L)
-    header <- bamHeaderInfo(bam)
-
-    expected <- countReads(bam, windows$gr)
-    observed <- MaMaMIA:::.count_reads_by_sample(
-        bam, windows, "demo-sample", header$read_groups
-    )
-    expect_identical(dim(observed), c(1L, nrow(windows$table)))
-    expect_identical(as.integer(observed[1L, ]), expected)
-    expect_identical(rownames(observed), "demo-sample")
-})
-
-test_that(".count_reads_by_sample() assigns boundary reads to the next window", {
-    skip_if_no_samtools()
-    directory <- tempfile("boundary-cpp-")
-    dir.create(directory)
-    on.exit(unlink(directory, recursive = TRUE), add = TRUE)
-    path <- file.path(directory, "boundary.bam")
-    write_test_bam(
-        c(
-            "@HD\tVN:1.6\tSO:coordinate",
-            "@SQ\tSN:chr1\tLN:10",
-            ## 0-based 5' end 3 is the first base of window 2.
-            "forward\t0\tchr1\t4\t60\t1M\t*\t0\t0\tA\tI",
-            ## Reverse read ends at 0-based 6, the first base of window 3.
-            "reverse\t16\tchr1\t7\t60\t1M\t*\t0\t0\tA\tI"
-        ),
-        path,
-        index = TRUE
-    )
-
-    table <- data.frame(
-        chr_id = rep("chr1", 3L),
-        start = c(0L, 3L, 6L),
-        stop = c(3L, 6L, 10L),
-        stringsAsFactors = FALSE
-    )
-    gr <- GenomicRanges::GRanges(
-        "chr1",
-        IRanges::IRanges(c(1L, 4L, 7L), c(3L, 6L, 10L)),
-        seqlengths = c(chr1 = 10)
-    )
-    windows <- list(gr = gr, table = table, n_per_chromosome = 3L)
-
-    observed <- MaMaMIA:::.count_reads_by_sample(
-        path,
-        windows,
-        samples = "s",
-        read_groups = data.frame(id = "fake", sample = "s"),
-        mapq = 0L,
-        exclude_flags = 0L
-    )
-    expect_identical(as.integer(observed[1L, ]), c(0L, 1L, 1L))
-    expect_identical(
-        as.integer(observed[1L, ]),
-        countReads(path, gr, mapq = 0L, exclude_flags = 0L)
-    )
-})
-
-test_that(".count_reads_by_sample() counts a one-sample BAM without @RG", {
-    skip_if_no_samtools()
-    directory <- tempfile("no-rg-")
-    dir.create(directory)
-    on.exit(unlink(directory, recursive = TRUE), add = TRUE)
-    path <- file.path(directory, "no-rg.bam")
-    write_test_bam(
-        c(
-            "@HD\tVN:1.6\tSO:coordinate",
-            "@SQ\tSN:chr1\tLN:10",
-            "read\t0\tchr1\t4\t60\t1M\t*\t0\t0\tA\tI"
-        ),
-        path,
-        index = TRUE
-    )
-    header <- bamHeaderInfo(path)
-    table <- data.frame(
-        chr_id = "chr1", start = 0L, stop = 10L,
-        stringsAsFactors = FALSE
-    )
-    windows <- list(
-        gr = GenomicRanges::GRanges(
-            "chr1", IRanges::IRanges(1L, 10L), seqlengths = c(chr1 = 10)
-        ),
-        table = table,
-        n_per_chromosome = 1L
-    )
-
-    ## A one-sample BAM does not need an RG mapping at all.
-    observed <- MaMaMIA:::.count_reads_by_sample(
-        path,
-        windows,
-        samples = header$samples,
-        read_groups = data.frame(
-            id = character(), sample = character(),
-            stringsAsFactors = FALSE
-        ),
-        mapq = 0L,
-        exclude_flags = 0L
-    )
-    expect_identical(dim(observed), c(1L, 1L))
-    expect_identical(as.integer(observed[1L, 1L]), 1L)
 })
