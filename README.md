@@ -219,13 +219,15 @@ exploreIntrogressions(result)
 
 The dashboard analyses every subgenome declared for the selected species and
 offers chromosome-group, class, confidence and width filters. The main tab is
-a vertical karyotype with a score heatmap or call-map mode. Every donor
-segment is compared with every recipient contig; a cohort breadth baseline, a
-donor/recipient width match and a same-group homology prior feed a per-sample
-global assignment with a "no host" option. Cross-group choices are reported as
-translocation candidates, and a strong assigned loss reclassifies the call as
-a substitution. Deleted chromosomes and added donor chromosomes are drawn
-separately. A score profile, call table and BEDPE export follow.
+a vertical karyotype with a score heatmap or call-map mode. It is split into
+subgenome columns, and every chromosome bar is scaled by its configured
+length. Every donor segment is compared with every recipient contig; a cohort
+breadth baseline, a donor/recipient width match and a same-group homology
+prior feed a per-sample global assignment with a "no host" option. Cross-group
+choices are reported as translocation candidates, and a strong assigned loss
+reclassifies the call as a substitution. Deleted chromosomes and added donor
+chromosomes are drawn separately. A score profile, call table and BEDPE export
+follow.
 
 ## Validation
 

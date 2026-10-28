@@ -1,22 +1,28 @@
 ## Interactive karyotype payload and widget.
 
-test_that("karyotype_payload() lays out the recipient karyotype", {
+test_that("karyotype_payload() lays out chromosomes by subgenome", {
     result <- bam_example_result(100)
     payload <- karyotype_payload(result, "example-sample", "heatmap")
     expect_identical(payload$mode, "heatmap")
     expect_identical(payload$sample, "example-sample")
     expect_true(is.finite(payload$score_limit))
-    expect_length(payload$groups, 1L)
-    group <- payload$groups[[1L]]
-    expect_identical(group$group, "1")
-    expect_true(group$selected)
-    expect_length(group$recipient, 1L)
-    expect_identical(group$recipient[[1L]]$name, "1A")
-    expect_identical(group$recipient[[1L]]$subgenome, "A")
-    expect_false(group$recipient[[1L]]$deleted)
-    expect_length(group$added, 0L)
-    expect_length(group$scores, nrow(result$scores))
-    expect_length(group$calls, nrow(result$calls))
+    expect_length(payload$subgenomes, 1L)
+    subgenome <- payload$subgenomes[[1L]]
+    expect_identical(subgenome$subgenome, "A")
+    expect_identical(subgenome$label, "Subgenome A")
+    expect_true(subgenome$selected)
+    expect_length(subgenome$chromosomes, 1L)
+    chromosome <- subgenome$chromosomes[[1L]]
+    expect_identical(chromosome$name, "1A")
+    expect_identical(chromosome$subgenome, "A")
+    expect_false(chromosome$deleted)
+    expect_false(chromosome$added)
+    expect_identical(chromosome$length, 20000)
+    expect_length(chromosome$scores, 100L)
+    hosted <- sum(result$calls$recipient_assignment != "no_recipient_loss",
+        na.rm = TRUE
+    )
+    expect_length(chromosome$calls, hosted)
 })
 
 test_that("a full donor chromosome is added with its diploid copies", {
@@ -37,11 +43,19 @@ test_that("a full donor chromosome is added with its diploid copies", {
     result$calls <- rbind(result$calls, addition)
 
     payload <- karyotype_payload(result, "example-sample", "calls")
-    added <- payload$groups[[1L]]$added
+    expect_identical(
+        vapply(payload$subgenomes, function(x) x$subgenome, character(1)),
+        c("A", "R")
+    )
+    added <- payload$subgenomes[[2L]]$chromosomes
     expect_length(added, 2L)
     expect_identical(
         vapply(added, function(x) x$name, character(1)),
         c("1R", "1R")
+    )
+    expect_identical(
+        vapply(added, function(x) x$label, character(1)),
+        c("1R 1", "1R 2")
     )
     expect_identical(
         vapply(added, function(x) x$copy, integer(1)),
@@ -51,6 +65,7 @@ test_that("a full donor chromosome is added with its diploid copies", {
         vapply(added, function(x) x$copies, integer(1)),
         c(2L, 2L)
     )
+    expect_true(all(vapply(added, function(x) x$added, logical(1))))
 })
 
 test_that("a partial donor call is not a whole-chromosome addition", {
@@ -71,7 +86,10 @@ test_that("a partial donor call is not a whole-chromosome addition", {
     result$calls <- rbind(result$calls, addition)
 
     payload <- karyotype_payload(result, "example-sample", "calls")
-    expect_length(payload$groups[[1L]]$added, 0L)
+    expect_identical(
+        vapply(payload$subgenomes, function(x) x$subgenome, character(1)),
+        "A"
+    )
 })
 
 test_that("a deleted recipient chromosome stays in the karyotype", {
@@ -94,24 +112,25 @@ test_that("a deleted recipient chromosome stays in the karyotype", {
     result$metrics$breadth[result$metrics$chr_id == "r1"] <- 0.0009
 
     payload <- karyotype_payload(result, "example-sample", "heatmap")
-    recipient <- payload$groups[[1L]]$recipient
-    expect_length(recipient, 2L)
     expect_identical(
-        vapply(recipient, function(x) x$name, character(1)),
-        c("1A", "1B")
+        vapply(payload$subgenomes, function(x) x$subgenome, character(1)),
+        c("A", "B")
     )
+    recipient <- payload$subgenomes[[1L]]$chromosomes
+    expect_length(recipient, 1L)
+    expect_identical(recipient[[1L]]$name, "1A")
     expect_true(recipient[[1L]]$deleted)
-    expect_false(recipient[[2L]]$deleted)
-    expect_true(payload$groups[[1L]]$deleted)
+    expect_false(recipient[[1L]]$added)
 })
 
-test_that("a cross-group assignment is painted on the recipient group", {
+test_that("a cross-group assignment is painted on the recipient chromosome", {
     result <- bam_example_result(100)
     extra <- result$assembly$contigs$recipient[1, , drop = FALSE]
     extra$id <- "r2"
     extra$name <- "2A"
     extra$subgenome <- "A"
     extra$group <- "2"
+    extra$length <- 40000
     result$assembly$contigs$recipient <- rbind(
         result$assembly$contigs$recipient, extra
     )
@@ -121,16 +140,25 @@ test_that("a cross-group assignment is painted on the recipient group", {
     call$recipient_cross_group <- TRUE
     call$recipient_chr_id <- "r2"
     call$recipient_chr_name <- "2A"
+    call$recipient_start_bp <- 0
+    call$recipient_end_bp <- 40000
     result$calls <- call
     payload <- karyotype_payload(result, "example-sample", "calls")
-    expect_length(payload$groups, 2L)
-    expect_length(payload$groups[[1L]]$calls, 0L)
-    expect_length(payload$groups[[2L]]$calls, 1L)
-    moved <- payload$groups[[2L]]$calls[[1L]]
+    expect_length(payload$subgenomes, 1L)
+    chromosomes <- payload$subgenomes[[1L]]$chromosomes
+    expect_identical(
+        vapply(chromosomes, function(x) x$name, character(1)),
+        c("1A", "2A")
+    )
+    expect_length(chromosomes[[1L]]$calls, 0L)
+    expect_length(chromosomes[[2L]]$calls, 1L)
+    moved <- chromosomes[[2L]]$calls[[1L]]
     expect_true(moved$cross_group)
     expect_identical(moved$donor_group, "1")
     expect_identical(moved$recipient_group, "2")
-    expect_identical(moved$recipient_chr_id, "r2")
+    expect_identical(moved$recipient_chr_name, "2A")
+    expect_equal(moved$start, 0)
+    expect_equal(moved$end, 1)
 })
 
 test_that("the karyotype includes every recipient subgenome", {
@@ -145,9 +173,8 @@ test_that("the karyotype includes every recipient subgenome", {
         cores = 1L
     )
     payload <- karyotype_payload(result, "sample1", "heatmap")
-    recipient <- payload$groups[[1L]]$recipient
     expect_identical(
-        vapply(recipient, function(x) x$subgenome, character(1)),
+        vapply(payload$subgenomes, function(x) x$subgenome, character(1)),
         c("A", "B")
     )
 })

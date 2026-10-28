@@ -179,12 +179,6 @@ karyotype_payload <- function(result, sample = NULL,
         )
     }
     groups <- karyotype_groups(recipient$group)
-    recipient_subgenomes <- unique(as.character(recipient$subgenome))
-    donor_subgenomes <- if (is.null(donor)) {
-        character()
-    } else {
-        unique(as.character(donor$subgenome))
-    }
     n_per <- as.integer(result$windows$n_per_chromosome)[[1L]]
     scores <- result$scores
     scores <- scores[as.character(scores$sample) == sample, , drop = FALSE]
@@ -218,201 +212,292 @@ karyotype_payload <- function(result, sample = NULL,
         intersect(as.character(selected_groups), groups)
     }
 
-    ## A cross-group assignment is displayed on the recipient group, not on
-    ## the donor group that produced the call. The donor group stays in the
-    ## call payload so the tooltip can explain the translocation.
-    call_group <- as.character(overlay$group)
-    if (all(c("recipient_group", "recipient_cross_group") %in%
-        names(overlay))) {
-        cross <- as.logical(overlay$recipient_cross_group) %in% TRUE
-        recipient_group <- as.character(overlay$recipient_group)
-        move <- cross & !is.na(recipient_group) & nzchar(recipient_group)
-        call_group[move] <- recipient_group[move]
+    ## Calls are attached to the chromosome they belong to, not to a group
+    ## column. This lets the layout use one column per subgenome and scale
+    ## every chromosome bar by its configured length.
+    recipient_ids <- if ("recipient_chr_id" %in% names(overlay)) {
+        as.character(overlay$recipient_chr_id)
+    } else {
+        rep(NA_character_, nrow(overlay))
+    }
+    recipient_subs <- if ("recipient_subgenome" %in% names(overlay)) {
+        as.character(overlay$recipient_subgenome)
+    } else {
+        rep(NA_character_, nrow(overlay))
+    }
+    recipient_start <- if ("recipient_start_bp" %in% names(overlay)) {
+        as.numeric(overlay$recipient_start_bp)
+    } else {
+        rep(NA_real_, nrow(overlay))
+    }
+    recipient_end <- if ("recipient_end_bp" %in% names(overlay)) {
+        as.numeric(overlay$recipient_end_bp)
+    } else {
+        rep(NA_real_, nrow(overlay))
+    }
+    recipient_assignment <- if ("recipient_assignment" %in% names(overlay)) {
+        as.character(overlay$recipient_assignment)
+    } else {
+        rep(NA_character_, nrow(overlay))
+    }
+    donor_ids <- if ("donor_chr_id" %in% names(overlay)) {
+        as.character(overlay$donor_chr_id)
+    } else {
+        rep(NA_character_, nrow(overlay))
+    }
+    donor_subs <- if ("donor_subgenome" %in% names(overlay)) {
+        as.character(overlay$donor_subgenome)
+    } else {
+        rep(NA_character_, nrow(overlay))
+    }
+    donor_start <- if ("donor_start_bp" %in% names(overlay)) {
+        as.numeric(overlay$donor_start_bp)
+    } else {
+        rep(NA_real_, nrow(overlay))
+    }
+    donor_end <- if ("donor_end_bp" %in% names(overlay)) {
+        as.numeric(overlay$donor_end_bp)
+    } else {
+        rep(NA_real_, nrow(overlay))
+    }
+    call_groups <- if ("group" %in% names(overlay)) {
+        as.character(overlay$group)
+    } else {
+        rep(NA_character_, nrow(overlay))
+    }
+    call_value <- function(name, i, default = NA) {
+        if (!name %in% names(overlay)) {
+            return(default)
+        }
+        overlay[[name]][[i]]
+    }
+    score_values <- lapply(
+        split(scores, as.character(scores$group)),
+        function(x) {
+            x <- x[order(x$iid), , drop = FALSE]
+            as.numeric(x$score)
+        }
+    )
+    make_call <- function(i, start_bp, end_bp, length_bp, n_per) {
+        start <- NA_real_
+        end <- NA_real_
+        if (is.finite(start_bp) && is.finite(length_bp) && length_bp > 0) {
+            start <- start_bp / length_bp
+        }
+        if (is.finite(end_bp) && is.finite(length_bp) && length_bp > 0) {
+            end <- end_bp / length_bp
+        }
+        if (!is.finite(start) || !is.finite(end) || end <= start) {
+            start <- as.numeric(call_value("start_iid", i, 0)) / n_per
+            end <- (as.numeric(call_value("end_iid", i, n_per - 1L)) + 1) /
+                n_per
+            if (is.finite(length_bp) && length_bp > 0) {
+                start_bp <- start * length_bp
+                end_bp <- end * length_bp
+            }
+        }
+        start <- max(0, min(1, start))
+        end <- max(0, min(1, end))
+        list(
+            start = start,
+            end = end,
+            start_bp = as.numeric(start_bp),
+            end_bp = as.numeric(end_bp),
+            width_bp = as.numeric(call_value("width_bp", i, NA_real_)),
+            class = as.character(call_value("class", i, NA_character_)),
+            confidence = as.character(
+                call_value("confidence", i, NA_character_)
+            ),
+            score = as.numeric(call_value("score_mean", i, NA_real_)),
+            pass = isTRUE(as.logical(call_value("pass", i, TRUE))),
+            recipient_subgenome = as.character(
+                call_value("recipient_subgenome", i, NA_character_)
+            ),
+            recipient_chr_id = as.character(
+                call_value("recipient_chr_id", i, NA_character_)
+            ),
+            recipient_chr_name = as.character(
+                call_value("recipient_chr_name", i, NA_character_)
+            ),
+            recipient_start_bp = as.numeric(
+                call_value("recipient_start_bp", i, NA_real_)
+            ),
+            recipient_end_bp = as.numeric(
+                call_value("recipient_end_bp", i, NA_real_)
+            ),
+            recipient_assignment = as.character(
+                call_value("recipient_assignment", i, NA_character_)
+            ),
+            recipient_weight = as.numeric(
+                call_value("recipient_weight", i, NA_real_)
+            ),
+            recipient_group = as.character(
+                call_value("recipient_group", i, NA_character_)
+            ),
+            donor_subgenome = as.character(
+                call_value("donor_subgenome", i, NA_character_)
+            ),
+            donor_chr_id = as.character(
+                call_value("donor_chr_id", i, NA_character_)
+            ),
+            donor_chr_name = as.character(
+                call_value("donor_chr_name", i, NA_character_)
+            ),
+            donor_group = as.character(
+                call_value("group", i, NA_character_)
+            ),
+            cross_group = isTRUE(as.logical(
+                call_value("recipient_cross_group", i, FALSE)
+            )),
+            recipient_alternative = as.character(
+                call_value("recipient_alternative", i, NA_character_)
+            ),
+            recipient_mean_depletion = as.numeric(
+                call_value("recipient_mean_depletion", i, NA_real_)
+            )
+        )
+    }
+    recipient_calls <- function(chr_id, group, subgenome, length_bp) {
+        if (nrow(overlay) == 0L) {
+            return(list())
+        }
+        own <- !is.na(recipient_ids) & recipient_ids == chr_id
+        fallback <- is.na(recipient_ids) & !is.na(recipient_subs) &
+            recipient_subs == subgenome & call_groups == group
+        keep <- is.na(recipient_assignment) |
+            recipient_assignment != "no_recipient_loss"
+        rows <- which((own | fallback) & keep)
+        lapply(rows, function(i) {
+            make_call(i, recipient_start[[i]], recipient_end[[i]],
+                length_bp, n_per
+            )
+        })
+    }
+    donor_calls <- function(chr_id, group, subgenome, length_bp) {
+        if (nrow(overlay) == 0L) {
+            return(list())
+        }
+        own <- !is.na(donor_ids) & donor_ids == chr_id
+        fallback <- is.na(donor_ids) & !is.na(donor_subs) &
+            donor_subs == subgenome & call_groups == group
+        rows <- which(own | fallback)
+        lapply(rows, function(i) {
+            make_call(i, donor_start[[i]], donor_end[[i]],
+                length_bp, n_per
+            )
+        })
     }
 
-    group_payload <- lapply(groups, function(group) {
-        rec <- recipient[as.character(recipient$group) == group, , drop = FALSE]
-        rec <- rec[order(match(
-            as.character(rec$subgenome), recipient_subgenomes
-        )), , drop = FALSE]
-        rec_payload <- lapply(seq_len(nrow(rec)), function(i) {
-            list(
-                id = as.character(rec$id[[i]]),
-                name = as.character(rec$name[[i]]),
-                subgenome = as.character(rec$subgenome[[i]]),
-                length = as.numeric(rec$length[[i]]),
-                deleted = as.character(rec$id[[i]]) %in% deleted
-            )
-        })
-
-        add <- full[
-            as.character(full$group) == group & full$donor_mean > 0.5,
-            , drop = FALSE
+    added_groups <- if (nrow(full) > 0L) {
+        keep <- !is.na(full$donor_mean) & full$donor_mean > 0.5
+        unique(as.character(full$group[keep]))
+    } else {
+        character()
+    }
+    if (is.null(donor) || nrow(donor) == 0L) {
+        donor <- data.frame(
+            id = character(), name = character(), subgenome = character(),
+            group = character(), length = numeric(),
+            copy_number = numeric(), stringsAsFactors = FALSE
+        )
+    }
+    added_donor <- donor[
+        as.character(donor$group) %in% added_groups, , drop = FALSE
+    ]
+    added_donor <- added_donor[order(
+        suppressWarnings(as.numeric(added_donor$group)),
+        as.character(added_donor$name)
+    ), , drop = FALSE]
+    subgenome_levels <- unique(c(
+        as.character(recipient$subgenome),
+        as.character(added_donor$subgenome)
+    ))
+    subgenome_payload <- lapply(subgenome_levels, function(level) {
+        rec <- recipient[
+            as.character(recipient$subgenome) == level, , drop = FALSE
         ]
-        add_payload <- list()
-        if (nrow(add) > 0L && !is.null(donor) && nrow(donor) > 0L) {
-            don <- donor[as.character(donor$group) == group, , drop = FALSE]
-            don <- don[order(match(
-                as.character(don$subgenome), donor_subgenomes
-            )), , drop = FALSE]
-            for (i in seq_len(nrow(don))) {
-                copies <- suppressWarnings(as.integer(don$copy_number[[i]]))
-                if (length(copies) != 1L || is.na(copies) || copies < 1L) {
-                    copies <- 1L
+        rec <- rec[order(
+            suppressWarnings(as.numeric(rec$group)),
+            as.character(rec$name)
+        ), , drop = FALSE]
+        add <- added_donor[
+            as.character(added_donor$subgenome) == level, , drop = FALSE
+        ]
+        chromosomes <- list()
+        for (i in seq_len(nrow(rec))) {
+            chr_id <- as.character(rec$id[[i]])
+            chr_name <- as.character(rec$name[[i]])
+            chr_group <- as.character(rec$group[[i]])
+            chr_length <- as.numeric(rec$length[[i]])
+            chromosomes[[length(chromosomes) + 1L]] <- list(
+                id = chr_id,
+                name = chr_name,
+                label = chr_name,
+                subgenome = level,
+                group = chr_group,
+                length = chr_length,
+                deleted = chr_id %in% deleted,
+                added = FALSE,
+                copy = 1L,
+                copies = 1L,
+                selected = chr_group %in% selected_groups,
+                scores = if (is.null(score_values[[chr_group]])) {
+                    numeric()
+                } else {
+                    score_values[[chr_group]]
+                },
+                calls = recipient_calls(
+                    chr_id, chr_group, level, chr_length
+                )
+            )
+        }
+        for (i in seq_len(nrow(add))) {
+            chr_id <- as.character(add$id[[i]])
+            chr_name <- as.character(add$name[[i]])
+            chr_group <- as.character(add$group[[i]])
+            chr_length <- as.numeric(add$length[[i]])
+            copies <- suppressWarnings(as.integer(add$copy_number[[i]]))
+            if (length(copies) != 1L || is.na(copies) || copies < 1L) {
+                copies <- 1L
+            }
+            for (copy in seq_len(copies)) {
+                label <- if (copies > 1L) {
+                    paste(chr_name, copy)
+                } else {
+                    chr_name
                 }
-                for (copy in seq_len(copies)) {
-                    add_payload[[length(add_payload) + 1L]] <- list(
-                        id = as.character(don$id[[i]]),
-                        name = as.character(don$name[[i]]),
-                        subgenome = as.character(don$subgenome[[i]]),
-                        length = as.numeric(don$length[[i]]),
-                        copy = copy,
-                        copies = copies
+                chromosomes[[length(chromosomes) + 1L]] <- list(
+                    id = chr_id,
+                    name = chr_name,
+                    label = label,
+                    subgenome = level,
+                    group = chr_group,
+                    length = chr_length,
+                    deleted = FALSE,
+                    added = TRUE,
+                    copy = copy,
+                    copies = copies,
+                    selected = chr_group %in% selected_groups,
+                    scores = if (is.null(score_values[[chr_group]])) {
+                        numeric()
+                    } else {
+                        score_values[[chr_group]]
+                    },
+                    calls = donor_calls(
+                        chr_id, chr_group, level, chr_length
                     )
-                }
+                )
             }
         }
-
-        group_scores <- scores[
-            as.character(scores$group) == group, , drop = FALSE
-        ]
-        group_scores <- group_scores[order(group_scores$iid), , drop = FALSE]
-        score_values <- if (nrow(group_scores) > 0L) {
-            as.numeric(group_scores$score)
-        } else {
-            numeric()
-        }
-        group_calls <- overlay[call_group == group, , drop = FALSE]
-        call_payload <- lapply(seq_len(nrow(group_calls)), function(i) {
-            start <- if (n_per > 0L) {
-                as.numeric(group_calls$start_iid[[i]]) / n_per
-            } else {
-                0
-            }
-            end <- if (n_per > 0L) {
-                (as.numeric(group_calls$end_iid[[i]]) + 1) / n_per
-            } else {
-                1
-            }
-            list(
-                start = max(0, min(1, start)),
-                end = max(0, min(1, end)),
-                start_bp = as.numeric(group_calls$start_bp[[i]]),
-                end_bp = as.numeric(group_calls$end_bp[[i]]),
-                width_bp = as.numeric(group_calls$width_bp[[i]]),
-                class = as.character(group_calls$class[[i]]),
-                confidence = as.character(group_calls$confidence[[i]]),
-                score = as.numeric(group_calls$score_mean[[i]]),
-                pass = if ("pass" %in% names(group_calls)) {
-                    isTRUE(group_calls$pass[[i]])
-                } else {
-                    TRUE
-                },
-                recipient_subgenome = if ("recipient_subgenome" %in%
-                    names(group_calls)) {
-                    as.character(group_calls$recipient_subgenome[[i]])
-                } else {
-                    NA_character_
-                },
-                recipient_chr_id = if ("recipient_chr_id" %in%
-                    names(group_calls)) {
-                    as.character(group_calls$recipient_chr_id[[i]])
-                } else {
-                    NA_character_
-                },
-                recipient_chr_name = if ("recipient_chr_name" %in%
-                    names(group_calls)) {
-                    as.character(group_calls$recipient_chr_name[[i]])
-                } else {
-                    NA_character_
-                },
-                recipient_start_bp = if ("recipient_start_bp" %in%
-                    names(group_calls)) {
-                    as.numeric(group_calls$recipient_start_bp[[i]])
-                } else {
-                    NA_real_
-                },
-                recipient_end_bp = if ("recipient_end_bp" %in%
-                    names(group_calls)) {
-                    as.numeric(group_calls$recipient_end_bp[[i]])
-                } else {
-                    NA_real_
-                },
-                recipient_assignment = if ("recipient_assignment" %in%
-                    names(group_calls)) {
-                    as.character(group_calls$recipient_assignment[[i]])
-                } else {
-                    NA_character_
-                },
-                recipient_weight = if ("recipient_weight" %in%
-                    names(group_calls)) {
-                    as.numeric(group_calls$recipient_weight[[i]])
-                } else {
-                    NA_real_
-                },
-                donor_subgenome = if ("donor_subgenome" %in%
-                    names(group_calls)) {
-                    as.character(group_calls$donor_subgenome[[i]])
-                } else {
-                    NA_character_
-                },
-                donor_chr_id = if ("donor_chr_id" %in% names(group_calls)) {
-                    as.character(group_calls$donor_chr_id[[i]])
-                } else {
-                    NA_character_
-                },
-                donor_chr_name = if ("donor_chr_name" %in%
-                    names(group_calls)) {
-                    as.character(group_calls$donor_chr_name[[i]])
-                } else {
-                    NA_character_
-                },
-                donor_group = as.character(group_calls$group[[i]]),
-                recipient_group = if ("recipient_group" %in%
-                    names(group_calls)) {
-                    as.character(group_calls$recipient_group[[i]])
-                } else {
-                    NA_character_
-                },
-                cross_group = if ("recipient_cross_group" %in%
-                    names(group_calls)) {
-                    isTRUE(as.logical(
-                        group_calls$recipient_cross_group[[i]]
-                    ))
-                } else {
-                    FALSE
-                },
-                recipient_alternative = if ("recipient_alternative" %in%
-                    names(group_calls)) {
-                    as.character(group_calls$recipient_alternative[[i]])
-                } else {
-                    NA_character_
-                },
-                recipient_mean_depletion = if ("recipient_mean_depletion" %in%
-                    names(group_calls)) {
-                    as.numeric(group_calls$recipient_mean_depletion[[i]])
-                } else {
-                    NA_real_
-                }
-            )
-        })
-
         list(
-            group = group,
-            label = paste("Group", group),
-            length = if (nrow(rec) > 0L) {
-                max(rec$length, na.rm = TRUE)
-            } else {
-                NA_real_
-            },
-            selected = group %in% selected_groups,
-            recipient = rec_payload,
-            added = add_payload,
-            scores = score_values,
-            calls = call_payload,
-            deleted = any(vapply(
-                rec_payload, function(x) isTRUE(x$deleted), logical(1)
-            ))
+            subgenome = level,
+            label = paste("Subgenome", level),
+            selected = any(vapply(
+                chromosomes,
+                function(x) isTRUE(x$selected),
+                logical(1)
+            )),
+            chromosomes = chromosomes
         )
     })
 
@@ -427,7 +512,7 @@ karyotype_payload <- function(result, sample = NULL,
         sample = sample,
         score_limit = max(0.5, as.numeric(limit)),
         palette = karyotype_palette(),
-        groups = group_payload
+        subgenomes = subgenome_payload
     )
 }
 

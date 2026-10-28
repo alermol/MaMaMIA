@@ -2,7 +2,7 @@
 ## export.
 
 dashboard_packages <- c(
-    "bslib", "DT", "htmltools", "htmlwidgets", "shiny", "shinyWidgets"
+    "bslib", "DT", "htmltools", "htmlwidgets", "shiny"
 )
 
 require_dashboard_packages <- function() {
@@ -101,11 +101,6 @@ explorer_score_plot <- function(scores, calls = NULL) {
 explorer_view_filters_ui <- function(id) {
     ns <- shiny::NS(id)
     shiny::tagList(
-        shinyWidgets::pickerInput(
-            ns("groups"), "Chromosome groups",
-            choices = NULL, selected = NULL, multiple = TRUE,
-            options = list(`actions-box` = TRUE, `live-search` = TRUE)
-        ),
         shiny::checkboxGroupInput(
             ns("class"), "Call class",
             choices = c("substitution", "addition", "other"),
@@ -166,9 +161,11 @@ explorer_karyotype_ui <- function(id, height = "calc(100vh - 360px)") {
                 class = "text-muted small",
                 style = "margin:0;",
                 paste(
-                    "Donor segments are painted on their most probable",
-                    "recipient chromosome; low-confidence assignments fade.",
-                    "Dashed segments cross chromosome groups (translocation",
+                    "Columns are subgenomes; chromosome height is",
+                    "proportional to its configured length. Donor segments",
+                    "are painted on their most probable recipient",
+                    "chromosome; low-confidence assignments fade. Dashed",
+                    "segments cross chromosome groups (translocation",
                     "candidates). Click a chromosome to filter its group;",
                     "click the background to clear."
                 )
@@ -214,6 +211,7 @@ explorer_results_ui <- function(id) {
 #' @noRd
 explorer_server <- function(id, result, sample = NULL) {
     shiny::moduleServer(id, function(input, output, session) {
+        selected_group <- shiny::reactiveVal(NULL)
         result_value <- function() {
             if (shiny::is.reactive(result)) result() else result
         }
@@ -245,16 +243,10 @@ explorer_server <- function(id, result, sample = NULL) {
             .dashboard_calls(res, sample_value())
         })
 
+        group_filter <- selected_group
+
         shiny::observeEvent(scores(), {
-            x <- scores()
-            if (is.null(x) || nrow(x) == 0L) {
-                return()
-            }
-            groups <- sort(unique(as.character(x$group)))
-            shinyWidgets::updatePickerInput(
-                session, "groups",
-                choices = groups, selected = groups
-            )
+            selected_group(NULL)
         }, ignoreNULL = TRUE)
 
         shiny::observeEvent(input$karyotype_click, {
@@ -267,13 +259,9 @@ explorer_server <- function(id, result, sample = NULL) {
             groups <- sort(unique(as.character(x$group)))
             if (is.null(group) || length(group) != 1L || is.na(group) ||
                 !nzchar(group)) {
-                shinyWidgets::updatePickerInput(
-                    session, "groups", selected = groups
-                )
+                selected_group(NULL)
             } else if (group %in% groups) {
-                shinyWidgets::updatePickerInput(
-                    session, "groups", selected = group
-                )
+                selected_group(group)
             }
         }, ignoreInit = TRUE)
 
@@ -298,10 +286,11 @@ explorer_server <- function(id, result, sample = NULL) {
             if (isTRUE(input$pass_only) && "pass" %in% names(x)) {
                 keep <- keep & isTRUE_vec(x$pass)
             }
-            if (length(input$groups) > 0L) {
+            groups <- group_filter()
+            if (length(groups) > 0L) {
                 keep <- keep & (
-                    as.character(x$group) %in% input$groups |
-                        call_display_group(x) %in% input$groups
+                    as.character(x$group) %in% groups |
+                        call_display_group(x) %in% groups
                 )
             }
             if (length(input$class) > 0L) {
@@ -322,8 +311,9 @@ explorer_server <- function(id, result, sample = NULL) {
             if (is.null(x) || nrow(x) == 0L) {
                 return(x)
             }
-            if (length(input$groups) > 0L) {
-                x <- x[as.character(x$group) %in% input$groups, , drop = FALSE]
+            groups <- group_filter()
+            if (length(groups) > 0L) {
+                x <- x[as.character(x$group) %in% groups, , drop = FALSE]
             }
             x
         })
@@ -389,7 +379,7 @@ explorer_server <- function(id, result, sample = NULL) {
                 sample = sample_value(),
                 mode = mode,
                 calls = visible_calls(),
-                selected_groups = input$groups
+                selected_groups = group_filter()
             ))
         })
 

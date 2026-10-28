@@ -180,6 +180,18 @@ test_that("cohort summaries and warnings read WindowMetrics", {
     expect_false(any(grepl("Sample 'A' has no reads", warnings)))
 })
 
+test_that("the explorer has no chromosome group selector", {
+    skip_if_not_installed("htmlwidgets")
+    bam <- as.character(bam_results_ui())
+    standalone <- as.character(explorer_controls_ui("explorer"))
+    filters <- as.character(explorer_view_filters_ui("explorer"))
+    for (html in list(bam, standalone, filters)) {
+        expect_false(grepl("Chromosome groups", html, fixed = TRUE))
+    }
+    expect_match(filters, "Call class", fixed = TRUE)
+    expect_match(filters, "Confidence", fixed = TRUE)
+})
+
 test_that("the launcher builds with the demo registry", {
     config <- system.file("extdata", "bam-demo", "assemblies.yml",
         package = "MaMaMIA")

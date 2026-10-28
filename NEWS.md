@@ -56,12 +56,16 @@
   the selected species — for example A+B+D versus S — and analyses them in one
   assembly, with a read-only summary under **Assembly**.
 * The main tab is now a vertical, interactive karyotype built with
-  `htmlwidgets`. It shows the recipient chromosomes by group, keeps a deleted
-  recipient chromosome as a grey dashed bar, and adds donor chromosomes (one
-  shape per homolog copy) only when a passing call covers at least 95% of the
-  group. A toggle switches between the introgression-score heatmap and the
-  coloured call map; clicking a chromosome filters its group and clicking the
-  background clears the filter. The score profile remains as a second tab.
+  `htmlwidgets`. It is split into one column per subgenome, not per chromosome
+  group. Each chromosome bar is scaled by its configured length, keeps a
+  deleted recipient chromosome as a grey dashed bar, and adds donor
+  chromosomes (one shape per homolog copy) only when a passing call covers at
+  least 95% of the group. A toggle switches between the introgression-score
+  heatmap and the coloured call map; clicking a chromosome filters its group
+  and clicking the background clears the filter. The score profile remains as
+  a second tab. The chromosome-group picker is removed from both the BAM
+  dashboard and the standalone explorer; group filtering is driven by the
+  karyotype click.
 * The karyotype now performs an all-vs-all assignment of every donor segment
   against every recipient contig. Detection stays group-level, but candidate
   scoring compares the observed breadth inside the call with a cohort baseline
