@@ -160,11 +160,11 @@ test_that("preflightBams() rejects BAMs matching different assemblies", {
         gc_indexes = character(0),
         contigs = list(
             recipient = data.frame(
-                id = "x1", name = "1X", subgenome = "X", length = 20000,
+                id = "x1", name = "1X", component = "X", length = 20000,
                 index_path = NA_character_, stringsAsFactors = FALSE
             ),
             donor = data.frame(
-                id = "x2", name = "2X", subgenome = "X", length = 20000,
+                id = "x2", name = "2X", component = "X", length = 20000,
                 index_path = NA_character_, stringsAsFactors = FALSE
             )
         ),

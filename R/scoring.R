@@ -1,6 +1,6 @@
 ## Introgression scoring for any donor/recipient ploidy.
 ##
-## The primary score is the paired donor/recipient log-ratio of per-subgenome
+## The primary score is the paired donor/recipient log-ratio of per-component
 ## depth:
 ##
 ##   y = log(lambda_donor + eps) - log(lambda_recipient + eps)
@@ -35,7 +35,7 @@
 
 .validate_score_metrics <- function(metrics) {
     required <- c(
-        "sample", "chr_id", "chr_name", "group", "role", "subgenome", "iid",
+        "sample", "chr_id", "chr_name", "group", "role", "component", "iid",
         "start", "stop", "length", "count", "covered", "breadth", "gc",
         "lambda_breadth", "lambda_count", "read_length"
     )
@@ -51,7 +51,7 @@
     metrics$sample <- as.character(metrics$sample)
     metrics$group <- as.character(metrics$group)
     metrics$role <- as.character(metrics$role)
-    metrics$subgenome <- as.character(metrics$subgenome)
+    metrics$component <- as.character(metrics$component)
     metrics$iid <- as.integer(metrics$iid)
     if (anyNA(metrics$group) || any(!nzchar(metrics$group))) {
         .scoring_error(
@@ -68,12 +68,12 @@
 }
 
 .scoring_composition <- function(metrics, sample_composition = NULL) {
-    recipient <- unique(metrics$subgenome[metrics$role == "recipient"])
+    recipient <- unique(metrics$component[metrics$role == "recipient"])
     if (is.null(sample_composition)) {
         if ("copy_number" %in% names(metrics)) {
             values <- vapply(recipient, function(s) {
                 x <- metrics$copy_number[
-                    metrics$role == "recipient" & metrics$subgenome == s
+                    metrics$role == "recipient" & metrics$component == s
                 ]
                 if (length(x) == 0L) 2 else as.numeric(x[[1L]])
             }, numeric(1))
@@ -92,7 +92,7 @@
     unknown <- setdiff(names(values), recipient)
     if (length(unknown) > 0L) {
         .scoring_error(
-            "`sample_composition` names subgenome(s) not present in the recipient data: %s",
+            "`sample_composition` names component(s) not present in the recipient data: %s",
             paste(unknown, collapse = ", ")
         )
     }
@@ -160,24 +160,24 @@
     recipient_lambda <- .scoring_lambda(recipient, metric, eps)
     iid <- sort(unique(donor$iid))
     donor_matrix <- matrix(
-        NA_real_, nrow = length(iid), ncol = length(unique(donor$subgenome)),
-        dimnames = list(iid, sort(unique(donor$subgenome)))
+        NA_real_, nrow = length(iid), ncol = length(unique(donor$component)),
+        dimnames = list(iid, sort(unique(donor$component)))
     )
-    donor_matrix[cbind(match(donor$iid, iid), match(donor$subgenome,
+    donor_matrix[cbind(match(donor$iid, iid), match(donor$component,
         colnames(donor_matrix)))] <- donor_lambda
     recipient_matrix <- matrix(
-        NA_real_, nrow = length(iid), ncol = length(unique(recipient$subgenome)),
-        dimnames = list(iid, sort(unique(recipient$subgenome)))
+        NA_real_, nrow = length(iid), ncol = length(unique(recipient$component)),
+        dimnames = list(iid, sort(unique(recipient$component)))
     )
     recipient_matrix[cbind(match(recipient$iid, iid),
-        match(recipient$subgenome, colnames(recipient_matrix)))] <-
+        match(recipient$component, colnames(recipient_matrix)))] <-
         recipient_lambda
 
     active <- names(composition)[composition > 0]
     active <- intersect(active, colnames(recipient_matrix))
     if (length(active) == 0L) {
         .scoring_error(
-            "No recipient subgenome has a positive copy number in `sample_composition`"
+            "No recipient component has a positive copy number in `sample_composition`"
         )
     }
     recipient_mean <- rowMeans(
@@ -236,7 +236,7 @@
         score = score,
         donor_mean = donor_mean,
         recipient_mean = recipient_mean,
-        donor_subgenome = donor_source,
+        donor_component = donor_source,
         n_donor = rep(ncol(donor_matrix), length(iid)),
         n_recipient = rep(length(active), length(iid)),
         gc_donor = gc_donor,
@@ -253,7 +253,7 @@
 #'
 #' Computes the paired donor/recipient log-ratio (or the donor-only fallback)
 #' for every sample, chromosome group and window. Supports any number of donor
-#' and recipient subgenomes. Single samples are GC-corrected with a natural
+#' and recipient components. Single samples are GC-corrected with a natural
 #' spline; cohorts use median polish. The optional copy-number model reports
 #' donor copies and donor fraction.
 #'
@@ -261,11 +261,11 @@
 #' @param mode `"single"` or `"multi"`.
 #' @param metric `"breadth"`, `"count"` or `"combined"`.
 #' @param donor_aggregation `"mean"`, `"max"` or `"sum"`. Defaults to
-#'   `"max"`, so one strongly supported donor subgenome is not diluted by the
+#'   `"max"`, so one strongly supported donor component is not diluted by the
 #'   other donor homoeologs.
 #' @param recipient_aggregation Only `"mean"` is supported.
 #' @param sample_composition Optional named copy-number vector for recipient
-#'   subgenomes, for example `c(A = 2, B = 2, D = 2)`.
+#'   components, for example `c(A = 2, B = 2, D = 2)`.
 #' @param gc_correction Correct the single-sample score for GC.
 #' @param score_type `"paired_log_ratio"` or `"donor_only"`.
 #'
@@ -312,9 +312,9 @@ scoreIntrogression <- function(
             if (nrow(donor) == 0L || nrow(recipient) == 0L) {
                 next
             }
-            donor <- donor[order(donor$subgenome, donor$iid), , drop = FALSE]
+            donor <- donor[order(donor$component, donor$iid), , drop = FALSE]
             recipient <- recipient[
-                order(recipient$subgenome, recipient$iid), ,
+                order(recipient$component, recipient$iid), ,
                 drop = FALSE
             ]
             scored <- .score_one_group(
@@ -333,7 +333,7 @@ scoreIntrogression <- function(
                 score = scored$score,
                 donor_mean = scored$donor_mean,
                 recipient_mean = scored$recipient_mean,
-                donor_subgenome = scored$donor_subgenome,
+                donor_component = scored$donor_component,
                 n_donor = scored$n_donor,
                 n_recipient = scored$n_recipient,
                 chr_name = scored$chr_name,
@@ -416,7 +416,7 @@ scoreIntrogression <- function(
     out[, c(
         "sample", "group", "iid", "start", "stop", "mode", "metric",
         "score_type", "score", "donor_mean",
-        "recipient_mean", "donor_subgenome", "n_donor", "n_recipient",
+        "recipient_mean", "donor_component", "n_donor", "n_recipient",
         "donor_copies", "donor_fraction", "chr_name", "length",
         "n_per_chromosome", "gc_donor", "gc_recipient", "log_donor",
         "log_recipient", "donor_residual", "recipient_residual", "lambda_copy",

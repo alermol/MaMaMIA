@@ -95,13 +95,13 @@ for (key in names(config$species)) {
     cat("Species:", key, "-", species$label, "\n")
     cat(
         "  contigs:", nrow(species$contigs),
-        "| subgenomes:",
-        paste(unique(species$contigs$subgenome), collapse = ", "),
+        "| components:",
+        paste(unique(species$contigs$component), collapse = ", "),
         "| default:",
-        if (is.null(species$default_subgenome)) {
+        if (is.null(species$default_component)) {
             "none"
         } else {
-            species$default_subgenome
+            species$default_component
         },
         "\n"
     )

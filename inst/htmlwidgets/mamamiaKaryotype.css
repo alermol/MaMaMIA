@@ -11,9 +11,9 @@
 }
 
 .mamamia-karyotype-tooltip {
-    position: absolute;
-    z-index: 10;
-    max-width: 220px;
+    position: fixed;
+    z-index: 1050;
+    max-width: 260px;
     padding: 0.35rem 0.5rem;
     border: 1px solid var(--bs-border-color, #dee2e6);
     border-radius: 0.3rem;

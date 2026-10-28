@@ -26,7 +26,7 @@
                 key, role
             )
         }
-        required <- c("id", "name", "subgenome", "length")
+        required <- c("id", "name", "component", "length")
         if (!all(required %in% names(contigs))) {
             .mamamia_error(
                 "MaMaMIAAssemblyMatchError",
@@ -37,7 +37,7 @@
         data.frame(
             chr_id = as.character(contigs$id),
             chr_name = as.character(contigs$name),
-            subgenome = as.character(contigs$subgenome),
+            component = as.character(contigs$component),
             length = as.numeric(contigs$length),
             role = role,
             stringsAsFactors = FALSE

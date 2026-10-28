@@ -5,7 +5,7 @@
 ##   Rscript tools/validate-24.R [--bams Sq74,Sq75,Sq76] [--out FILE]
 ##
 ## The assembly is built from the study's 1000-window contig table, which maps
-## every wheat and speltoides contig to its subgenome and chromosome group.
+## every wheat and speltoides contig to its component and chromosome group.
 
 suppressPackageStartupMessages(library(MaMaMIA))
 
@@ -38,7 +38,7 @@ contigs <- utils::read.delim(
     stringsAsFactors = FALSE
 )
 contigs$group <- as.character(contigs$group)
-contigs$subgenome <- ifelse(
+contigs$component <- ifelse(
     contigs$role == "donor",
     "S",
     sub("^[0-9]+", "", contigs$group)
@@ -60,7 +60,7 @@ species <- list(
             function(i) {
                 x <- contigs[contigs$role == "recipient", ][i, ]
                 list(
-                    id = x$chr, name = x$subgenome, subgenome = x$subgenome,
+                    id = x$chr, name = x$component, component = x$component,
                     group = x$group, copy_number = 2
                 )
             }
@@ -77,7 +77,7 @@ species <- list(
                 x <- contigs[contigs$role == "donor", ][i, ]
                 list(
                     id = x$chr, name = paste0(x$group, "S"),
-                    subgenome = "S", group = x$group, copy_number = 2
+                    component = "S", group = x$group, copy_number = 2
                 )
             }
         )
@@ -112,8 +112,8 @@ config <- validateMaMaMIAConfig(config)
 config <- resolveSpeciesAssembly(
     config, donor = "aegilops_speltoides",
     recipient = "triticum_aestivum",
-    recipient_subgenomes = c("A", "B", "D"),
-    donor_subgenomes = "S",
+    recipient_components = c("A", "B", "D"),
+    donor_components = "S",
     default_sample_composition = c(A = 2, B = 2, D = 2),
     key = "wheat_speltoides"
 )$config

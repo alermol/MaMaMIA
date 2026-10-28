@@ -230,13 +230,17 @@ HTMLWidgets.widget({
 
     function describe(chromosome, fraction, calls) {
       var name = escapeHtml(
-        chromosome.label || chromosome.name || chromosome.subgenome || ""
+        chromosome.label || chromosome.name || chromosome.component || ""
       );
       var mb = fraction * (chromosome.length || 0) / 1e6;
       var lines = [
         "<strong>" + name + "</strong>",
-        escapeHtml(chromosome.subgenome || "")
+        escapeHtml(chromosome.component || "")
       ];
+      if (Number(chromosome.copies) > 1) {
+        lines.push("homolog " + chromosome.copy + " of " +
+          chromosome.copies);
+      }
       if (chromosome.deleted === true) {
         lines.push("recipient chromosome deleted (no coverage)");
       }
@@ -320,8 +324,8 @@ HTMLWidgets.widget({
       tooltip.style.display = "none";
       root.appendChild(tooltip);
 
-      var subgenomes = payload.subgenomes || [];
-      if (!subgenomes.length) {
+      var chromosomes = payload.chromosomes || [];
+      if (!chromosomes.length) {
         var empty = document.createElement("p");
         empty.className = "mamamia-karyotype-empty";
         empty.textContent = payload.message ||
@@ -334,245 +338,226 @@ HTMLWidgets.widget({
       var availableWidth = Math.max(width || box.width || 800, 480);
       var availableHeight = Math.max(height || box.height || 520, 420);
       var margin = { top: 58, right: 22, bottom: 34, left: 22 };
-      var columnWidth = Math.max(
-        150,
-        (availableWidth - margin.left - margin.right) / subgenomes.length
-      );
-      var totalWidth = Math.max(
-        availableWidth,
-        margin.left + subgenomes.length * columnWidth + margin.right
-      );
       var maxBarHeight = Math.max(
         220,
         availableHeight - margin.top - margin.bottom
       );
       var totalHeight = margin.top + maxBarHeight + margin.bottom;
       var maxLength = 0;
-      subgenomes.forEach(function (subgenome) {
-        (subgenome.chromosomes || []).forEach(function (chromosome) {
-          var length = Number(chromosome.length);
-          if (isFinite(length) && length > maxLength) {
-            maxLength = length;
-          }
-        });
+      chromosomes.forEach(function (chromosome) {
+        var length = Number(chromosome.length);
+        if (isFinite(length) && length > maxLength) {
+          maxLength = length;
+        }
       });
       if (!(maxLength > 0)) {
         maxLength = 1;
       }
+      var pairGap = 3;
+      var chromosomeGap = 8;
+      var maxCopies = 1;
+      var nPairs = 0;
+      chromosomes.forEach(function (chromosome) {
+        var copies = Math.max(1, Number(chromosome.copies) || 1);
+        if (copies > maxCopies) {
+          maxCopies = copies;
+        }
+        if (copies === 1 || Number(chromosome.copy) === 1) {
+          nPairs += 1;
+        }
+      });
+      var slotWidth = (availableWidth - margin.left - margin.right) /
+        Math.max(1, nPairs);
+      var barWidth = Math.max(
+        6,
+        Math.min(
+          24,
+          (slotWidth - Math.max(0, maxCopies - 1) * pairGap -
+            chromosomeGap) / maxCopies
+        )
+      );
+      var barsWidth = 0;
+      chromosomes.forEach(function (chromosome, index) {
+        barsWidth += barWidth;
+        if (index < chromosomes.length - 1) {
+          var copies = Math.max(1, Number(chromosome.copies) || 1);
+          var copy = Math.max(1, Number(chromosome.copy) || 1);
+          barsWidth += (copies > 1 && copy < copies)
+            ? pairGap
+            : chromosomeGap;
+        }
+      });
+      var plotWidth = Math.max(
+        availableWidth - margin.left - margin.right, barsWidth
+      );
+      var totalWidth = margin.left + plotWidth + margin.right;
       var svg = svgEl("svg", {
         width: totalWidth,
         height: totalHeight,
         viewBox: "0 0 " + totalWidth + " " + totalHeight,
         role: "img",
-        "aria-label": "Karyotype by subgenome"
+        "aria-label": "Karyotype in assembly order"
       });
       svg.style.display = "block";
       root.appendChild(svg);
 
       addLegend(svg, margin.left, 14, payload);
 
-      subgenomes.forEach(function (subgenome, subgenomeIndex) {
-        var columnX = margin.left + subgenomeIndex * columnWidth;
-        var column = svgEl("g", {
-          "class": "karyotype-subgenome",
-          "data-subgenome": subgenome.subgenome
-        });
-        if (subgenome.selected === false) {
-          column.setAttribute("opacity", "0.32");
-        }
-        svg.appendChild(column);
-
-        column.appendChild(svgEl("line", {
-          x1: columnX, x2: columnX,
-          y1: margin.top - 8, y2: margin.top + maxBarHeight + 18,
-          stroke: payload.palette.grid,
-          "stroke-width": 1,
-          "pointer-events": "none"
-        }));
-        column.appendChild(textEl(
-          subgenome.label || ("Subgenome " + subgenome.subgenome),
-          {
-            x: columnX + columnWidth / 2,
-            y: 38,
-            "text-anchor": "middle",
-            "font-size": 12,
-            "font-weight": 600,
-            fill: payload.palette.text
-          }
-        ));
-
-        var chromosomes = subgenome.chromosomes || [];
-        var nChromosomes = chromosomes.length;
-        var gap = 5;
-        var gapWidth = 10;
-        var barWidth = Math.max(
-          9,
-          Math.min(
-            26,
-            (columnWidth - 20) / Math.max(1, nChromosomes) - gap
-          )
+      var cursorX = margin.left + (plotWidth - barsWidth) / 2;
+      var y = margin.top;
+      chromosomes.forEach(function (chromosome, index) {
+        var added = chromosome.added === true;
+        var deleted = !added && chromosome.deleted === true;
+        var barCalls = chromosome.calls || [];
+        var copies = Math.max(1, Number(chromosome.copies) || 1);
+        var copy = Math.max(1, Number(chromosome.copy) || 1);
+        var height = Math.max(
+          3, maxBarHeight * (Number(chromosome.length) || 0) / maxLength
         );
-        var bars = [];
-        var hasRecipient = chromosomes.some(function (chromosome) {
-          return chromosome.added !== true;
-        });
-        var hasAdded = chromosomes.some(function (chromosome) {
-          return chromosome.added === true;
-        });
-        var insertedGap = false;
-        chromosomes.forEach(function (chromosome) {
-          if (hasRecipient && hasAdded && chromosome.added === true &&
-              !insertedGap) {
-            bars.push({ kind: "gap", width: gapWidth });
-            insertedGap = true;
-          }
-          bars.push({
-            kind: "chromosome",
-            chromosome: chromosome,
-            width: barWidth,
-            calls: chromosome.calls || []
-          });
-        });
-        var totalBarWidth = 0;
-        bars.forEach(function (bar, index) {
-          totalBarWidth += bar.width;
-          if (index < bars.length - 1) {
-            totalBarWidth += gap;
-          }
-        });
-        var cursorX = columnX + (columnWidth - totalBarWidth) / 2;
+        var x = cursorX;
+        var pairCenter = x + (copies > 1
+          ? barWidth + pairGap / 2
+          : barWidth / 2);
 
-        bars.forEach(function (bar) {
-          if (bar.kind === "gap") {
-            cursorX += bar.width + gap;
-            return;
-          }
-          var chromosome = bar.chromosome;
-          var added = chromosome.added === true;
-          var deleted = !added && chromosome.deleted === true;
-          var barCalls = bar.calls || [];
-          var width = bar.width;
-          var height = Math.max(
-            3, maxBarHeight * (Number(chromosome.length) || 0) / maxLength
-          );
-          var x = cursorX;
-          var y = margin.top;
-          cursorX += width + gap;
+        var chromGroup = svgEl("g", {
+          "class": "karyotype-chromosome",
+          "data-chromosome": chromosome.id,
+          "data-group": chromosome.group,
+          "data-copy": copy
+        });
+        if (chromosome.selected === false) {
+          chromGroup.setAttribute("opacity", "0.32");
+        }
+        svg.appendChild(chromGroup);
 
-          var chromGroup = svgEl("g", {
-            "class": "karyotype-chromosome",
-            "data-chromosome": chromosome.id,
-            "data-group": chromosome.group
-          });
-          if (subgenome.selected !== false &&
-              chromosome.selected === false) {
-            chromGroup.setAttribute("opacity", "0.32");
-          }
-          column.appendChild(chromGroup);
+        var baseFill = deleted ? payload.palette.deleted :
+          (added ? payload.palette.added : "#f4f4f4");
+        var baseStroke = deleted ? payload.palette.negative :
+          (added ? payload.palette.addition : "#666666");
+        var base = svgEl("rect", {
+          x: x,
+          y: y,
+          width: barWidth,
+          height: height,
+          fill: baseFill,
+          stroke: baseStroke,
+          "stroke-width": deleted ? 1.4 : (added ? 1.8 : 0.7),
+          "stroke-dasharray": deleted ? "4 3" : null,
+          rx: 2
+        });
+        chromGroup.appendChild(base);
 
-          var baseFill = deleted ? payload.palette.deleted :
-            (added ? payload.palette.added : "#f4f4f4");
-          var baseStroke = deleted ? payload.palette.negative :
-            (added ? payload.palette.addition : "#666666");
-          var base = svgEl("rect", {
-            x: x,
-            y: y,
-            width: width,
-            height: height,
-            fill: baseFill,
-            stroke: baseStroke,
-            "stroke-width": deleted ? 1.4 : (added ? 1.8 : 0.7),
-            "stroke-dasharray": deleted ? "4 3" : null,
-            rx: 2
-          });
-          chromGroup.appendChild(base);
-
-          var barBox = {
-            group: chromGroup,
-            x: x,
-            y: y,
-            width: width,
-            height: height
-          };
-          if (barCalls.length) {
-            if (payload.mode === "heatmap" && !deleted) {
-              drawHeatmapForBar(chromosome, barBox, barCalls);
-              var crossCalls = barCalls.filter(function (call) {
-                return call.cross_group === true;
-              });
-              if (crossCalls.length) {
-                drawCallsForBar(barBox, crossCalls);
-              }
-            } else {
-              drawCallsForBar(barBox, barCalls);
+        var barBox = {
+          group: chromGroup,
+          x: x,
+          y: y,
+          width: barWidth,
+          height: height
+        };
+        if (barCalls.length) {
+          if (payload.mode === "heatmap" && !deleted) {
+            drawHeatmapForBar(chromosome, barBox, barCalls);
+            var crossCalls = barCalls.filter(function (call) {
+              return call.cross_group === true;
+            });
+            if (crossCalls.length) {
+              drawCallsForBar(barBox, crossCalls);
             }
+          } else {
+            drawCallsForBar(barBox, barCalls);
           }
+        }
 
-          if (deleted) {
-            chromGroup.appendChild(textEl("deleted", {
-              x: x + width / 2,
-              y: margin.top + 10,
-              "text-anchor": "middle",
-              "font-size": 7,
-              "font-weight": 600,
-              fill: payload.palette.negative
-            }));
-          }
-          if (added) {
-            chromGroup.appendChild(textEl("added", {
-              x: x + width / 2,
-              y: margin.top + 10,
-              "text-anchor": "middle",
-              "font-size": 7,
-              "font-weight": 600,
-              fill: payload.palette.addition
-            }));
-          }
+        if (deleted && copy === 1) {
+          chromGroup.appendChild(textEl("deleted", {
+            x: pairCenter,
+            y: margin.top + 10,
+            "text-anchor": "middle",
+            "font-size": 7,
+            "font-weight": 600,
+            fill: payload.palette.negative
+          }));
+        }
+        if (added && copy === 1) {
+          chromGroup.appendChild(textEl("added", {
+            x: pairCenter,
+            y: margin.top + 10,
+            "text-anchor": "middle",
+            "font-size": 7,
+            "font-weight": 600,
+            fill: payload.palette.addition
+          }));
+        }
 
+        if (copy === 1 || copies === 1) {
           chromGroup.appendChild(textEl(
-            chromosome.label || chromosome.name || chromosome.subgenome || "",
+            chromosome.label || chromosome.name || chromosome.component || "",
             {
-              x: x + width / 2,
+              x: pairCenter,
               y: margin.top + maxBarHeight + 14,
               "text-anchor": "middle",
               "font-size": 9,
               fill: payload.palette.text
             }
           ));
+        }
 
-          var hit = svgEl("rect", {
-            x: x - 2,
-            y: y - 2,
-            width: width + 4,
-            height: height + 4,
-            fill: "transparent",
-            "class": "karyotype-hit"
-          });
-          hit.style.cursor = "pointer";
-          chromGroup.appendChild(hit);
-          hit.addEventListener("mousemove", function (event) {
-            var rect = svg.getBoundingClientRect();
-            var pointX = event.clientX - rect.left;
-            var pointY = event.clientY - rect.top;
-            var fraction = Math.max(
-              0, Math.min(1, (pointY - y) / height)
-            );
-            tooltip.innerHTML = describe(chromosome, fraction, barCalls);
-            tooltip.style.display = "block";
-            tooltip.style.left = Math.min(
-              Math.max(4, pointX + 12),
-              Math.max(4, root.clientWidth - 230)
-            ) + "px";
-            tooltip.style.top = Math.max(4, pointY + 12) + "px";
-          });
-          hit.addEventListener("mouseleave", function () {
-            tooltip.style.display = "none";
-          });
-          hit.addEventListener("click", function (event) {
-            event.stopPropagation();
-            sendClick(chromosome.group);
-          });
+        var hit = svgEl("rect", {
+          x: x - 2,
+          y: y - 2,
+          width: barWidth + 4,
+          height: height + 4,
+          fill: "transparent",
+          "class": "karyotype-hit"
         });
+        hit.style.cursor = "pointer";
+        chromGroup.appendChild(hit);
+        hit.addEventListener("mousemove", function (event) {
+          var rect = svg.getBoundingClientRect();
+          var pointX = event.clientX - rect.left;
+          var pointY = event.clientY - rect.top;
+          var fraction = Math.max(
+            0, Math.min(1, (pointY - y) / height)
+          );
+          tooltip.innerHTML = describe(chromosome, fraction, barCalls);
+          tooltip.style.display = "block";
+          var pad = 10;
+          var gap = 14;
+          var tipWidth = tooltip.offsetWidth || 260;
+          var tipHeight = tooltip.offsetHeight || 120;
+          var viewX = event.clientX;
+          var viewY = event.clientY;
+          var left = viewX + gap;
+          var top = viewY + gap;
+          if (left + tipWidth > window.innerWidth - pad) {
+            left = viewX - tipWidth - gap;
+          }
+          if (top + tipHeight > window.innerHeight - pad) {
+            top = viewY - tipHeight - gap;
+          }
+          var rootRect = root.getBoundingClientRect();
+          var minLeft = rootRect.left + pad;
+          var maxLeft = rootRect.right - tipWidth - pad;
+          var minTop = rootRect.top + pad;
+          var maxTop = rootRect.bottom - tipHeight - pad;
+          left = Math.max(minLeft, Math.min(left, Math.max(minLeft, maxLeft)));
+          top = Math.max(minTop, Math.min(top, Math.max(minTop, maxTop)));
+          tooltip.style.left = left + "px";
+          tooltip.style.top = top + "px";
+        });
+        hit.addEventListener("mouseleave", function () {
+          tooltip.style.display = "none";
+        });
+        hit.addEventListener("click", function (event) {
+          event.stopPropagation();
+          sendClick(chromosome.group);
+        });
+
+        if (index < chromosomes.length - 1) {
+          cursorX += barWidth + ((copies > 1 && copy < copies)
+            ? pairGap
+            : chromosomeGap);
+        }
       });
 
       svg.addEventListener("click", function () {

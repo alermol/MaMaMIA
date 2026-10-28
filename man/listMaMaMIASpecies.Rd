@@ -10,8 +10,8 @@ listMaMaMIASpecies(config)
 \item{config}{A validated configuration list or a path to a YAML file.}
 }
 \value{
-A data frame with \code{key}, \code{label}, \code{description}, \code{subgenomes},
-\code{default_subgenome}, \code{n_contigs} and \code{n_gc_indexes}.
+A data frame with \code{key}, \code{label}, \code{description}, \code{components},
+\code{default_component}, \code{n_contigs} and \code{n_gc_indexes}.
 }
 \description{
 Returns one row per configured species for the application's donor and

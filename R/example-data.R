@@ -159,9 +159,9 @@ bam_example_preflight_state <- function() {
             config,
             donor = selection$donor,
             recipient = selection$recipient,
-            donor_subgenomes = unique(as.character(donor$contigs$subgenome)),
-            recipient_subgenomes = unique(
-                as.character(recipient$contigs$subgenome)
+            donor_components = unique(as.character(donor$contigs$component)),
+            recipient_components = unique(
+                as.character(recipient$contigs$component)
             )
         ),
         error = function(e) e
@@ -188,9 +188,9 @@ bam_example_species_selection <- function() {
     selection <- data$species_selection
     list(
         recipient = selection$recipient,
-        recipient_subgenome = selection$recipient_subgenome,
+        recipient_component = selection$recipient_component,
         donor = selection$donor,
-        donor_subgenome = selection$donor_subgenome
+        donor_component = selection$donor_component
     )
 }
 

@@ -16,20 +16,20 @@ species:
   triticum_like:
     label: Triticum-like (A)
     description: Synthetic 20 kb contig with variable GC
-    default_subgenome: A
+    default_component: A
     gc_indexes:
     - demo.gcrank
     contigs:
     - id: r1
       name: 1A
-      subgenome: A
+      component: A
   secale_like:
     label: Secale-like (R)
     description: Synthetic 20 kb contig with variable GC
-    default_subgenome: R
+    default_component: R
     gc_indexes:
     - demo.gcrank
     contigs:
     - id: d1
       name: 1R
-      subgenome: R
+      component: R

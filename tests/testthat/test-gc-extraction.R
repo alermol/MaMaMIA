@@ -8,11 +8,11 @@ two_index_assembly <- function() {
         gc_indexes = c("idx-recipient", "idx-donor"),
         contigs = list(
             recipient = data.frame(
-                id = "r1", name = "1R", subgenome = "R", length = 20000,
+                id = "r1", name = "1R", component = "R", length = 20000,
                 index_path = "idx-recipient", stringsAsFactors = FALSE
             ),
             donor = data.frame(
-                id = "d1", name = "1D", subgenome = "D", length = 20000,
+                id = "d1", name = "1D", component = "D", length = 20000,
                 index_path = "idx-donor", stringsAsFactors = FALSE
             )
         ),
@@ -276,14 +276,14 @@ test_that("real GC windows match the reference BED after rounding", {
     chromosomes <- utils::read.delim(
         file.path(root, "assemblies", "cs_t2t_se_cereale", "chromosomes.tsv"),
         header = FALSE,
-        col.names = c("id", "name", "subgenome"),
+        col.names = c("id", "name", "component"),
         stringsAsFactors = FALSE
     )
     entries <- function(x) {
         lapply(seq_len(nrow(x)), function(i) {
             list(
                 id = x$id[[i]], name = x$name[[i]],
-                subgenome = x$subgenome[[i]]
+                component = x$component[[i]]
             )
         })
     }
@@ -294,14 +294,14 @@ test_that("real GC windows match the reference BED after rounding", {
                 label = "Triticum aestivum CS T2T",
                 gc_indexes = list(wheat_index),
                 contigs = entries(
-                    chromosomes[chromosomes$subgenome != "R", ]
+                    chromosomes[chromosomes$component != "R", ]
                 )
             ),
             secale_cereale = list(
                 label = "Secale cereale",
                 gc_indexes = list(rye_index),
                 contigs = entries(
-                    chromosomes[chromosomes$subgenome == "R", ]
+                    chromosomes[chromosomes$component == "R", ]
                 )
             )
         )

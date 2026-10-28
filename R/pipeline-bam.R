@@ -379,7 +379,7 @@
 #' A single sample is scored and calibrated on its own (single-sample mode).
 #' Several samples share a cohort median-polish correction and a cohort
 #' calibration. The result supports any number of donor and recipient
-#' subgenomes.
+#' components.
 #'
 #' @param bam_paths Character vector of coordinate-sorted BAM paths.
 #' @param config A validated configuration list from [readMaMaMIAConfig()] or a

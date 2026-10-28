@@ -161,13 +161,13 @@ explorer_karyotype_ui <- function(id, height = "calc(100vh - 360px)") {
                 class = "text-muted small",
                 style = "margin:0;",
                 paste(
-                    "Columns are subgenomes; chromosome height is",
-                    "proportional to its configured length. Donor segments",
-                    "are painted on their most probable recipient",
-                    "chromosome; low-confidence assignments fade. Dashed",
-                    "segments cross chromosome groups (translocation",
-                    "candidates). Click a chromosome to filter its group;",
-                    "click the background to clear."
+                    "Chromosomes are shown in config order as diploid",
+                    "homolog pairs; bar height is proportional to the",
+                    "configured length. Donor segments are painted on their",
+                    "most probable recipient chromosome; low-confidence",
+                    "assignments fade. Dashed segments cross chromosome",
+                    "groups (translocation candidates). Click a chromosome",
+                    "to filter its group; click the background to clear."
                 )
             )
         ),
@@ -391,13 +391,13 @@ explorer_server <- function(id, result, sample = NULL) {
             columns <- c(
                 "sample", "group", "class", "class_group", "confidence",
                 "recipient_group", "recipient_cross_group",
-                "recipient_subgenome", "recipient_chr_name",
+                "recipient_component", "recipient_chr_name",
                 "recipient_start_bp", "recipient_end_bp",
                 "recipient_deletion_width_bp", "recipient_assignment",
                 "recipient_weight", "recipient_margin",
                 "recipient_expected_breadth", "recipient_mean_depletion",
                 "recipient_alternative", "recipient_alternative_score",
-                "donor_subgenome", "donor_chr_name",
+                "donor_component", "donor_chr_name",
                 "start_bp", "end_bp", "width_bp",
                 "score_mean", "donor_mean", "recipient_mean",
                 "method", "mode", "pass"

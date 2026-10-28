@@ -5,7 +5,7 @@ Authors@R: c(
     person("Aleksey", "Ermolaev", email = "alerm@al-erm.ru", role = c("aut", "cre"), comment = c(ORCID = "0000-0001-9789-8694")),
     person("Daniil", "Ulyanov", email = "uldas1508@gmail.com", role = "aut")
     )
-Description: MaMaMIA detects interspecific introgression from Genotyping-by-Sequencing (GBS) mapping data. It combines coverage breadth and read counts in exact windows, GC-bias correction, a paired donor/recipient log-ratio across any number of subgenomes, window recurrence masks, circular binary segmentation, and length-stratified empirical calibration.
+Description: MaMaMIA detects interspecific introgression from Genotyping-by-Sequencing (GBS) mapping data. It combines coverage breadth and read counts in exact windows, GC-bias correction, a paired donor/recipient log-ratio across any number of components, window recurrence masks, circular binary segmentation, and length-stratified empirical calibration.
 License: GPL (>= 3)
 URL: https://github.com/alermol/MaMaMIA
 BugReports: https://github.com/alermol/MaMaMIA/issues

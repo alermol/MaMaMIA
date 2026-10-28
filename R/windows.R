@@ -162,7 +162,7 @@ readContigsTsv <- function(path) {
 #' @param assembly An `AssemblyConfig` list.
 #' @param contigs Optional contigs table or path.
 #'
-#' @return A data frame with `chr_id`, `chr_name`, `subgenome`, `group`,
+#' @return A data frame with `chr_id`, `chr_name`, `component`, `group`,
 #'   `copy_number`, `length`, `role` and `index_path`.
 #' @noRd
 .assembly_target_contigs <- function(assembly, contigs = NULL) {
@@ -178,7 +178,7 @@ readContigsTsv <- function(path) {
                 key, role
             )
         }
-        required <- c("id", "name", "subgenome", "length")
+        required <- c("id", "name", "component", "length")
         if (!all(required %in% names(x))) {
             .window_error(
                 "Assembly '%s' %s contigs must have columns: %s",
@@ -198,7 +198,7 @@ readContigsTsv <- function(path) {
         data.frame(
             chr_id = as.character(x$id),
             chr_name = as.character(x$name),
-            subgenome = as.character(x$subgenome),
+            component = as.character(x$component),
             group = group,
             copy_number = copy_number,
             length = as.numeric(x$length),
@@ -271,7 +271,7 @@ readContigsTsv <- function(path) {
 #'
 #' @return A list with `gr` (1-based inclusive `GRanges`), `table` (0-based
 #'   half-open data frame with `chr_id`, `start`, `stop`, `iid`, `role`,
-#'   `chr_name`, `subgenome`, `group` and `copy_number`) and
+#'   `chr_name`, `component`, `group` and `copy_number`) and
 #'   `n_per_chromosome`.
 #'
 #' @examples
@@ -319,7 +319,7 @@ makeAnalysisWindows <- function(assembly, contigs, n_per_chromosome = 1000L) {
             iid = seq.int(0L, n - 1L),
             role = rep(targets$role[[i]], n),
             chr_name = rep(targets$chr_name[[i]], n),
-            subgenome = rep(targets$subgenome[[i]], n),
+            component = rep(targets$component[[i]], n),
             group = rep(targets$group[[i]], n),
             copy_number = rep(targets$copy_number[[i]], n),
             stringsAsFactors = FALSE

@@ -120,7 +120,7 @@ test_that("a boundary read contributes to every window it overlaps", {
         stop = seq(10L, 200L, 10L),
         role = "donor",
         chr_name = "1D",
-        subgenome = "D",
+        component = "D",
         group = "1",
         copy_number = 2,
         stringsAsFactors = FALSE
@@ -196,7 +196,7 @@ test_that("flag and MAPQ filters are applied", {
     )
     table <- data.frame(
         chr_id = "chr1", start = 0L, stop = 100L, role = "donor",
-        chr_name = "1D", subgenome = "D", group = "1", copy_number = 2,
+        chr_name = "1D", component = "D", group = "1", copy_number = 2,
         stringsAsFactors = FALSE
     )
     windows <- list(
@@ -236,7 +236,7 @@ test_that("CIGAR deletions, skips and clips are handled", {
     )
     table <- data.frame(
         chr_id = "chr1", start = 0L, stop = 100L, role = "donor",
-        chr_name = "1D", subgenome = "D", group = "1", copy_number = 2,
+        chr_name = "1D", component = "D", group = "1", copy_number = 2,
         stringsAsFactors = FALSE
     )
     windows <- list(
@@ -275,7 +275,7 @@ test_that("read length is inferred and empty BAMs return NA", {
     )
     table <- data.frame(
         chr_id = "chr1", start = 0L, stop = 100L, role = "donor",
-        chr_name = "1D", subgenome = "D", group = "1", copy_number = 2,
+        chr_name = "1D", component = "D", group = "1", copy_number = 2,
         stringsAsFactors = FALSE
     )
     windows <- list(

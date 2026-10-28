@@ -11,6 +11,11 @@
 * **New result contract.** `BamAnalysisResult` now exposes `metrics`, `scores`,
   `masks`, `calibration` and `calls`. The `counts`, `rca`, `isa` and
   `normalization` fields were removed.
+* **Components replace genome-type labels.** Every contig carries an arbitrary
+  `component` label. The label is used only to aggregate contigs and copies;
+  it carries no ploidy or genome-type assumption, and donor and recipient
+  labels may overlap. Configuration and result columns use `component`,
+  `recipient_component` and `donor_component`.
 * **Removed API.** `RCA()`, `correctReadCounts()`, `normalizeReadCounts()`,
   `segments()`, `buildSampleTables()`, `writeCohortToBedpe()` and
   `writeToBedpe()` were removed, together with the `RCA`/`ISA` S3 methods.
@@ -28,10 +33,10 @@
   covered bases. Breadth is `covered / length`; count depth is
   `count * read_length / length`. No covidx index or binary is used.
 * **Ploidy-agnostic scoring.** Assemblies select one or more recipient and
-  donor subgenomes. The paired donor/recipient log-ratio averages recipient
+  donor components. The paired donor/recipient log-ratio averages recipient
   homoeologs and supports `mean`, `max` and `sum` donor aggregation. Donor
-  aggregation now defaults to `max`: at each window the donor subgenome with
-  the strongest donor/recipient log-ratio is used, so a single-subgenome
+  aggregation now defaults to `max`: at each window the donor component with
+  the strongest donor/recipient log-ratio is used, so a single-component
   signal is not diluted by the other donor homoeologs. The registry supplies
   the default (`defaults.donor_aggregation`); the dashboard exposes the
   setting in the **Advanced** sidebar panel. A donor-only fallback is
@@ -52,14 +57,17 @@
   file picker has no `multiple` attribute, a drag-and-drop guard keeps only
   the first dropped file, and the server rejects a multi-file payload with a
   message instead of silently ignoring the extra files.
-* Subgenome selectors are gone. The app resolves every subgenome declared for
+* Component selectors are gone. The app resolves every component declared for
   the selected species — for example A+B+D versus S — and analyses them in one
   assembly, with a read-only summary under **Assembly**.
 * The main tab is now a vertical, interactive karyotype built with
-  `htmlwidgets`. It is split into one column per subgenome, not per chromosome
-  group. Each chromosome bar is scaled by its configured length, keeps a
-  deleted recipient chromosome as a grey dashed bar, and adds donor
-  chromosomes (one shape per homolog copy) only when a passing call covers at
+  `htmlwidgets`. Chromosomes are shown in the order they appear in the
+  assembly config, with no group or component columns. Recipient and donor
+  chromosomes are drawn as diploid homolog pairs: the two copies have a small
+  gap inside the pair and a larger gap before the next chromosome. Both copies
+  carry the same label (`1A`, `1B`, …), and each bar is scaled by its
+  configured length. A deleted recipient chromosome stays as a grey dashed
+  bar, and donor chromosomes are added only when a passing call covers at
   least 95% of the group. A toggle switches between the introgression-score
   heatmap and the coloured call map; clicking a chromosome filters its group
   and clicking the background clears the filter. The score profile remains as
@@ -153,9 +161,9 @@
 * Multi-sample BAMs now show a **Sample** selector in the main filter bar. It
   switches the circos, coverage plot, segment table and per-sample export
   together; single-sample runs do not show it.
-* The first run now precomputes every valid subgenome combination for the
+* The first run now precomputes every valid component combination for the
   selected species pair and caches each completed analysis. Returning to a
-  subgenome that was analysed earlier restores its result without recalculating
+  component that was analysed earlier restores its result without recalculating
   every sample; combinations that cannot be resolved or fail are logged and
   skipped. The first run takes longer, and changing the resolution or reference
   still needs one new run.
@@ -174,7 +182,7 @@
   BAMs. Multi-file upload and the old multiple-BAM mode were removed; the
   single/multi distinction is now inferred from the header.
 * The **Assembly** panel contains only the recipient/donor species and
-  subgenome selectors plus **Swap donor and recipient**. Assembly detection,
+  component selectors plus **Swap donor and recipient**. Assembly detection,
   preflight tables and candidates are no longer shown there.
 * Preflight status, detected assemblies, assembly candidates, problems,
   suggested fixes and every pipeline stage are written to the calculation log
@@ -299,23 +307,23 @@
 
 * The registry now supports a role-free `species:` section. A species declares
   only its label, gcrank indexes and contigs (with an optional `group` and
-  `default_subgenome`); it is not tied to the donor or recipient role. A
+  `default_component`); it is not tied to the donor or recipient role. A
   species-only config needs at least two species, and `assemblies` may be
   omitted entirely.
 * Added `listMaMaMIASpecies()` and `resolveSpeciesAssembly()`. Resolution
-  selects one subgenome per side and pairs contigs by chromosome group (the
+  selects one component per side and pairs contigs by chromosome group (the
   optional `group` field, otherwise the first number in `name`), includes only
   the paired contigs, and returns the derived assembly with the configuration
   that contains it. `unpaired` explains every excluded contig. An explicit
   `pairs` argument remains available as an override.
 * Named assemblies may now reference species (`recipient: wheat`, `donor: rye`),
-  including optional `recipient_subgenome` / `donor_subgenome` and `pairs`.
+  including optional `recipient_component` / `donor_component` and `pairs`.
   Inline `contigs:` assemblies keep working in the scripted API; the app falls
   back to BAM-header auto-detection when a registry has no species section.
 * The BAM-first sidebar is species-only: choose a recipient species and a
-  donor species (in either direction), with subgenome selectors only when a
-  species has several subgenomes. A "Swap donor and recipient" button exchanges
-  the two species and carries their subgenome choices with them. The resolved
+  donor species (in either direction), with component selectors only when a
+  species has several components. A "Swap donor and recipient" button exchanges
+  the two species and carries their component choices with them. The resolved
   pairs and any unpaired contigs are shown before Run; the previous result is
   invalidated when the pair changes. The predefined-assembly selector has been
   removed.
@@ -404,7 +412,7 @@
   rows from a parent-owned map and report the current selection per sample.
 * `correctReadCounts()` gained `max_fit_windows` (default `Inf`) for
   high-resolution data. Above the cap, the GC fit uses a deterministic sample
-  stratified by subgenome and GC decile, with at least ten windows per
+  stratified by component and GC decile, with at least ten windows per
   non-empty stratum and predictions still covering every window. The RCA
   records `fit_sampling`, the fit cache key covers the cap and the selected
   rows, and `analyzeBamInput()` applies the cap per sample. A 280,000-window
@@ -486,7 +494,7 @@
 * `readMaMaMIAInput()`, `listMaMaMIASamples()` and `listMaMaMIAReferences()`
   read the on-disk layout (per-sample coverage tables, per-reference GC-content
   tables and chromosome metadata), and `defaultTargetPairs()` pairs donor and
-  recipient chromosomes by chromosome number within selected subgenomes.
+  recipient chromosomes by chromosome number within selected components.
 * The explorer gained call threshold and minimum segment width controls that
   re-flag the segments through `subset.ISA()` without re-running CBS, plus
   select-all and clear buttons for the BEDPE export.
@@ -495,7 +503,7 @@
 
 * `correctReadCounts()` no longer calls `glmmTMB::predict()` twice on the full
   window table. The fitted ZINB response is evaluated once for the distinct
-  (GC, subgenome) pairs, with design matrices built from the stored smooth rather
+  (GC, component) pairs, with design matrices built from the stored smooth rather
   than via `predict(debug = TRUE)`, dropping that step from ~22 s to ~1.4 s on the
   packaged `triticum` example. Corrected coverage agrees with the previous
   implementation to ~1e-14 relative. The remaining cost is the `glmmTMB` fit

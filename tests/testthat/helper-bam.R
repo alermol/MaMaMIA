@@ -284,18 +284,18 @@ variable_gc_fixture <- function(sample = "synthetic", windows = 100L,
     config$species <- list(
         recipient = list(
             label = "Variable-GC recipient",
-            default_subgenome = "R",
+            default_component = "R",
             gc_indexes = list(index),
             contigs = list(list(
-                id = "r1", name = "1R", subgenome = "R"
+                id = "r1", name = "1R", component = "R"
             ))
         ),
         donor = list(
             label = "Variable-GC donor",
-            default_subgenome = "D",
+            default_component = "D",
             gc_indexes = list(index),
             contigs = list(list(
-                id = "d1", name = "1D", subgenome = "D"
+                id = "d1", name = "1D", component = "D"
             ))
         )
     )
@@ -319,11 +319,11 @@ variable_gc_fixture <- function(sample = "synthetic", windows = 100L,
     fixture
 }
 
-## A synthetic species pair with two recipient subgenomes (A and B) that
-## share one donor subgenome (R). The BAM contains d1, r1 and r2, so switching
-## the recipient subgenome is a valid assembly change. Used to test that the
+## A synthetic species pair with two recipient components (A and B) that
+## share one donor component (R). The BAM contains d1, r1 and r2, so switching
+## the recipient component is a valid assembly change. Used to test that the
 ## first analysis precomputes both combinations.
-multi_subgenome_fixture <- function(samples = c("sample1", "sample2"),
+multi_component_fixture <- function(samples = c("sample1", "sample2"),
                                     contig_length = 20000L) {
     skip_if_no_samtools()
     builder <- gcrank_build_binary()
@@ -331,7 +331,7 @@ multi_subgenome_fixture <- function(samples = c("sample1", "sample2"),
         testthat::skip("gcrank-build is not available")
     }
 
-    directory <- tempfile("multi-subgenome-")
+    directory <- tempfile("multi-component-")
     dir.create(directory)
     fasta <- file.path(directory, "multi.fa")
     writeLines(
@@ -352,7 +352,7 @@ multi_subgenome_fixture <- function(samples = c("sample1", "sample2"),
     )
     if (!identical(status, 0L)) {
         unlink(directory, recursive = TRUE)
-        testthat::skip("gcrank-build could not create the multi-subgenome index")
+        testthat::skip("gcrank-build could not create the multi-component index")
     }
 
     config <- list(
@@ -368,20 +368,20 @@ multi_subgenome_fixture <- function(samples = c("sample1", "sample2"),
         server = list(max_bams = 4L, max_total_bytes = 20 * 1024^2),
         species = list(
             recipient = list(
-                label = "Multi-subgenome recipient",
-                default_subgenome = "A",
+                label = "Multi-component recipient",
+                default_component = "A",
                 gc_indexes = list(file.path(directory, "multi.gcrank")),
                 contigs = list(
-                    list(id = "r1", name = "1A", subgenome = "A"),
-                    list(id = "r2", name = "1B", subgenome = "B")
+                    list(id = "r1", name = "1A", component = "A"),
+                    list(id = "r2", name = "1B", component = "B")
                 )
             ),
             donor = list(
-                label = "Multi-subgenome donor",
-                default_subgenome = "R",
+                label = "Multi-component donor",
+                default_component = "R",
                 gc_indexes = list(file.path(directory, "multi.gcrank")),
                 contigs = list(
-                    list(id = "d1", name = "1R", subgenome = "R")
+                    list(id = "d1", name = "1R", component = "R")
                 )
             )
         )

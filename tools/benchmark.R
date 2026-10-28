@@ -81,7 +81,7 @@ simulate_one <- function(options, rep) {
                     sample = sample, chr_id = paste0(role, group),
                     chr_name = paste0(group, if (role == "donor") "S" else "A"),
                     group = group, role = role,
-                    subgenome = if (role == "donor") "S" else "A",
+                    component = if (role == "donor") "S" else "A",
                     copy_number = 2, iid = iid, start = iid * length_bp,
                     stop = (iid + 1L) * length_bp, length = length_bp,
                     count = as.integer(count), covered = as.integer(covered),

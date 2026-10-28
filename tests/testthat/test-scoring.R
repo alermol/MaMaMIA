@@ -1,8 +1,8 @@
 ## P4: median polish and ploidy-agnostic scoring.
 
 score_metrics <- function(n = 200L, groups = c("1", "2"),
-                          donor_subgenomes = "S",
-                          recipient_subgenomes = c("A"),
+                          donor_components = "S",
+                          recipient_components = c("A"),
                           donor_lambda = 0.1,
                           recipient_lambda = 0.1,
                           gc_effect = 0,
@@ -11,14 +11,14 @@ score_metrics <- function(n = 200L, groups = c("1", "2"),
     for (group in groups) {
         iid <- seq.int(0L, n - 1L)
         gc <- 0.4 + 0.1 * sin(iid / 20)
-        for (subgenome in donor_subgenomes) {
+        for (component in donor_components) {
             lambda <- donor_lambda * exp(
                 gc_effect * ((gc - 0.5) / 0.1)^2
             ) * exp(stats::rnorm(n, 0, 0.05))
             rows[[length(rows) + 1L]] <- data.frame(
-                sample = sample, chr_id = paste0("d", group, subgenome),
-                chr_name = paste0(group, subgenome), group = group,
-                role = "donor", subgenome = subgenome, copy_number = 2,
+                sample = sample, chr_id = paste0("d", group, component),
+                chr_name = paste0(group, component), group = group,
+                role = "donor", component = component, copy_number = 2,
                 iid = iid, start = iid * 1e6, stop = (iid + 1) * 1e6,
                 length = 1e6, count = round(lambda * 1e6 / 100),
                 covered = pmin(1e6, round((1 - exp(-lambda)) * 1e6)),
@@ -27,14 +27,14 @@ score_metrics <- function(n = 200L, groups = c("1", "2"),
                 read_length = 100, stringsAsFactors = FALSE
             )
         }
-        for (subgenome in recipient_subgenomes) {
+        for (component in recipient_components) {
             lambda <- recipient_lambda * exp(
                 gc_effect * ((gc - 0.5) / 0.1)^2
             ) * exp(stats::rnorm(n, 0, 0.05))
             rows[[length(rows) + 1L]] <- data.frame(
-                sample = sample, chr_id = paste0("r", group, subgenome),
-                chr_name = paste0(group, subgenome), group = group,
-                role = "recipient", subgenome = subgenome, copy_number = 2,
+                sample = sample, chr_id = paste0("r", group, component),
+                chr_name = paste0(group, component), group = group,
+                role = "recipient", component = component, copy_number = 2,
                 iid = iid, start = iid * 1e6, stop = (iid + 1) * 1e6,
                 length = 1e6, count = round(lambda * 1e6 / 100),
                 covered = pmin(1e6, round((1 - exp(-lambda)) * 1e6)),
@@ -95,7 +95,7 @@ test_that("medianPolish() handles missing values", {
 
 test_that("a diploid substitution gives a positive score", {
     set.seed(2)
-    metrics <- score_metrics(recipient_subgenomes = "A")
+    metrics <- score_metrics(recipient_components = "A")
     metrics <- add_donor_event(metrics, multiplier = 2)
     scored <- scoreIntrogression(metrics, mode = "single")
     event <- scored$score[scored$group == "1" & scored$iid >= 50 &
@@ -108,7 +108,7 @@ test_that("a diploid substitution gives a positive score", {
 test_that("tetraploid and hexaploid substitution signals follow log ploidy", {
     set.seed(3)
     tetra <- add_donor_event(
-        score_metrics(recipient_subgenomes = c("A", "B")),
+        score_metrics(recipient_components = c("A", "B")),
         multiplier = 2
     )
     tetra_score <- mean(
@@ -122,7 +122,7 @@ test_that("tetraploid and hexaploid substitution signals follow log ploidy", {
 
     set.seed(4)
     hexa <- add_donor_event(
-        score_metrics(recipient_subgenomes = c("A", "B", "D")),
+        score_metrics(recipient_components = c("A", "B", "D")),
         multiplier = 1.5
     )
     hexa_scored <- scoreIntrogression(hexa, mode = "single")
@@ -136,13 +136,13 @@ test_that("tetraploid and hexaploid substitution signals follow log ploidy", {
     expect_lt(hexa_score, 0.8)
 })
 
-test_that("multi-donor max selects the source subgenome and sum doubles", {
+test_that("multi-donor max selects the source component and sum doubles", {
     set.seed(5)
     metrics <- score_metrics(
-        donor_subgenomes = c("S1", "S2"),
-        recipient_subgenomes = c("A", "B")
+        donor_components = c("S1", "S2"),
+        recipient_components = c("A", "B")
     )
-    idx <- metrics$role == "donor" & metrics$subgenome == "S2" &
+    idx <- metrics$role == "donor" & metrics$component == "S2" &
         metrics$group == "1" & metrics$iid >= 50 & metrics$iid <= 90
     metrics$lambda_breadth[idx] <- metrics$lambda_breadth[idx] * 3
     metrics$lambda_count[idx] <- metrics$lambda_count[idx] * 3
@@ -155,7 +155,7 @@ test_that("multi-donor max selects the source subgenome and sum doubles", {
     )
     event <- maxed[maxed$group == "1" & maxed$iid >= 50 &
         maxed$iid <= 90, ]
-    expect_true(all(event$donor_subgenome == "S2"))
+    expect_true(all(event$donor_component == "S2"))
     expect_gt(mean(event$score), 0.5)
 
     summed <- scoreIntrogression(
@@ -169,10 +169,10 @@ test_that("multi-donor max selects the source subgenome and sum doubles", {
 test_that("donor aggregation defaults to max", {
     set.seed(15)
     metrics <- score_metrics(
-        donor_subgenomes = c("S1", "S2"),
-        recipient_subgenomes = "A"
+        donor_components = c("S1", "S2"),
+        recipient_components = "A"
     )
-    idx <- metrics$role == "donor" & metrics$subgenome == "S2" &
+    idx <- metrics$role == "donor" & metrics$component == "S2" &
         metrics$group == "1" & metrics$iid >= 50 & metrics$iid <= 90
     metrics$lambda_breadth[idx] <- metrics$lambda_breadth[idx] * 3
     metrics$lambda_count[idx] <- metrics$lambda_count[idx] * 3
@@ -185,7 +185,7 @@ test_that("donor aggregation defaults to max", {
         metrics, mode = "single", donor_aggregation = "mean"
     )
     event <- default$group == "1" & default$iid >= 50 & default$iid <= 90
-    expect_true(all(default$donor_subgenome[event] == "S2"))
+    expect_true(all(default$donor_component[event] == "S2"))
     expect_gt(
         mean(default$score[event]),
         mean(meaned$score[event])
@@ -244,7 +244,7 @@ test_that("zero windows do not produce NaN or Inf", {
 test_that("the copy-number model reports donor copies and fraction", {
     metrics <- score_metrics(
         donor_lambda = 0.2, recipient_lambda = 0.1,
-        recipient_subgenomes = c("A", "B", "D")
+        recipient_components = c("A", "B", "D")
     )
     scored <- scoreIntrogression(
         metrics, mode = "single", sample_composition = c(A = 2, B = 2, D = 2)

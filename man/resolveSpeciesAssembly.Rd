@@ -8,10 +8,10 @@ resolveSpeciesAssembly(
   config,
   donor,
   recipient,
-  donor_subgenomes = NULL,
-  recipient_subgenomes = NULL,
-  donor_subgenome = NULL,
-  recipient_subgenome = NULL,
+  donor_components = NULL,
+  recipient_components = NULL,
+  donor_component = NULL,
+  recipient_component = NULL,
   key = NULL,
   label = NULL,
   description = NULL,
@@ -25,16 +25,16 @@ resolveSpeciesAssembly(
 
 \item{recipient}{Recipient species key.}
 
-\item{donor_subgenomes}{Optional donor subgenome labels.}
+\item{donor_components}{Optional donor component labels.}
 
-\item{recipient_subgenomes}{Optional recipient subgenome labels.}
+\item{recipient_components}{Optional recipient component labels.}
 
-\item{donor_subgenome}{Optional single donor subgenome (shortcut).}
+\item{donor_component}{Optional single donor component (shortcut).}
 
-\item{recipient_subgenome}{Optional single recipient subgenome (shortcut).}
+\item{recipient_component}{Optional single recipient component (shortcut).}
 
 \item{key}{Optional assembly key. Defaults to a key built from the species
-and subgenome labels.}
+and component labels.}
 
 \item{label}{Optional assembly label.}
 
@@ -47,18 +47,18 @@ vector for the derived assembly.}
 A list with \code{key}, \code{assembly}, \code{config} (the input configuration
 with the derived assembly registered), \code{unpaired} (contigs excluded from
 the pair, with a reason), \code{donor_species}, \code{recipient_species},
-\code{donor_subgenomes} and \code{recipient_subgenomes}.
+\code{donor_components} and \code{recipient_components}.
 }
 \description{
-Selects one or more subgenomes per species and pairs their contigs by
+Selects one or more components per species and pairs their contigs by
 chromosome group. The group is taken from the optional \code{group} field of a
 species contig, or from the first number in its \code{name} (for example \verb{1A} and
-\verb{1R} are both group 1). All contigs in the selected subgenomes are included;
+\verb{1R} are both group 1). All contigs in the selected components are included;
 the scoring layer compares donor and recipient homoeologs within a group.
 }
 \details{
-\code{recipient_subgenomes} and \code{donor_subgenomes} are optional when a species has
-a single subgenome or a \code{default_subgenome}; otherwise every subgenome is
-selected. The singular \code{recipient_subgenome} / \code{donor_subgenome} arguments
+\code{recipient_components} and \code{donor_components} are optional when a species has
+a single component or a \code{default_component}; otherwise every component is
+selected. The singular \code{recipient_component} / \code{donor_component} arguments
 are accepted as one-element shortcuts.
 }

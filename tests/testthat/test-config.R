@@ -1,4 +1,4 @@
-## Configuration: ploidy, multi-subgenome assemblies and migration errors.
+## Configuration: ploidy, multi-component assemblies and migration errors.
 
 tiny_species_config <- function() {
     config <- list(
@@ -7,18 +7,18 @@ tiny_species_config <- function() {
         species = list(
             tiny_recipient = list(
                 label = "Tiny recipient",
-                default_subgenome = "R",
+                default_component = "R",
                 gc_indexes = "tiny.gcrank",
                 contigs = list(list(
-                    id = "r1", name = "1R", subgenome = "R"
+                    id = "r1", name = "1R", component = "R"
                 ))
             ),
             tiny_donor = list(
                 label = "Tiny donor",
-                default_subgenome = "D",
+                default_component = "D",
                 gc_indexes = "tiny.gcrank",
                 contigs = list(list(
-                    id = "d1", name = "1D", subgenome = "D"
+                    id = "d1", name = "1D", component = "D"
                 ))
             )
         )
@@ -38,8 +38,8 @@ test_that("the tiny fixture is a valid configuration", {
         config$defaults$calibration$fdr, 0.01
     )
     assembly <- tiny_assembly(config)
-    expect_identical(assembly$recipient_subgenomes, "R")
-    expect_identical(assembly$donor_subgenomes, "D")
+    expect_identical(assembly$recipient_components, "R")
+    expect_identical(assembly$donor_components, "D")
     expect_equal(unname(assembly$sample_composition), 2)
 })
 
@@ -93,35 +93,35 @@ test_that("listMaMaMIAAssemblies and listMaMaMIASpecies expose ploidy", {
     config <- tiny_resolved_config()
     assemblies <- listMaMaMIAAssemblies(config)
     expect_true(all(c(
-        "recipient_subgenomes", "donor_subgenomes"
+        "recipient_components", "donor_components"
     ) %in% names(assemblies)))
-    expect_identical(assemblies$recipient_subgenomes, "R")
+    expect_identical(assemblies$recipient_components, "R")
     species <- listMaMaMIASpecies(config)
-    expect_true(all(c("subgenomes", "default_subgenome") %in% names(species)))
+    expect_true(all(c("components", "default_component") %in% names(species)))
 })
 
-test_that("resolveSpeciesAssembly accepts singular and plural subgenomes", {
+test_that("resolveSpeciesAssembly accepts singular and plural components", {
     config <- tiny_species_config()
     pair <- resolveSpeciesAssembly(
         config, donor = "tiny_donor", recipient = "tiny_recipient",
-        recipient_subgenomes = "R", donor_subgenomes = "D"
+        recipient_components = "R", donor_components = "D"
     )
-    expect_identical(pair$recipient_subgenomes, "R")
-    expect_identical(pair$donor_subgenomes, "D")
+    expect_identical(pair$recipient_components, "R")
+    expect_identical(pair$donor_components, "D")
     expect_identical(nrow(pair$assembly$contigs$recipient), 1L)
     expect_identical(nrow(pair$assembly$contigs$donor), 1L)
     expect_identical(pair$assembly$contigs$recipient$group, "1")
     expect_identical(pair$assembly$contigs$recipient$copy_number, 2)
 })
 
-test_that("unknown subgenomes and copy numbers are rejected", {
+test_that("unknown components and copy numbers are rejected", {
     config <- tiny_species_config()
     expect_error(
         resolveSpeciesAssembly(
             config, donor = "tiny_donor", recipient = "tiny_recipient",
-            recipient_subgenomes = "Z"
+            recipient_components = "Z"
         ),
-        "no recipient subgenome"
+        "no recipient component"
     )
     config$species$tiny_recipient$contigs$copy_number <- -1
     expect_error(validateMaMaMIAConfig(config), "copy_number")
@@ -139,7 +139,7 @@ test_that("default_sample_composition validates names and values", {
             config, donor = "tiny_donor", recipient = "tiny_recipient",
             default_sample_composition = c(Z = 2)
         ),
-        "unknown recipient subgenome"
+        "unknown recipient component"
     )
 })
 
@@ -169,7 +169,7 @@ test_that("the shipped registry example is role-free", {
         expect_true(all(c("label", "gc_indexes", "contigs") %in%
             names(species)))
         expect_true(all(vapply(species$contigs, function(contig) {
-            all(c("id", "name", "subgenome") %in% names(contig))
+            all(c("id", "name", "component") %in% names(contig))
         }, logical(1))))
     }
     expect_identical(example$defaults$exclude_flags, 1796)

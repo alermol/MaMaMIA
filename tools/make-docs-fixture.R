@@ -83,7 +83,7 @@ block_length <- 20L
 contig_names <- c("d1", "r1")
 
 ## 20 bp blocks with 4..20 G/C bases: GC varies between 20% and 100%, which
-## gives the smoother enough signal within every subgenome.
+## gives the smoother enough signal within every component.
 variable_sequence <- function(offset) {
     blocks <- contig_length / block_length
     gc <- ((seq_len(blocks) + offset) %% 17L) + 4L
@@ -192,16 +192,16 @@ config <- list(
         triticum_like = list(
             label = "Triticum-like (A)",
             description = "Synthetic 20 kb contig with variable GC",
-            default_subgenome = "A",
+            default_component = "A",
             gc_indexes = list("demo.gcrank"),
-            contigs = list(list(id = "r1", name = "1A", subgenome = "A"))
+            contigs = list(list(id = "r1", name = "1A", component = "A"))
         ),
         secale_like = list(
             label = "Secale-like (R)",
             description = "Synthetic 20 kb contig with variable GC",
-            default_subgenome = "R",
+            default_component = "R",
             gc_indexes = list("demo.gcrank"),
-            contigs = list(list(id = "d1", name = "1R", subgenome = "R"))
+            contigs = list(list(id = "d1", name = "1R", component = "R"))
         )
     )
 )

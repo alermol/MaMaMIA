@@ -4,9 +4,9 @@
 ## the homoeologs in one chromosome group. For a BEDPE we materialise one donor
 ## interval and one recipient interval. When assignCallPositions() has added
 ## the assigned contigs and coordinates, those are used. Otherwise the donor
-## subgenome is the one recorded by a `max` aggregation (or the first donor
+## component is the one recorded by a `max` aggregation (or the first donor
 ## contig in the group) and the recipient interval uses the first recipient
-## subgenome in the group; the `group` column and the score fields retain the
+## component in the group; the `group` column and the score fields retain the
 ## group-level meaning.
 
 .bedpe_error <- function(fmt, ...) {
@@ -31,16 +31,16 @@
     donor <- table[table$role == "donor", , drop = FALSE]
     recipient <- table[table$role == "recipient", , drop = FALSE]
     pick <- function(role_table, group, start_iid, end_iid,
-                     subgenome = NULL) {
+                     component = NULL) {
         rows <- role_table[role_table$group == group, , drop = FALSE]
         if (nrow(rows) == 0L) {
             return(list(chr = NA_character_, start = NA_real_, stop = NA_real_))
         }
-        if (is.null(subgenome) || is.na(subgenome) ||
-            !subgenome %in% rows$subgenome) {
-            subgenome <- rows$subgenome[[1L]]
+        if (is.null(component) || is.na(component) ||
+            !component %in% rows$component) {
+            component <- rows$component[[1L]]
         }
-        rows <- rows[rows$subgenome == subgenome, , drop = FALSE]
+        rows <- rows[rows$component == component, , drop = FALSE]
         start_row <- rows[rows$iid == start_iid, , drop = FALSE]
         if (nrow(start_row) == 0L) {
             return(list(chr = NA_character_, start = NA_real_, stop = NA_real_))
@@ -55,8 +55,8 @@
     donor_intervals <- lapply(seq_len(nrow(calls)), function(i) {
         pick(
             donor, calls$group[[i]], calls$start_iid[[i]], calls$end_iid[[i]],
-            if ("donor_subgenome" %in% names(calls)) {
-                calls$donor_subgenome[[i]]
+            if ("donor_component" %in% names(calls)) {
+                calls$donor_component[[i]]
             } else {
                 NULL
             }
@@ -165,7 +165,7 @@ writeCallsToBedpe <- function(x, file, samples = NULL, selected = NULL,
                 confidence = character(0), method = character(0),
                 mode = character(0), group = character(0),
                 class_group = character(0),
-                recipient_subgenome = character(0),
+                recipient_component = character(0),
                 recipient_chr_name = character(0),
                 recipient_group = character(0),
                 recipient_assignment = character(0),
@@ -175,7 +175,7 @@ writeCallsToBedpe <- function(x, file, samples = NULL, selected = NULL,
                 recipient_deletion_width_bp = numeric(0),
                 recipient_alternative = character(0),
                 recipient_mean_depletion = numeric(0),
-                donor_subgenome = character(0),
+                donor_component = character(0),
                 donor_chr_name = character(0),
                 stringsAsFactors = FALSE
             ),
@@ -188,11 +188,11 @@ writeCallsToBedpe <- function(x, file, samples = NULL, selected = NULL,
         "chr_id.rec", "start.rec", "stop.rec", "width_bp",
         "score_mean", "donor_mean", "recipient_mean", "class",
         "class_group", "confidence", "method", "mode", "group",
-        "start_iid", "end_iid", "recipient_subgenome", "recipient_chr_name",
+        "start_iid", "end_iid", "recipient_component", "recipient_chr_name",
         "recipient_group", "recipient_assignment", "recipient_cross_group",
         "recipient_weight", "recipient_expected_breadth",
         "recipient_deletion_width_bp", "recipient_alternative",
-        "recipient_mean_depletion", "donor_subgenome", "donor_chr_name"
+        "recipient_mean_depletion", "donor_component", "donor_chr_name"
     )
     out <- calls[, intersect(columns, names(calls)), drop = FALSE]
     utils::write.table(

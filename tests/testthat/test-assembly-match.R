@@ -214,13 +214,13 @@ test_that("matchAssembly() matches the real Sq54 BAM exactly", {
     chromosomes <- utils::read.delim(
         file.path(root, "assemblies", "cs_t2t_se_cereale", "chromosomes.tsv"),
         header = FALSE,
-        col.names = c("id", "name", "subgenome"),
+        col.names = c("id", "name", "component"),
         stringsAsFactors = FALSE
     )
     entries <- function(x) {
         lapply(seq_len(nrow(x)), function(i) {
             list(id = x$id[[i]], name = x$name[[i]],
-                subgenome = x$subgenome[[i]]
+                component = x$component[[i]]
             )
         })
     }
@@ -233,7 +233,7 @@ test_that("matchAssembly() matches the real Sq54 BAM exactly", {
                     file.path(root, "gcidx", "triticum-aestivum", "index.gcrank")
                 ),
                 contigs = entries(
-                    chromosomes[chromosomes$subgenome != "R", ]
+                    chromosomes[chromosomes$component != "R", ]
                 )
             ),
             secale_cereale = list(
@@ -242,7 +242,7 @@ test_that("matchAssembly() matches the real Sq54 BAM exactly", {
                     file.path(root, "gcidx", "secale-cereale", "index.gcrank")
                 ),
                 contigs = entries(
-                    chromosomes[chromosomes$subgenome == "R", ]
+                    chromosomes[chromosomes$component == "R", ]
                 )
             )
         )

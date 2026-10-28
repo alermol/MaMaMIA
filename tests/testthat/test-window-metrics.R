@@ -22,7 +22,7 @@ test_that("buildWindowMetrics() implements the WindowMetrics contract", {
         fixture$measured, fixture$windows, fixture$gc
     )
     expect_named(metrics, c(
-        "sample", "chr_id", "chr_name", "group", "role", "subgenome",
+        "sample", "chr_id", "chr_name", "group", "role", "component",
         "copy_number", "iid", "start", "stop", "length", "count", "covered",
         "breadth", "gc", "lambda_breadth", "lambda_count", "read_length"
     ))

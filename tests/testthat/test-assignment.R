@@ -5,7 +5,7 @@ assignment_fixture <- function(samples = paste0("S", 1:5), n_per = 20L) {
         role = c(rep("recipient", 4L), rep("donor", 2L)),
         id = c("r1a", "r1b", "r2a", "r2b", "d1", "d2"),
         name = c("1A", "1B", "2A", "2B", "1R", "2R"),
-        subgenome = c("A", "B", "A", "B", "R", "R"),
+        component = c("A", "B", "A", "B", "R", "R"),
         group = c("1", "1", "2", "2", "1", "2"),
         length = 2000,
         copy_number = 2,
@@ -20,7 +20,7 @@ assignment_fixture <- function(samples = paste0("S", 1:5), n_per = 20L) {
             iid = seq.int(0L, n_per - 1L),
             role = contigs$role[[i]],
             chr_name = contigs$name[[i]],
-            subgenome = contigs$subgenome[[i]],
+            component = contigs$component[[i]],
             group = contigs$group[[i]],
             copy_number = 2,
             stringsAsFactors = FALSE
@@ -56,7 +56,7 @@ assignment_fixture <- function(samples = paste0("S", 1:5), n_per = 20L) {
         stringsAsFactors = FALSE
     )
     scores$mode <- "multi"
-    scores$donor_subgenome <- "R"
+    scores$donor_component <- "R"
     scores$score <- 0
     scores$start <- table$start[match(scores$iid, table$iid)]
     scores$stop <- table$stop[match(scores$iid, table$iid)]

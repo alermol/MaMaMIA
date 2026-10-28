@@ -183,16 +183,16 @@ config <- list(
         tiny_recipient = list(
             label = "Tiny synthetic recipient",
             description = "Two 20 kb contigs with 40% and 60% GC",
-            default_subgenome = "R",
+            default_component = "R",
             gc_indexes = list("tiny.gcrank"),
-            contigs = list(list(id = "r1", name = "1R", subgenome = "R"))
+            contigs = list(list(id = "r1", name = "1R", component = "R"))
         ),
         tiny_donor = list(
             label = "Tiny synthetic donor",
             description = "Two 20 kb contigs with 40% and 60% GC",
-            default_subgenome = "D",
+            default_component = "D",
             gc_indexes = list("tiny.gcrank"),
-            contigs = list(list(id = "d1", name = "1D", subgenome = "D"))
+            contigs = list(list(id = "d1", name = "1D", component = "D"))
         )
     )
 )

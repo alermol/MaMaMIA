@@ -70,9 +70,9 @@ data <- list(
     preflight = preflight,
     species_selection = list(
         recipient = "triticum_like",
-        recipient_subgenome = "A",
+        recipient_component = "A",
         donor = "secale_like",
-        donor_subgenome = "R"
+        donor_component = "R"
     )
 )
 saveRDS(data, file.path(example_dir, "example.rds"), version = 2)

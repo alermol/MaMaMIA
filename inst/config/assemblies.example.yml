@@ -9,8 +9,9 @@
 # one recipient species and one donor species; the same species can be used on
 # either side. Contigs are paired by chromosome group, taken from the optional
 # `group` field or from the first number in `name` (1A and 1R are both group
-# 1). The dashboard analyses every declared subgenome; `default_subgenome` is
-# only used by API calls that do not name a subgenome explicitly.
+# 1). Components are arbitrary contig-set labels, not genome types. The
+# dashboard analyses every declared component; `default_component` is only
+# used by API calls that do not name a component explicitly.
 #
 # `defaults.donor_aggregation` accepts mean, max or sum and supplies the
 # dashboard default; the sidebar exposes it under Advanced.
@@ -35,57 +36,57 @@ server:
 species:
   triticum_aestivum:
     label: "Triticum aestivum CS T2T"
-    description: "Hexaploid wheat reference (A, B, D subgenomes)"
-    default_subgenome: A
+    description: "Hexaploid wheat reference (A, B, D components)"
+    default_component: A
     gc_indexes:
       - /srv/mamamia/gcidx/triticum-aestivum/index.gcrank
     contigs:
-      - {id: CP155614.1, name: 1A, subgenome: A}
-      - {id: CP155613.1, name: 1B, subgenome: B}
-      - {id: CP155612.1, name: 1D, subgenome: D}
-      - {id: CP155611.1, name: 2A, subgenome: A}
-      - {id: CP155610.1, name: 2B, subgenome: B}
-      - {id: CP155609.1, name: 2D, subgenome: D}
-      - {id: CP155608.1, name: 3A, subgenome: A}
-      - {id: CP155607.1, name: 3B, subgenome: B}
-      - {id: CP155606.1, name: 3D, subgenome: D}
-      - {id: CP155605.1, name: 4A, subgenome: A}
-      - {id: CP155604.1, name: 4B, subgenome: B}
-      - {id: CP155603.1, name: 4D, subgenome: D}
-      - {id: CP155602.1, name: 5A, subgenome: A}
-      - {id: CP155601.1, name: 5B, subgenome: B}
-      - {id: CP155600.1, name: 5D, subgenome: D}
-      - {id: CP155599.1, name: 6A, subgenome: A}
-      - {id: CP155594.1, name: 6B, subgenome: B}
-      - {id: CP155598.1, name: 6D, subgenome: D}
-      - {id: CP155597.1, name: 7A, subgenome: A}
-      - {id: CP155596.1, name: 7B, subgenome: B}
-      - {id: CP155595.1, name: 7D, subgenome: D}
+      - {id: CP155614.1, name: 1A, component: A}
+      - {id: CP155613.1, name: 1B, component: B}
+      - {id: CP155612.1, name: 1D, component: D}
+      - {id: CP155611.1, name: 2A, component: A}
+      - {id: CP155610.1, name: 2B, component: B}
+      - {id: CP155609.1, name: 2D, component: D}
+      - {id: CP155608.1, name: 3A, component: A}
+      - {id: CP155607.1, name: 3B, component: B}
+      - {id: CP155606.1, name: 3D, component: D}
+      - {id: CP155605.1, name: 4A, component: A}
+      - {id: CP155604.1, name: 4B, component: B}
+      - {id: CP155603.1, name: 4D, component: D}
+      - {id: CP155602.1, name: 5A, component: A}
+      - {id: CP155601.1, name: 5B, component: B}
+      - {id: CP155600.1, name: 5D, component: D}
+      - {id: CP155599.1, name: 6A, component: A}
+      - {id: CP155594.1, name: 6B, component: B}
+      - {id: CP155598.1, name: 6D, component: D}
+      - {id: CP155597.1, name: 7A, component: A}
+      - {id: CP155596.1, name: 7B, component: B}
+      - {id: CP155595.1, name: 7D, component: D}
   secale_cereale:
     label: "Secale cereale (rye)"
-    description: "Rye reference (R subgenome)"
-    default_subgenome: R
+    description: "Rye reference (R component)"
+    default_component: R
     gc_indexes:
       - /srv/mamamia/gcidx/secale-cereale/index.gcrank
     contigs:
-      - {id: OZ284382.1, name: 1R, subgenome: R}
-      - {id: OZ284383.1, name: 2R, subgenome: R}
-      - {id: OZ284384.1, name: 3R, subgenome: R}
-      - {id: OZ284385.1, name: 4R, subgenome: R}
-      - {id: OZ284386.1, name: 5R, subgenome: R}
-      - {id: OZ284387.1, name: 6R, subgenome: R}
-      - {id: OZ284388.1, name: 7R, subgenome: R}
+      - {id: OZ284382.1, name: 1R, component: R}
+      - {id: OZ284383.1, name: 2R, component: R}
+      - {id: OZ284384.1, name: 3R, component: R}
+      - {id: OZ284385.1, name: 4R, component: R}
+      - {id: OZ284386.1, name: 5R, component: R}
+      - {id: OZ284387.1, name: 6R, component: R}
+      - {id: OZ284388.1, name: 7R, component: R}
   aegilops_speltoides:
     label: "Aegilops speltoides"
-    description: "Wild wheat relative (S subgenome)"
-    default_subgenome: S
+    description: "Wild wheat relative (S component)"
+    default_component: S
     gc_indexes:
       - /srv/mamamia/gcidx/aegilops-speltoides/index.gcrank
     contigs:
-      - {id: CH1S, name: 1S, subgenome: S, group: 1}
-      - {id: CH2S, name: 2S, subgenome: S, group: 2}
-      - {id: CH3S, name: 3S, subgenome: S, group: 3}
-      - {id: CH4S, name: 4S, subgenome: S, group: 4}
-      - {id: CH5S, name: 5S, subgenome: S, group: 5}
-      - {id: CH6S, name: 6S, subgenome: S, group: 6}
-      - {id: CH7S, name: 7S, subgenome: S, group: 7}
+      - {id: CH1S, name: 1S, component: S, group: 1}
+      - {id: CH2S, name: 2S, component: S, group: 2}
+      - {id: CH3S, name: 3S, component: S, group: 3}
+      - {id: CH4S, name: 4S, component: S, group: 4}
+      - {id: CH5S, name: 5S, component: S, group: 5}
+      - {id: CH6S, name: 6S, component: S, group: 6}
+      - {id: CH7S, name: 7S, component: S, group: 7}

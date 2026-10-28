@@ -31,7 +31,7 @@
         )
     }
     table <- windows$table
-    required <- c("chr_id", "start", "stop", "role", "subgenome", "group")
+    required <- c("chr_id", "start", "stop", "role", "component", "group")
     missing <- setdiff(required, names(table))
     if (length(missing) > 0L) {
         .window_metrics_error(
@@ -332,7 +332,7 @@ buildWindowMetrics <- function(measured, windows, gc, read_length = NULL) {
         chr_name = meta$chr_name,
         group = meta$group,
         role = meta$role,
-        subgenome = meta$subgenome,
+        component = meta$component,
         copy_number = as.numeric(meta$copy_number),
         iid = measured$iid,
         start = as.numeric(meta$start),
@@ -358,7 +358,7 @@ buildWindowMetrics <- function(measured, windows, gc, read_length = NULL) {
     ), , drop = FALSE]
     rownames(out) <- NULL
     out[, c(
-        "sample", "chr_id", "chr_name", "group", "role", "subgenome",
+        "sample", "chr_id", "chr_name", "group", "role", "component",
         "copy_number", "iid", "start", "stop", "length", "count", "covered", "breadth",
         "gc", "lambda_breadth", "lambda_count", "read_length"
     )]

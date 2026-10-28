@@ -23,13 +23,13 @@ scoreIntrogression(
 \item{metric}{\code{"breadth"}, \code{"count"} or \code{"combined"}.}
 
 \item{donor_aggregation}{\code{"mean"}, \code{"max"} or \code{"sum"}. Defaults to
-\code{"max"}, so one strongly supported donor subgenome is not diluted by the
+\code{"max"}, so one strongly supported donor component is not diluted by the
 other donor homoeologs.}
 
 \item{recipient_aggregation}{Only \code{"mean"} is supported.}
 
 \item{sample_composition}{Optional named copy-number vector for recipient
-subgenomes, for example \code{c(A = 2, B = 2, D = 2)}.}
+components, for example \code{c(A = 2, B = 2, D = 2)}.}
 
 \item{gc_correction}{Correct the single-sample score for GC.}
 
@@ -41,7 +41,7 @@ A \code{ScoreTable} data frame.
 \description{
 Computes the paired donor/recipient log-ratio (or the donor-only fallback)
 for every sample, chromosome group and window. Supports any number of donor
-and recipient subgenomes. Single samples are GC-corrected with a natural
+and recipient components. Single samples are GC-corrected with a natural
 spline; cohorts use median polish. The optional copy-number model reports
 donor copies and donor fraction.
 }

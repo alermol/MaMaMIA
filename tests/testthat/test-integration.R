@@ -8,7 +8,7 @@ study_contigs <- function(root) {
     }
     contigs <- utils::read.delim(path, stringsAsFactors = FALSE)
     contigs$group <- as.character(contigs$group)
-    contigs$subgenome <- ifelse(
+    contigs$component <- ifelse(
         contigs$role == "donor",
         "S",
         sub("^[0-9]+", "", contigs$group)
@@ -42,8 +42,8 @@ real_config <- function(root) {
                 function(i) {
                     x <- contigs[contigs$role == "recipient", ][i, ]
                     list(
-                        id = x$chr, name = x$subgenome,
-                        subgenome = x$subgenome, group = x$group,
+                        id = x$chr, name = x$component,
+                        component = x$component, group = x$group,
                         copy_number = 2
                     )
                 }
@@ -58,7 +58,7 @@ real_config <- function(root) {
                     x <- contigs[contigs$role == "donor", ][i, ]
                     list(
                         id = x$chr, name = paste0(x$group, "S"),
-                        subgenome = "S", group = x$group, copy_number = 2
+                        component = "S", group = x$group, copy_number = 2
                     )
                 }
             )
@@ -86,8 +86,8 @@ real_config <- function(root) {
     resolveSpeciesAssembly(
         config, donor = "aegilops_speltoides",
         recipient = "triticum_aestivum",
-        recipient_subgenomes = c("A", "B", "D"),
-        donor_subgenomes = "S",
+        recipient_components = c("A", "B", "D"),
+        donor_components = "S",
         default_sample_composition = c(A = 2, B = 2, D = 2),
         key = "wheat_speltoides"
     )$config
@@ -118,11 +118,11 @@ test_that("the real assembly is ploidy-aware", {
     config <- real_config(root)
     expect_identical(config$version, 2L)
     expect_identical(
-        config$assemblies$wheat_speltoides$recipient_subgenomes,
+        config$assemblies$wheat_speltoides$recipient_components,
         c("A", "B", "D")
     )
     expect_identical(
-        config$assemblies$wheat_speltoides$donor_subgenomes, "S"
+        config$assemblies$wheat_speltoides$donor_components, "S"
     )
     expect_identical(
         nrow(config$assemblies$wheat_speltoides$contigs$recipient), 21L

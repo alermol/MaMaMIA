@@ -4,12 +4,14 @@
 interspecific introgressions from Genotyping-by-Sequencing (GBS) coverage data.
 
 Version 0.99.2 uses **breadth of coverage and read counts** in exact windows. It
-computes a paired donor/recipient log-ratio of per-subgenome depth, corrects GC
+computes a paired donor/recipient log-ratio of per-component depth, corrects GC
 bias with a spline (single sample) or median polish (cohort), applies a
 window-level recurrence/blacklist mask, segments with CBS, calibrates
 thresholds by segment length, and classifies calls as substitutions, additions
 or other. The method is ploidy-agnostic: a donor and a recipient may each
-contribute any number of subgenomes.
+contribute any number of components. A **component** is an arbitrary label for
+a set of contigs (for example `A`, `B` or `D`); it carries no genome-type or
+ploidy assumption, and donor and recipient labels may overlap.
 
 The BAM-first workflow is the only workflow. `MaMaMIA` reads BAM headers,
 creates CSI indexes, tiles the reference into windows, reads GC from a `gcrank`
@@ -73,13 +75,13 @@ species:
     label: "Triticum aestivum CS T2T"
     gc_indexes: [/srv/mamamia/gcidx/triticum-aestivum/index.gcrank]
     contigs:
-      - {id: CP155614.1, name: 1A, subgenome: A, group: 1}
+      - {id: CP155614.1, name: 1A, component: A, group: 1}
       # ... 21 wheat contigs
   aegilops_speltoides:
     label: "Aegilops speltoides"
     gc_indexes: [/srv/mamamia/gcidx/aegilops-speltoides/index.gcrank]
     contigs:
-      - {id: CH1S, name: 1S, subgenome: S, group: 1}
+      - {id: CH1S, name: 1S, component: S, group: 1}
       # ... 7 S contigs
 
 ```
@@ -153,8 +155,8 @@ y      = log(lambda_d + eps) - log(lambda_r + eps)
 ```
 
 Recipient homoeologs are averaged. Donor homoeologs are max-selected by
-default: at each window the donor subgenome with the strongest donor/recipient
-log-ratio is used, so one strongly supported donor subgenome is not diluted by
+default: at each window the donor component with the strongest donor/recipient
+log-ratio is used, so one strongly supported donor component is not diluted by
 the other donor homoeologs. `mean` and `sum` remain available in the registry
 (`defaults.donor_aggregation`); the dashboard exposes the setting in the
 **Advanced** sidebar panel. A single sample is GC-corrected with a natural
@@ -163,7 +165,7 @@ CNV-robust fallback.
 
 ### Ploidy
 
-The assembly selects subgenomes, not individual contigs, and it is built at
+The assembly selects components, not individual contigs, and it is built at
 run time from two species:
 
 ```r
@@ -171,8 +173,8 @@ pair <- resolveSpeciesAssembly(
     config,
     recipient = "triticum_aestivum",
     donor = "aegilops_speltoides",
-    recipient_subgenomes = c("A", "B", "D"),
-    donor_subgenomes = "S",
+    recipient_components = c("A", "B", "D"),
+    donor_components = "S",
     default_sample_composition = c(A = 2, B = 2, D = 2)
 )
 ```
@@ -180,7 +182,7 @@ pair <- resolveSpeciesAssembly(
 A diploid donor/recipient, a tetraploid recipient, a hexaploid recipient, a
 multi-donor design and an autotetraploid donor all use the same code path. A
 runtime `sample_composition` overrides the default; `copy_number: 0` removes a
-subgenome from the recipient aggregate.
+component from the recipient aggregate.
 
 ### Masks and calibration
 
@@ -217,10 +219,12 @@ runMaMaMIA(config = "assemblies.yml")
 exploreIntrogressions(result)
 ```
 
-The dashboard analyses every subgenome declared for the selected species and
+The dashboard analyses every component declared for the selected species and
 offers chromosome-group, class, confidence and width filters. The main tab is
-a vertical karyotype with a score heatmap or call-map mode. It is split into
-subgenome columns, and every chromosome bar is scaled by its configured
+a vertical karyotype with a score heatmap or call-map mode. Chromosomes are
+shown in assembly-config order without group or component columns, as diploid
+homolog pairs: a small gap inside each pair, a larger gap between chromosomes,
+the same `1A`/`1B` label on both copies, and every bar scaled by its configured
 length. Every donor segment is compared with every recipient contig; a cohort
 breadth baseline, a donor/recipient width match and a same-group homology
 prior feed a per-sample global assignment with a "no host" option. Cross-group

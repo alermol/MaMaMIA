@@ -15,9 +15,9 @@
     .mamamia_error("MaMaMIAAssignmentError", fmt, ...)
 }
 
-#' Pick the donor subgenome recorded by the score
+#' Pick the donor component recorded by the score
 #' @noRd
-.assignment_donor_subgenome <- function(scores, sample, group, start_iid,
+.assignment_donor_component <- function(scores, sample, group, start_iid,
                                          end_iid) {
     rows <- scores[
         as.character(scores$sample) == sample &
@@ -26,7 +26,7 @@
         ,
         drop = FALSE
     ]
-    donors <- as.character(rows$donor_subgenome)
+    donors <- as.character(rows$donor_component)
     donors <- donors[!is.na(donors) & nzchar(donors)]
     if (length(donors) == 0L) {
         return(NA_character_)
@@ -42,13 +42,13 @@
     group <- as.character(call$group[[1L]])
     start_iid <- as.integer(call$start_iid[[1L]])
     end_iid <- as.integer(call$end_iid[[1L]])
-    donor_subgenome <- .assignment_donor_subgenome(
+    donor_component <- .assignment_donor_component(
         scores, sample, group, start_iid, end_iid
     )
     donor_contigs <- assembly$contigs$donor
     if (is.null(donor_contigs) || nrow(donor_contigs) == 0L) {
         return(list(
-            subgenome = donor_subgenome,
+            component = donor_component,
             chr_id = NA_character_,
             chr_name = NA_character_,
             length = NA_real_,
@@ -58,8 +58,8 @@
     }
     rows <- donor_contigs[
         as.character(donor_contigs$group) == group &
-            (!is.na(donor_subgenome) &
-                as.character(donor_contigs$subgenome) == donor_subgenome),
+            (!is.na(donor_component) &
+                as.character(donor_contigs$component) == donor_component),
         ,
         drop = FALSE
     ]
@@ -71,7 +71,7 @@
     }
     if (nrow(rows) == 0L) {
         return(list(
-            subgenome = donor_subgenome,
+            component = donor_component,
             chr_id = NA_character_,
             chr_name = NA_character_,
             length = NA_real_,
@@ -81,9 +81,9 @@
     }
     chr_id <- as.character(rows$id[[1L]])
     chr_name <- as.character(rows$name[[1L]])
-    subgenome <- as.character(rows$subgenome[[1L]])
-    if (is.na(donor_subgenome)) {
-        donor_subgenome <- subgenome
+    component <- as.character(rows$component[[1L]])
+    if (is.na(donor_component)) {
+        donor_component <- component
     }
     windows <- table[
         as.character(table$chr_id) == chr_id &
@@ -100,7 +100,7 @@
         length_bp <- as.numeric(call$width_bp[[1L]])
     }
     list(
-        subgenome = donor_subgenome,
+        component = donor_component,
         chr_id = chr_id,
         chr_name = chr_name,
         length = length_bp,
@@ -389,7 +389,7 @@
         data.frame(
             chr_id = chr_id,
             chr_name = as.character(contigs$chr_name[[j]]),
-            subgenome = as.character(contigs$subgenome[[j]]),
+            component = as.character(contigs$component[[j]]),
             group = as.character(contigs$group[[j]]),
             inside_depletion = as.numeric(inside_depletion),
             expected_breadth = as.numeric(expected_breadth),
@@ -558,7 +558,7 @@
         ## not from a previous assignment-aware class.
         calls$class <- calls$class_group
     }
-    calls$recipient_subgenome <- rep(NA_character_, n)
+    calls$recipient_component <- rep(NA_character_, n)
     calls$recipient_chr_id <- rep(NA_character_, n)
     calls$recipient_chr_name <- rep(NA_character_, n)
     calls$recipient_group <- rep(NA_character_, n)
@@ -577,7 +577,7 @@
     calls$recipient_strong <- rep(FALSE, n)
     calls$recipient_alternative <- rep(NA_character_, n)
     calls$recipient_alternative_score <- rep(NA_real_, n)
-    calls$donor_subgenome <- rep(NA_character_, n)
+    calls$donor_component <- rep(NA_character_, n)
     calls$donor_chr_id <- rep(NA_character_, n)
     calls$donor_chr_name <- rep(NA_character_, n)
     calls$donor_start_bp <- rep(NA_real_, n)
@@ -632,7 +632,7 @@ assignCallPositions <- function(
     }
     if (!is.data.frame(metrics) ||
         !all(c("sample", "chr_id", "chr_name", "group", "role",
-               "subgenome", "iid", "lambda_breadth", "gc", "breadth") %in%
+               "component", "iid", "lambda_breadth", "gc", "breadth") %in%
             names(metrics))) {
         .assignment_error("`metrics` must be a WindowMetrics table")
     }
@@ -640,9 +640,9 @@ assignCallPositions <- function(
         .assignment_error("`windows` must be an AnalysisWindows list")
     }
     if (!is.data.frame(scores) ||
-        !all(c("sample", "group", "iid", "donor_subgenome") %in%
+        !all(c("sample", "group", "iid", "donor_component") %in%
             names(scores))) {
-        .assignment_error("`scores` must be a ScoreTable with donor_subgenome")
+        .assignment_error("`scores` must be a ScoreTable with donor_component")
     }
     recipient <- metrics[
         as.character(metrics$role) == "recipient", , drop = FALSE
@@ -658,13 +658,13 @@ assignCallPositions <- function(
     contigs <- assembly$contigs$recipient
     if (is.null(contigs) || nrow(contigs) == 0L) {
         contigs <- unique(recipient[, c(
-            "chr_id", "chr_name", "subgenome", "group"
+            "chr_id", "chr_name", "component", "group"
         )])
     } else {
         contigs <- data.frame(
             chr_id = as.character(contigs$id),
             chr_name = as.character(contigs$name),
-            subgenome = as.character(contigs$subgenome),
+            component = as.character(contigs$component),
             group = as.character(contigs$group),
             stringsAsFactors = FALSE
         )
@@ -712,7 +712,7 @@ assignCallPositions <- function(
             i <- idx[[k]]
             call <- calls[i, , drop = FALSE]
             donor_info <- donor[[k]]
-            calls$donor_subgenome[[i]] <- donor_info$subgenome
+            calls$donor_component[[i]] <- donor_info$component
             calls$donor_chr_id[[i]] <- donor_info$chr_id
             calls$donor_chr_name[[i]] <- donor_info$chr_name
             calls$donor_start_bp[[i]] <- donor_info$start_bp
@@ -816,7 +816,7 @@ assignCallPositions <- function(
                 "assigned"
             }
 
-            calls$recipient_subgenome[[i]] <- best$subgenome[[1L]]
+            calls$recipient_component[[i]] <- best$component[[1L]]
             calls$recipient_chr_id[[i]] <- best$chr_id[[1L]]
             calls$recipient_chr_name[[i]] <- best$chr_name[[1L]]
             calls$recipient_group[[i]] <- best$group[[1L]]

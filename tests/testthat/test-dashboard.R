@@ -97,31 +97,31 @@ test_that("the analysis key changes with the donor aggregation", {
     expect_false(identical(max_key, mean_key))
 })
 
-test_that("the species pair resolves every declared subgenome", {
-    fixture <- multi_subgenome_fixture(samples = "sample1")
+test_that("the species pair resolves every declared component", {
+    fixture <- multi_component_fixture(samples = "sample1")
     on.exit(unlink(fixture$directory, recursive = TRUE), add = TRUE)
     config <- readMaMaMIAConfig(fixture$config_path)
     resolved <- bam_resolve_species_pair(config, "recipient", "donor")
-    expect_identical(resolved$recipient_subgenomes, c("A", "B"))
-    expect_identical(resolved$donor_subgenomes, "R")
+    expect_identical(resolved$recipient_components, c("A", "B"))
+    expect_identical(resolved$donor_components, "R")
     expect_identical(
-        sort(unique(resolved$assembly$contigs$recipient$subgenome)),
+        sort(unique(resolved$assembly$contigs$recipient$component)),
         c("A", "B")
     )
     expect_identical(
-        unique(resolved$assembly$contigs$donor$subgenome), "R"
+        unique(resolved$assembly$contigs$donor$component), "R"
     )
 })
 
-test_that("the sidebar no longer offers subgenome selectors", {
+test_that("the sidebar no longer offers component selectors", {
     config <- readMaMaMIAConfig(
         system.file("extdata", "bam-demo", "assemblies.yml",
             package = "MaMaMIA")
     )
     html <- as.character(bam_sidebar_species_ui(config))
-    expect_false(grepl("recipient_subgenome", html, fixed = TRUE))
-    expect_false(grepl("donor_subgenome", html, fixed = TRUE))
-    expect_match(html, 'id="subgenome_summary_ui"', fixed = TRUE)
+    expect_false(grepl("recipient_component", html, fixed = TRUE))
+    expect_false(grepl("donor_component", html, fixed = TRUE))
+    expect_match(html, 'id="component_summary_ui"', fixed = TRUE)
 })
 
 test_that("an unknown progress stage does not abort the analysis", {

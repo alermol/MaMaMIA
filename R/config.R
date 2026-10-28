@@ -5,8 +5,8 @@
 ## broken index or an inconsistent contig map fails with a message that names
 ## the assembly, contig and file.
 ##
-## Version 2 is ploidy-aware: a species declares its subgenomes per contig and
-## an assembly selects one or more recipient and donor subgenomes. Contigs are
+## Version 2 is ploidy-aware: a species declares its components per contig and
+## an assembly selects one or more recipient and donor components. Contigs are
 ## paired by chromosome group; the scoring layer aggregates homoeologs within a
 ## group instead of requiring a one-to-one contig map.
 
@@ -263,7 +263,7 @@
 
 .is_contig_mapping <- function(x) {
     is.list(x) && !is.null(names(x)) &&
-        any(names(x) %in% c("id", "name", "subgenome"))
+        any(names(x) %in% c("id", "name", "component"))
 }
 
 ## First number in a contig display name, used as the chromosome group when the
@@ -287,7 +287,7 @@ chr_number <- function(chr_name) {
     if (is.null(x) || length(x) == 0L) {
         return(data.frame(
             id = character(0), name = character(0),
-            subgenome = character(0), group = character(0),
+            component = character(0), group = character(0),
             copy_number = numeric(0), stringsAsFactors = FALSE
         ))
     }
@@ -307,14 +307,14 @@ chr_number <- function(chr_name) {
         entry <- entries[[i]]
         where <- sprintf("Species '%s': contigs[[%d]]", species_key, i)
         if (!is.list(entry)) {
-            .config_error("%s must be a mapping with id, name and subgenome", where)
+            .config_error("%s must be a mapping with id, name and component", where)
         }
         id <- .config_string(entry$id, paste0(where, ".id"))
         name <- if (is.null(entry$name)) id else {
             .config_string(entry$name, paste0(where, ".name"))
         }
-        subgenome <- .config_string(
-            entry$subgenome, paste0(where, ".subgenome")
+        component <- .config_string(
+            entry$component, paste0(where, ".component")
         )
         group <- if (is.null(entry$group)) {
             NA_character_
@@ -322,7 +322,7 @@ chr_number <- function(chr_name) {
             .config_string(entry$group, paste0(where, ".group"))
         }
         data.frame(
-            id = id, name = name, subgenome = subgenome, group = group,
+            id = id, name = name, component = component, group = group,
             copy_number = .config_copy_number(
                 entry$copy_number, paste0(where, ".copy_number")
             ),
@@ -344,13 +344,13 @@ chr_number <- function(chr_name) {
     missing_group <- is.na(out$group) | !nzchar(out$group)
     out$group[missing_group] <- derived[missing_group]
 
-    for (subgenome in unique(out$subgenome)) {
-        idx <- out$subgenome == subgenome & !is.na(out$group)
+    for (component in unique(out$component)) {
+        idx <- out$component == component & !is.na(out$group)
         if (anyDuplicated(out$group[idx])) {
             group <- unique(out$group[idx][duplicated(out$group[idx])])[[1L]]
             .config_error(
-                "Species '%s': subgenome '%s' has more than one contig with chromosome group '%s'",
-                species_key, subgenome, group
+                "Species '%s': component '%s' has more than one contig with chromosome group '%s'",
+                species_key, component, group
             )
         }
     }
@@ -392,15 +392,15 @@ chr_number <- function(chr_name) {
         )
     }
 
-    available <- unique(contigs$subgenome)
-    default_subgenome <- if (is.null(species$default_subgenome)) NULL else {
+    available <- unique(contigs$component)
+    default_component <- if (is.null(species$default_component)) NULL else {
         value <- .config_string(
-            species$default_subgenome,
-            sprintf("species.%s.default_subgenome", key)
+            species$default_component,
+            sprintf("species.%s.default_component", key)
         )
         if (!value %in% available) {
             .config_error(
-                "Species '%s': default_subgenome '%s' is not one of: %s",
+                "Species '%s': default_component '%s' is not one of: %s",
                 key, value, paste(available, collapse = ", ")
             )
         }
@@ -411,10 +411,10 @@ chr_number <- function(chr_name) {
         key = key,
         label = label,
         description = description,
-        default_subgenome = default_subgenome,
+        default_component = default_component,
         gc_indexes = unname(gc_indexes),
         contigs = contigs[, c(
-            "id", "name", "subgenome", "group", "copy_number", "length",
+            "id", "name", "component", "group", "copy_number", "length",
             "index_path"
         )]
     )
@@ -480,11 +480,11 @@ chr_number <- function(chr_name) {
     invisible(contigs)
 }
 
-.species_resolve_subgenomes <- function(species, requested, role, context) {
-    available <- unique(as.character(species$contigs$subgenome))
+.species_resolve_components <- function(species, requested, role, context) {
+    available <- unique(as.character(species$contigs$component))
     if (is.null(requested) || length(requested) == 0L) {
-        if (!is.null(species$default_subgenome)) {
-            return(species$default_subgenome)
+        if (!is.null(species$default_component)) {
+            return(species$default_component)
         }
         return(available)
     }
@@ -493,13 +493,13 @@ chr_number <- function(chr_name) {
     }
     requested <- trimws(as.character(requested))
     if (length(requested) == 0L || anyNA(requested) || any(!nzchar(requested))) {
-        .config_error("%s: `%s_subgenomes` must be a non-empty character vector",
+        .config_error("%s: `%s_components` must be a non-empty character vector",
             context, role)
     }
     unknown <- setdiff(requested, available)
     if (length(unknown) > 0L) {
         .config_error(
-            "%s: species '%s' has no %s subgenome(s) %s; available: %s",
+            "%s: species '%s' has no %s component(s) %s; available: %s",
             context, species$key, role,
             paste(sprintf("'%s'", unknown), collapse = ", "),
             paste(available, collapse = ", ")
@@ -558,13 +558,13 @@ chr_number <- function(chr_name) {
     list(pairs = pairs, unpaired = unpaired)
 }
 
-.sample_composition <- function(contigs, subgenomes, requested, context) {
+.sample_composition <- function(contigs, components, requested, context) {
     if (is.null(requested)) {
-        values <- vapply(subgenomes, function(s) {
-            x <- contigs$copy_number[contigs$subgenome == s]
+        values <- vapply(components, function(s) {
+            x <- contigs$copy_number[contigs$component == s]
             if (length(x) == 0L) 2 else as.numeric(x[[1L]])
         }, numeric(1))
-        return(stats::setNames(values, subgenomes))
+        return(stats::setNames(values, components))
     }
     values <- unlist(requested, use.names = TRUE)
     if (is.null(values) || is.null(names(values)) || anyNA(names(values)) ||
@@ -574,10 +574,10 @@ chr_number <- function(chr_name) {
             context
         )
     }
-    unknown <- setdiff(names(values), subgenomes)
+    unknown <- setdiff(names(values), components)
     if (length(unknown) > 0L) {
         .config_error(
-            "%s: `default_sample_composition` names unknown recipient subgenome(s): %s",
+            "%s: `default_sample_composition` names unknown recipient component(s): %s",
             context, paste(unknown, collapse = ", ")
         )
     }
@@ -589,23 +589,23 @@ chr_number <- function(chr_name) {
         )
     }, integer(1))
     names(out) <- names(values)
-    missing <- setdiff(subgenomes, names(out))
+    missing <- setdiff(components, names(out))
     if (length(missing) > 0L) {
         defaults <- vapply(missing, function(s) {
-            x <- contigs$copy_number[contigs$subgenome == s]
+            x <- contigs$copy_number[contigs$component == s]
             if (length(x) == 0L) 2 else as.numeric(x[[1L]])
         }, numeric(1))
         out <- c(out, stats::setNames(defaults, missing))
     }
-    out[subgenomes]
+    out[components]
 }
 
 .build_species_assembly <- function(recipient_species, donor_species, key = NULL,
                                     label = NULL, description = NULL,
-                                    recipient_subgenomes = NULL,
-                                    donor_subgenomes = NULL,
-                                    recipient_subgenome = NULL,
-                                    donor_subgenome = NULL,
+                                    recipient_components = NULL,
+                                    donor_components = NULL,
+                                    recipient_component = NULL,
+                                    donor_component = NULL,
                                     default_sample_composition = NULL,
                                     allowed_windows) {
     if (identical(recipient_species$key, donor_species$key)) {
@@ -618,32 +618,32 @@ chr_number <- function(chr_name) {
         "Species pair '%s' (recipient) + '%s' (donor)",
         recipient_species$key, donor_species$key
     )
-    if (is.null(recipient_subgenomes) && !is.null(recipient_subgenome)) {
-        recipient_subgenomes <- recipient_subgenome
+    if (is.null(recipient_components) && !is.null(recipient_component)) {
+        recipient_components <- recipient_component
     }
-    if (is.null(donor_subgenomes) && !is.null(donor_subgenome)) {
-        donor_subgenomes <- donor_subgenome
+    if (is.null(donor_components) && !is.null(donor_component)) {
+        donor_components <- donor_component
     }
-    recipient_subgenomes <- .species_resolve_subgenomes(
-        recipient_species, recipient_subgenomes, "recipient", context
+    recipient_components <- .species_resolve_components(
+        recipient_species, recipient_components, "recipient", context
     )
-    donor_subgenomes <- .species_resolve_subgenomes(
-        donor_species, donor_subgenomes, "donor", context
+    donor_components <- .species_resolve_components(
+        donor_species, donor_components, "donor", context
     )
 
     recipient_all <- recipient_species$contigs[
-        recipient_species$contigs$subgenome %in% recipient_subgenomes, ,
+        recipient_species$contigs$component %in% recipient_components, ,
         drop = FALSE
     ]
     donor_all <- donor_species$contigs[
-        donor_species$contigs$subgenome %in% donor_subgenomes, ,
+        donor_species$contigs$component %in% donor_components, ,
         drop = FALSE
     ]
     if (nrow(recipient_all) == 0L || nrow(donor_all) == 0L) {
         .config_error(
-            "%s: no contigs in the selected subgenomes (%s/%s)",
-            context, paste(recipient_subgenomes, collapse = ","),
-            paste(donor_subgenomes, collapse = ",")
+            "%s: no contigs in the selected components (%s/%s)",
+            context, paste(recipient_components, collapse = ","),
+            paste(donor_components, collapse = ",")
         )
     }
 
@@ -669,23 +669,14 @@ chr_number <- function(chr_name) {
         )
     }
 
-    shared <- intersect(
-        unique(recipient$subgenome), unique(donor$subgenome)
-    )
-    if (length(shared) > 0L) {
-        .config_error(
-            "%s: donor and recipient subgenome labels must be disjoint; shared: %s",
-            context, paste(shared, collapse = ", ")
-        )
-    }
     .check_contig_lengths(
         rbind(recipient, donor), context, allowed_windows
     )
 
     if (is.null(key)) {
         key <- paste(
-            recipient_species$key, paste(recipient_subgenomes, collapse = "+"),
-            donor_species$key, paste(donor_subgenomes, collapse = "+"),
+            recipient_species$key, paste(recipient_components, collapse = "+"),
+            donor_species$key, paste(donor_components, collapse = "+"),
             sep = "__"
         )
     } else {
@@ -703,9 +694,9 @@ chr_number <- function(chr_name) {
                 "contigs paired by chromosome group"
             ),
             recipient_species$label,
-            paste(recipient_subgenomes, collapse = ","),
+            paste(recipient_components, collapse = ","),
             donor_species$label,
-            paste(donor_subgenomes, collapse = ",")
+            paste(donor_components, collapse = ",")
         )
     } else {
         description <- .config_string(
@@ -714,10 +705,10 @@ chr_number <- function(chr_name) {
     }
 
     composition <- .sample_composition(
-        recipient, recipient_subgenomes, default_sample_composition, context
+        recipient, recipient_components, default_sample_composition, context
     )
     columns <- c(
-        "id", "name", "subgenome", "group", "copy_number", "length",
+        "id", "name", "component", "group", "copy_number", "length",
         "index_path"
     )
     assembly <- list(
@@ -730,18 +721,18 @@ chr_number <- function(chr_name) {
             donor = donor[, columns, drop = FALSE]
         ),
         pairs = pairs,
-        recipient_subgenomes = recipient_subgenomes,
-        donor_subgenomes = donor_subgenomes,
+        recipient_components = recipient_components,
+        donor_components = donor_components,
         sample_composition = composition
     )
     list(
         key = key,
         assembly = assembly,
         unpaired = unpaired,
-        recipient_subgenomes = recipient_subgenomes,
-        donor_subgenomes = donor_subgenomes,
-        recipient_subgenome = recipient_subgenomes[[1L]],
-        donor_subgenome = donor_subgenomes[[1L]]
+        recipient_components = recipient_components,
+        donor_components = donor_components,
+        recipient_component = recipient_components[[1L]],
+        donor_component = donor_components[[1L]]
     )
 }
 
@@ -1034,7 +1025,7 @@ validateMaMaMIAConfig <- function(config) {
             paste0(
                 "MaMaMIA config version 1 is no longer supported. ",
                 "Change `version: 1` to `version: 2` and see MIGRATION.md ",
-                "for the schema changes (multi-subgenome ploidy, metric, score, ",
+                "for the schema changes (multi-component ploidy, metric, score, ",
                 "mask and calibration defaults)."
             )
         )
@@ -1141,11 +1132,11 @@ listMaMaMIAAssemblies <- function(config) {
         n_gc_indexes = vapply(assemblies, function(x) {
             length(x$gc_indexes)
         }, integer(1)),
-        recipient_subgenomes = vapply(assemblies, function(x) {
-            paste(x$recipient_subgenomes, collapse = ",")
+        recipient_components = vapply(assemblies, function(x) {
+            paste(x$recipient_components, collapse = ",")
         }, character(1)),
-        donor_subgenomes = vapply(assemblies, function(x) {
-            paste(x$donor_subgenomes, collapse = ",")
+        donor_components = vapply(assemblies, function(x) {
+            paste(x$donor_components, collapse = ",")
         }, character(1)),
         stringsAsFactors = FALSE
     )
@@ -1160,8 +1151,8 @@ listMaMaMIAAssemblies <- function(config) {
 #'
 #' @param config A validated configuration list or a path to a YAML file.
 #'
-#' @return A data frame with `key`, `label`, `description`, `subgenomes`,
-#'   `default_subgenome`, `n_contigs` and `n_gc_indexes`.
+#' @return A data frame with `key`, `label`, `description`, `components`,
+#'   `default_component`, `n_contigs` and `n_gc_indexes`.
 #'
 #' @export
 listMaMaMIASpecies <- function(config) {
@@ -1179,11 +1170,11 @@ listMaMaMIASpecies <- function(config) {
         description = vapply(species, function(x) {
             if (is.null(x$description)) "" else as.character(x$description)
         }, character(1)),
-        subgenomes = vapply(species, function(x) {
-            paste(unique(x$contigs$subgenome), collapse = ", ")
+        components = vapply(species, function(x) {
+            paste(unique(x$contigs$component), collapse = ", ")
         }, character(1)),
-        default_subgenome = vapply(species, function(x) {
-            if (is.null(x$default_subgenome)) "" else x$default_subgenome
+        default_component = vapply(species, function(x) {
+            if (is.null(x$default_component)) "" else x$default_component
         }, character(1)),
         n_contigs = vapply(species, function(x) {
             nrow(x$contigs)
@@ -1199,26 +1190,26 @@ listMaMaMIASpecies <- function(config) {
 
 #' Build an assembly from a recipient and a donor species
 #'
-#' Selects one or more subgenomes per species and pairs their contigs by
+#' Selects one or more components per species and pairs their contigs by
 #' chromosome group. The group is taken from the optional `group` field of a
 #' species contig, or from the first number in its `name` (for example `1A` and
-#' `1R` are both group 1). All contigs in the selected subgenomes are included;
+#' `1R` are both group 1). All contigs in the selected components are included;
 #' the scoring layer compares donor and recipient homoeologs within a group.
 #'
-#' `recipient_subgenomes` and `donor_subgenomes` are optional when a species has
-#' a single subgenome or a `default_subgenome`; otherwise every subgenome is
-#' selected. The singular `recipient_subgenome` / `donor_subgenome` arguments
+#' `recipient_components` and `donor_components` are optional when a species has
+#' a single component or a `default_component`; otherwise every component is
+#' selected. The singular `recipient_component` / `donor_component` arguments
 #' are accepted as one-element shortcuts.
 #'
 #' @param config A validated configuration list or a path to a YAML file.
 #' @param donor Donor species key.
 #' @param recipient Recipient species key.
-#' @param donor_subgenomes Optional donor subgenome labels.
-#' @param recipient_subgenomes Optional recipient subgenome labels.
-#' @param donor_subgenome Optional single donor subgenome (shortcut).
-#' @param recipient_subgenome Optional single recipient subgenome (shortcut).
+#' @param donor_components Optional donor component labels.
+#' @param recipient_components Optional recipient component labels.
+#' @param donor_component Optional single donor component (shortcut).
+#' @param recipient_component Optional single recipient component (shortcut).
 #' @param key Optional assembly key. Defaults to a key built from the species
-#'   and subgenome labels.
+#'   and component labels.
 #' @param label Optional assembly label.
 #' @param description Optional assembly description.
 #' @param default_sample_composition Optional named recipient copy-number
@@ -1227,14 +1218,14 @@ listMaMaMIASpecies <- function(config) {
 #' @return A list with `key`, `assembly`, `config` (the input configuration
 #'   with the derived assembly registered), `unpaired` (contigs excluded from
 #'   the pair, with a reason), `donor_species`, `recipient_species`,
-#'   `donor_subgenomes` and `recipient_subgenomes`.
+#'   `donor_components` and `recipient_components`.
 #'
 #' @export
 resolveSpeciesAssembly <- function(config, donor, recipient,
-                                   donor_subgenomes = NULL,
-                                   recipient_subgenomes = NULL,
-                                   donor_subgenome = NULL,
-                                   recipient_subgenome = NULL,
+                                   donor_components = NULL,
+                                   recipient_components = NULL,
+                                   donor_component = NULL,
+                                   recipient_component = NULL,
                                    key = NULL,
                                    label = NULL, description = NULL,
                                    default_sample_composition = NULL) {
@@ -1268,10 +1259,10 @@ resolveSpeciesAssembly <- function(config, donor, recipient,
         key = key,
         label = label,
         description = description,
-        recipient_subgenomes = recipient_subgenomes,
-        donor_subgenomes = donor_subgenomes,
-        recipient_subgenome = recipient_subgenome,
-        donor_subgenome = donor_subgenome,
+        recipient_components = recipient_components,
+        donor_components = donor_components,
+        recipient_component = recipient_component,
+        donor_component = donor_component,
         default_sample_composition = default_sample_composition,
         allowed_windows = config$defaults$allowed_windows
     )
@@ -1295,9 +1286,9 @@ resolveSpeciesAssembly <- function(config, donor, recipient,
         unpaired = built$unpaired,
         donor_species = donor,
         recipient_species = recipient,
-        donor_subgenomes = built$donor_subgenomes,
-        recipient_subgenomes = built$recipient_subgenomes,
-        donor_subgenome = built$donor_subgenome,
-        recipient_subgenome = built$recipient_subgenome
+        donor_components = built$donor_components,
+        recipient_components = built$recipient_components,
+        donor_component = built$donor_component,
+        recipient_component = built$recipient_component
     )
 }

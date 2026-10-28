@@ -9,12 +9,12 @@ synthetic_assembly <- function(donor_length = 20000, recipient_length = donor_le
         gc_indexes = character(0),
         contigs = list(
             recipient = data.frame(
-                id = "r1", name = "1R", subgenome = "R",
+                id = "r1", name = "1R", component = "R",
                 length = recipient_length, index_path = NA_character_,
                 stringsAsFactors = FALSE
             ),
             donor = data.frame(
-                id = "d1", name = "1D", subgenome = "D",
+                id = "d1", name = "1D", component = "D",
                 length = donor_length, index_path = NA_character_,
                 stringsAsFactors = FALSE
             )
@@ -148,14 +148,14 @@ test_that("makeAnalysisWindows() builds both representations in target order", {
     expect_identical(windows$n_per_chromosome, 1000L)
     table <- windows$table
     expect_named(table, c(
-        "chr_id", "start", "stop", "iid", "role", "chr_name", "subgenome",
+        "chr_id", "start", "stop", "iid", "role", "chr_name", "component",
         "group", "copy_number"
     ))
     expect_identical(nrow(table), 2000L)
     expect_identical(unique(table$chr_id), c("r1", "d1"))
     expect_identical(unique(table$role), c("recipient", "donor"))
     expect_identical(unique(table$chr_name), c("1R", "1D"))
-    expect_identical(unique(table$subgenome), c("R", "D"))
+    expect_identical(unique(table$component), c("R", "D"))
     expect_exact_tiling(table, "r1", 20000, 1000L)
     expect_exact_tiling(table, "d1", 20000, 1000L)
 

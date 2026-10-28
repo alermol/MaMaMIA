@@ -73,7 +73,7 @@ calibrates thresholds by segment length and classifies the calls.
 A single sample is scored and calibrated on its own (single-sample mode).
 Several samples share a cohort median-polish correction and a cohort
 calibration. The result supports any number of donor and recipient
-subgenomes.
+components.
 }
 \examples{
 demo <- system.file("extdata", "bam-demo", package = "MaMaMIA")

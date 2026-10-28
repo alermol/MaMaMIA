@@ -21,7 +21,7 @@ library(MaMaMIA)
 
 MaMaMIA detects interspecific introgression from coverage breadth and read
 counts. It is ploidy-aware: a donor and a recipient may each contribute any
-number of subgenomes, and homoeologs are compared within chromosome groups.
+number of components, and homoeologs are compared within chromosome groups.
 
 The pipeline is:
 
@@ -44,7 +44,7 @@ schema, the result object and the function surface all changed; see
 
 # Configuration
 
-A version 2 registry declares species, their contigs and subgenomes, and one or
+A version 2 registry declares species, their contigs and components, and one or
 more assemblies. Contigs are paired by chromosome group; `group` is read from
 the contig entry or from the first number in `name`.
 
@@ -74,13 +74,13 @@ species:
     label: "Triticum aestivum"
     gc_indexes: [/srv/mamamia/gcidx/triticum-aestivum/index.gcrank]
     contigs:
-      - {id: CP155614.1, name: 1A, subgenome: A, group: 1}
+      - {id: CP155614.1, name: 1A, component: A, group: 1}
       # ... 21 wheat contigs
   aegilops_speltoides:
     label: "Aegilops speltoides"
     gc_indexes: [/srv/mamamia/gcidx/aegilops-speltoides/index.gcrank]
     contigs:
-      - {id: CH1S, name: 1S, subgenome: S, group: 1}
+      - {id: CH1S, name: 1S, component: S, group: 1}
       # ... 7 S contigs
 
 ```
@@ -93,13 +93,13 @@ pair <- resolveSpeciesAssembly(
     config,
     recipient = "triticum_aestivum",
     donor = "aegilops_speltoides",
-    recipient_subgenomes = c("A", "B", "D"),
-    donor_subgenomes = "S",
+    recipient_components = c("A", "B", "D"),
+    donor_components = "S",
     default_sample_composition = c(A = 2, B = 2, D = 2)
 )
 ```
 
-`recipient_subgenome` and `donor_subgenome` are accepted as one-element
+`recipient_component` and `donor_component` are accepted as one-element
 shortcuts. `copy_number` defaults to 2; `0` means absent. A runtime
 `sample_composition` overrides `default_sample_composition`.
 
@@ -167,8 +167,8 @@ y = log(lambda_donor + eps) - log(lambda_recipient + eps)
 
 where `lambda = -log(1 - breadth)` for `metric = "breadth"`. Recipient
 homoeologs are averaged within a group. Donor homoeologs are max-selected by
-default: at each window the donor subgenome with the strongest
-donor/recipient log-ratio is used, so one strongly supported donor subgenome
+default: at each window the donor component with the strongest
+donor/recipient log-ratio is used, so one strongly supported donor component
 is not diluted by the other donor homoeologs. `mean` and `sum` remain
 available through the `donor_aggregation` setting; the registry supplies the
 default and the dashboard exposes it in the **Advanced** sidebar panel. This
@@ -204,16 +204,18 @@ exploreIntrogressions(result)
 
 `writeCallsToBedpe()` writes one row per passing call with donor and recipient
 intervals, `score_mean`, `class`, `confidence`, `method` and `mode`.
-`exploreIntrogressions()` opens the dashboard over every subgenome declared
+`exploreIntrogressions()` opens the dashboard over every component declared
 for the species pair: chromosome-group, class, confidence and width filters, a
-vertical karyotype with score-heatmap and call-map modes. The karyotype is
-split into subgenome columns and every chromosome bar is scaled by its
-configured length. Every donor segment is compared with every recipient contig
-using a cohort breadth baseline, a donor/recipient width match and a same-group
-homology prior; a per-sample global assignment then chooses at most one host
-per contig, with a "no host" option and a cross-group translocation flag.
-Deleted chromosomes and added donor chromosomes are drawn separately. A score
-profile with called intervals, a call table and a BEDPE export follow.
+vertical karyotype with score-heatmap and call-map modes. Chromosomes are
+shown in assembly-config order without group or component columns, as diploid
+homolog pairs with a small gap inside each pair, a larger gap between
+chromosomes, the same `1A`/`1B` label on both copies, and every bar scaled by
+its configured length. Every donor segment is compared with every recipient
+contig using a cohort breadth baseline, a donor/recipient width match and a
+same-group homology prior; a per-sample global assignment then chooses at most
+one host per contig, with a "no host" option and a cross-group translocation
+flag. Deleted chromosomes and added donor chromosomes are drawn separately. A
+score profile with called intervals, a call table and a BEDPE export follow.
 
 # Session information
 

@@ -52,10 +52,10 @@ species the registry must provide:
 - a `gcrank` index directory per genome with `contigs.tsv`, `manifest.json`,
   `genome.bv` and `genome.rb` (the `index.gcrank` directory produced by
   `tools/build-gcrank-index.sh`; the format version must be `0.1.0`);
-- contig ids that exist in those indexes, with a `subgenome` and a chromosome
+- contig ids that exist in those indexes, with a `component` and a chromosome
   group (from `group` or the first number in `name`);
-- a `default_subgenome` for a polyploid species, so the application does not
-  have to ask which subgenome to use.
+- a `default_component` for a polyploid species, so the application does not
+  have to ask which component to use.
 
 A species has no donor/recipient role. The user chooses the recipient and the
 donor in the app, and the assembly is derived from those two species. The
@@ -135,12 +135,12 @@ appears in both the recipient and the donor selector.
 
 The registry lists role-free species. The sidebar asks for a **recipient
 species** and a **donor species**; the same species can fill either role, so
-swapping the two selectors reverses the comparison. There are no per-subgenome
-selectors: every subgenome declared for a species is analysed in one assembly,
+swapping the two selectors reverses the comparison. There are no per-component
+selectors: every component declared for a species is analysed in one assembly,
 and the **Assembly** panel shows a read-only summary such as
 `recipient A+B+D; donor S`.
 
-Contigs are paired by chromosome group across all selected subgenomes. The
+Contigs are paired by chromosome group across all selected components. The
 group is the optional `group` field or the first number in `name`, so rye `1R`
 pairs with wheat `1A`, `2R` with `2A`, and so on. Only paired contigs enter the
 analysis; the card shows which contigs were excluded and why.

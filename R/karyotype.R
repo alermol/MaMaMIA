@@ -3,7 +3,7 @@
 ## The widget shows the recipient karyotype only. A recipient chromosome is
 ## kept in place when it has no coverage, drawn as a dashed "deleted" bar. A
 ## full-chromosome donor addition adds that donor chromosome (one shape per
-## homolog copy) to the same group column. The payload is plain lists so
+## homolog copy) as another diploid pair. The payload is plain lists so
 ## htmlwidgets can serialise it without a second data-frame layer.
 
 karyotype_palette <- function() {
@@ -213,15 +213,15 @@ karyotype_payload <- function(result, sample = NULL,
     }
 
     ## Calls are attached to the chromosome they belong to, not to a group
-    ## column. This lets the layout use one column per subgenome and scale
-    ## every chromosome bar by its configured length.
+    ## column. This lets the layout place chromosomes in config order and
+    ## scale every chromosome bar by its configured length.
     recipient_ids <- if ("recipient_chr_id" %in% names(overlay)) {
         as.character(overlay$recipient_chr_id)
     } else {
         rep(NA_character_, nrow(overlay))
     }
-    recipient_subs <- if ("recipient_subgenome" %in% names(overlay)) {
-        as.character(overlay$recipient_subgenome)
+    recipient_subs <- if ("recipient_component" %in% names(overlay)) {
+        as.character(overlay$recipient_component)
     } else {
         rep(NA_character_, nrow(overlay))
     }
@@ -245,8 +245,8 @@ karyotype_payload <- function(result, sample = NULL,
     } else {
         rep(NA_character_, nrow(overlay))
     }
-    donor_subs <- if ("donor_subgenome" %in% names(overlay)) {
-        as.character(overlay$donor_subgenome)
+    donor_subs <- if ("donor_component" %in% names(overlay)) {
+        as.character(overlay$donor_component)
     } else {
         rep(NA_character_, nrow(overlay))
     }
@@ -310,8 +310,8 @@ karyotype_payload <- function(result, sample = NULL,
             ),
             score = as.numeric(call_value("score_mean", i, NA_real_)),
             pass = isTRUE(as.logical(call_value("pass", i, TRUE))),
-            recipient_subgenome = as.character(
-                call_value("recipient_subgenome", i, NA_character_)
+            recipient_component = as.character(
+                call_value("recipient_component", i, NA_character_)
             ),
             recipient_chr_id = as.character(
                 call_value("recipient_chr_id", i, NA_character_)
@@ -334,8 +334,8 @@ karyotype_payload <- function(result, sample = NULL,
             recipient_group = as.character(
                 call_value("recipient_group", i, NA_character_)
             ),
-            donor_subgenome = as.character(
-                call_value("donor_subgenome", i, NA_character_)
+            donor_component = as.character(
+                call_value("donor_component", i, NA_character_)
             ),
             donor_chr_id = as.character(
                 call_value("donor_chr_id", i, NA_character_)
@@ -357,13 +357,13 @@ karyotype_payload <- function(result, sample = NULL,
             )
         )
     }
-    recipient_calls <- function(chr_id, group, subgenome, length_bp) {
+    recipient_calls <- function(chr_id, group, component, length_bp) {
         if (nrow(overlay) == 0L) {
             return(list())
         }
         own <- !is.na(recipient_ids) & recipient_ids == chr_id
         fallback <- is.na(recipient_ids) & !is.na(recipient_subs) &
-            recipient_subs == subgenome & call_groups == group
+            recipient_subs == component & call_groups == group
         keep <- is.na(recipient_assignment) |
             recipient_assignment != "no_recipient_loss"
         rows <- which((own | fallback) & keep)
@@ -373,13 +373,13 @@ karyotype_payload <- function(result, sample = NULL,
             )
         })
     }
-    donor_calls <- function(chr_id, group, subgenome, length_bp) {
+    donor_calls <- function(chr_id, group, component, length_bp) {
         if (nrow(overlay) == 0L) {
             return(list())
         }
         own <- !is.na(donor_ids) & donor_ids == chr_id
         fallback <- is.na(donor_ids) & !is.na(donor_subs) &
-            donor_subs == subgenome & call_groups == group
+            donor_subs == component & call_groups == group
         rows <- which(own | fallback)
         lapply(rows, function(i) {
             make_call(i, donor_start[[i]], donor_end[[i]],
@@ -396,7 +396,7 @@ karyotype_payload <- function(result, sample = NULL,
     }
     if (is.null(donor) || nrow(donor) == 0L) {
         donor <- data.frame(
-            id = character(), name = character(), subgenome = character(),
+            id = character(), name = character(), component = character(),
             group = character(), length = numeric(),
             copy_number = numeric(), stringsAsFactors = FALSE
         )
@@ -408,98 +408,81 @@ karyotype_payload <- function(result, sample = NULL,
         suppressWarnings(as.numeric(added_donor$group)),
         as.character(added_donor$name)
     ), , drop = FALSE]
-    subgenome_levels <- unique(c(
-        as.character(recipient$subgenome),
-        as.character(added_donor$subgenome)
-    ))
-    subgenome_payload <- lapply(subgenome_levels, function(level) {
-        rec <- recipient[
-            as.character(recipient$subgenome) == level, , drop = FALSE
-        ]
-        rec <- rec[order(
-            suppressWarnings(as.numeric(rec$group)),
-            as.character(rec$name)
-        ), , drop = FALSE]
-        add <- added_donor[
-            as.character(added_donor$subgenome) == level, , drop = FALSE
-        ]
-        chromosomes <- list()
-        for (i in seq_len(nrow(rec))) {
-            chr_id <- as.character(rec$id[[i]])
-            chr_name <- as.character(rec$name[[i]])
-            chr_group <- as.character(rec$group[[i]])
-            chr_length <- as.numeric(rec$length[[i]])
-            chromosomes[[length(chromosomes) + 1L]] <- list(
+    chromosome_payload <- list()
+    for (i in seq_len(nrow(recipient))) {
+        chr_id <- as.character(recipient$id[[i]])
+        chr_name <- as.character(recipient$name[[i]])
+        chr_component <- as.character(recipient$component[[i]])
+        chr_group <- as.character(recipient$group[[i]])
+        chr_length <- as.numeric(recipient$length[[i]])
+        copies <- if ("copy_number" %in% names(recipient)) {
+            suppressWarnings(as.integer(recipient$copy_number[[i]]))
+        } else {
+            1L
+        }
+        if (length(copies) != 1L || is.na(copies) || copies < 1L) {
+            copies <- 1L
+        }
+        chr_calls <- recipient_calls(
+            chr_id, chr_group, chr_component, chr_length
+        )
+        for (copy in seq_len(copies)) {
+            chromosome_payload[[length(chromosome_payload) + 1L]] <- list(
                 id = chr_id,
                 name = chr_name,
                 label = chr_name,
-                subgenome = level,
+                component = chr_component,
                 group = chr_group,
                 length = chr_length,
                 deleted = chr_id %in% deleted,
                 added = FALSE,
-                copy = 1L,
-                copies = 1L,
+                copy = copy,
+                copies = copies,
                 selected = chr_group %in% selected_groups,
                 scores = if (is.null(score_values[[chr_group]])) {
                     numeric()
                 } else {
                     score_values[[chr_group]]
                 },
-                calls = recipient_calls(
-                    chr_id, chr_group, level, chr_length
-                )
+                calls = chr_calls
             )
         }
-        for (i in seq_len(nrow(add))) {
-            chr_id <- as.character(add$id[[i]])
-            chr_name <- as.character(add$name[[i]])
-            chr_group <- as.character(add$group[[i]])
-            chr_length <- as.numeric(add$length[[i]])
-            copies <- suppressWarnings(as.integer(add$copy_number[[i]]))
-            if (length(copies) != 1L || is.na(copies) || copies < 1L) {
-                copies <- 1L
-            }
-            for (copy in seq_len(copies)) {
-                label <- if (copies > 1L) {
-                    paste(chr_name, copy)
-                } else {
-                    chr_name
-                }
-                chromosomes[[length(chromosomes) + 1L]] <- list(
-                    id = chr_id,
-                    name = chr_name,
-                    label = label,
-                    subgenome = level,
-                    group = chr_group,
-                    length = chr_length,
-                    deleted = FALSE,
-                    added = TRUE,
-                    copy = copy,
-                    copies = copies,
-                    selected = chr_group %in% selected_groups,
-                    scores = if (is.null(score_values[[chr_group]])) {
-                        numeric()
-                    } else {
-                        score_values[[chr_group]]
-                    },
-                    calls = donor_calls(
-                        chr_id, chr_group, level, chr_length
-                    )
-                )
-            }
+    }
+    for (i in seq_len(nrow(added_donor))) {
+        chr_id <- as.character(added_donor$id[[i]])
+        chr_name <- as.character(added_donor$name[[i]])
+        chr_component <- as.character(added_donor$component[[i]])
+        chr_group <- as.character(added_donor$group[[i]])
+        chr_length <- as.numeric(added_donor$length[[i]])
+        copies <- suppressWarnings(as.integer(added_donor$copy_number[[i]]))
+        if (length(copies) != 1L || is.na(copies) || copies < 1L) {
+            copies <- 1L
         }
-        list(
-            subgenome = level,
-            label = paste("Subgenome", level),
-            selected = any(vapply(
-                chromosomes,
-                function(x) isTRUE(x$selected),
-                logical(1)
-            )),
-            chromosomes = chromosomes
+        chr_calls <- donor_calls(
+            chr_id, chr_group, chr_component, chr_length
         )
-    })
+        for (copy in seq_len(copies)) {
+            chromosome_payload[[length(chromosome_payload) + 1L]] <- list(
+                id = chr_id,
+                name = chr_name,
+                label = chr_name,
+                component = chr_component,
+                group = chr_group,
+                length = chr_length,
+                deleted = FALSE,
+                added = TRUE,
+                copy = copy,
+                copies = copies,
+                selected = chr_group %in% selected_groups,
+                scores = if (is.null(score_values[[chr_group]])) {
+                    numeric()
+                } else {
+                    score_values[[chr_group]]
+                },
+                calls = chr_calls
+            )
+        }
+    }
 
     limit <- suppressWarnings(stats::quantile(
         abs(scores$score), 0.99, na.rm = TRUE, names = FALSE
@@ -512,7 +495,7 @@ karyotype_payload <- function(result, sample = NULL,
         sample = sample,
         score_limit = max(0.5, as.numeric(limit)),
         palette = karyotype_palette(),
-        subgenomes = subgenome_payload
+        chromosomes = chromosome_payload
     )
 }
 

@@ -16,20 +16,20 @@ species:
   tiny_recipient:
     label: Tiny synthetic recipient
     description: Two 20 kb contigs with 40% and 60% GC
-    default_subgenome: R
+    default_component: R
     gc_indexes:
     - tiny.gcrank
     contigs:
     - id: r1
       name: 1R
-      subgenome: R
+      component: R
   tiny_donor:
     label: Tiny synthetic donor
     description: Two 20 kb contigs with 40% and 60% GC
-    default_subgenome: D
+    default_component: D
     gc_indexes:
     - tiny.gcrank
     contigs:
     - id: d1
       name: 1D
-      subgenome: D
+      component: D

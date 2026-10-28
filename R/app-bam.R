@@ -312,20 +312,20 @@ bam_species_choices <- function(config) {
     )
 }
 
-#' Every subgenome declared for a species
+#' Every component declared for a species
 #'
-#' The dashboard never preselects a subgenome: it analyses all of them in one
+#' The dashboard never preselects a component: it analyses all of them in one
 #' assembly. The order follows the registry so labels read A, B, D or S as the
 #' config declares them.
 #' @noRd
-bam_species_subgenomes <- function(species) {
+bam_species_components <- function(species) {
     if (is.null(species) || is.null(species$contigs)) {
         return(character())
     }
-    unique(as.character(species$contigs$subgenome))
+    unique(as.character(species$contigs$component))
 }
 
-#' Resolve a species pair over all of its subgenomes
+#' Resolve a species pair over all of its components
 #' @noRd
 bam_resolve_species_pair <- function(config, recipient, donor) {
     recipient_species <- config$species[[recipient]]
@@ -334,8 +334,8 @@ bam_resolve_species_pair <- function(config, recipient, donor) {
         config,
         donor = donor,
         recipient = recipient,
-        donor_subgenomes = bam_species_subgenomes(donor_species),
-        recipient_subgenomes = bam_species_subgenomes(recipient_species)
+        donor_components = bam_species_components(donor_species),
+        recipient_components = bam_species_components(recipient_species)
     )
 }
 
@@ -1672,7 +1672,7 @@ bam_sidebar_species_ui <- function(config, selection = NULL) {
             choices = species_choices,
             selected = donor
         ),
-        shiny::uiOutput("subgenome_summary_ui"),
+        shiny::uiOutput("component_summary_ui"),
         shiny::actionButton(
             "swap_species", "Swap donor and recipient",
             class = "btn-sm btn-outline-secondary",
@@ -1716,7 +1716,7 @@ bam_sidebar_details_ui <- function(config) {
                     class = "text-muted small mb-0",
                     sprintf(
                         paste(
-                            "How donor subgenomes are combined per window.",
+                            "How donor components are combined per window.",
                             "Registry default: %s."
                         ),
                         defaults$donor_aggregation
@@ -2251,7 +2251,7 @@ bam_launcher_server <- function(state) {
             )
         })
 
-        output$subgenome_summary_ui <- shiny::renderUI({
+        output$component_summary_ui <- shiny::renderUI({
             species_config <- if (isTRUE(example_mode())) {
                 bam_example_config()
             } else {
@@ -2270,14 +2270,14 @@ bam_launcher_server <- function(state) {
             if (is.null(recipient) || is.null(donor)) {
                 return(NULL)
             }
-            recipient_subgenomes <- bam_species_subgenomes(recipient)
-            donor_subgenomes <- bam_species_subgenomes(donor)
+            recipient_components <- bam_species_components(recipient)
+            donor_components <- bam_species_components(donor)
             shiny::p(
                 class = "text-muted small mb-2",
                 sprintf(
-                    "All subgenomes: recipient %s; donor %s.",
-                    paste(recipient_subgenomes, collapse = "+"),
-                    paste(donor_subgenomes, collapse = "+")
+                    "All components: recipient %s; donor %s.",
+                    paste(recipient_components, collapse = "+"),
+                    paste(donor_components, collapse = "+")
                 )
             )
         })
