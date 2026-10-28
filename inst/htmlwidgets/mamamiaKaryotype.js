@@ -143,13 +143,16 @@ HTMLWidgets.widget({
     function callsForRecipient(group, chromosome) {
       var all = group.calls || [];
       return all.filter(function (call) {
+        if (call.recipient_assignment === "no_recipient_loss") {
+          return false;
+        }
         if (hasValue(call.recipient_chr_id)) {
           return call.recipient_chr_id === chromosome.id;
         }
         if (hasValue(call.recipient_subgenome)) {
           return call.recipient_subgenome === chromosome.subgenome;
         }
-        return true;
+        return false;
       });
     }
 
@@ -162,7 +165,7 @@ HTMLWidgets.widget({
         if (hasValue(call.donor_subgenome)) {
           return call.donor_subgenome === chromosome.subgenome;
         }
-        return true;
+        return false;
       });
     }
 
@@ -183,6 +186,9 @@ HTMLWidgets.widget({
 
     function drawHeatmapForBar(group, bar, calls) {
       var scores = group.scores || [];
+      calls = calls.filter(function (call) {
+        return call.cross_group !== true;
+      });
       if (!scores.length || !calls.length) {
         return;
       }
@@ -235,6 +241,7 @@ HTMLWidgets.widget({
         var y0 = bar.y + Math.max(0, Math.min(1, call.start)) * bar.height;
         var y1 = bar.y + Math.max(0, Math.min(1, call.end)) * bar.height;
         var colour = payload.palette[call.class] || payload.palette.other;
+        var cross = call.cross_group === true;
         bar.group.appendChild(svgEl("rect", {
           x: bar.x,
           y: y0,
@@ -242,8 +249,9 @@ HTMLWidgets.widget({
           height: Math.max(1, y1 - y0),
           fill: colour,
           opacity: callOpacity(call),
-          stroke: "#ffffff",
-          "stroke-width": 0.5,
+          stroke: cross ? "#333333" : "#ffffff",
+          "stroke-width": cross ? 1.3 : 0.5,
+          "stroke-dasharray": cross ? "3 2" : null,
           "pointer-events": "none"
         }));
       });
@@ -258,7 +266,6 @@ HTMLWidgets.widget({
       ];
       if (deleted) {
         lines.push("recipient chromosome deleted (no coverage)");
-        return lines.join("<br>");
       }
       lines.push(added ? "added donor chromosome" : "recipient chromosome");
       var matched = null;
@@ -283,11 +290,23 @@ HTMLWidgets.widget({
         if (hasValue(matched.recipient_chr_name)) {
           lines.push("assigned to " + escapeHtml(matched.recipient_chr_name));
         }
+        if (matched.cross_group === true) {
+          var donor = hasValue(matched.donor_chr_name)
+            ? matched.donor_chr_name
+            : ("group " + matched.donor_group);
+          lines.push("cross-group: donor " + escapeHtml(donor) +
+            " → recipient group " +
+            escapeHtml(matched.recipient_group || ""));
+        }
+        if (hasValue(matched.donor_chr_name)) {
+          lines.push("donor " + escapeHtml(matched.donor_chr_name));
+        }
         lines.push("score " + fmt(matched.score));
       } else if (payload.mode === "calls") {
         lines.push("no assigned donor segment at this position");
       }
-      if (payload.mode === "heatmap" && matched) {
+      if (payload.mode === "heatmap" && matched &&
+          matched.cross_group !== true) {
         var scores = group.scores || [];
         var index = scores.length
           ? Math.max(0, Math.min(scores.length - 1,
@@ -470,9 +489,15 @@ HTMLWidgets.widget({
             width: width,
             height: barHeight
           };
-          if (!deleted && barCalls.length) {
-            if (payload.mode === "heatmap") {
+          if (barCalls.length) {
+            if (payload.mode === "heatmap" && !deleted) {
               drawHeatmapForBar(group, barBox, barCalls);
+              var crossCalls = barCalls.filter(function (call) {
+                return call.cross_group === true;
+              });
+              if (crossCalls.length) {
+                drawCallsForBar(group, barBox, crossCalls);
+              }
             } else {
               drawCallsForBar(group, barBox, barCalls);
             }

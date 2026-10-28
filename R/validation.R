@@ -47,10 +47,16 @@ validateBamAnalysisResult <- function(x) {
         calls = c(
             "sample", "group", "start_iid", "end_iid", "start_bp", "end_bp",
             "width_bp", "score_mean", "donor_mean", "recipient_mean", "class",
-            "confidence", "method", "mode", "recipient_subgenome",
-            "recipient_chr_id", "recipient_chr_name", "recipient_start_bp",
-            "recipient_end_bp", "recipient_weight", "recipient_margin",
-            "recipient_assignment", "donor_subgenome", "donor_chr_id",
+            "class_group", "confidence", "method", "mode",
+            "recipient_subgenome", "recipient_chr_id", "recipient_chr_name",
+            "recipient_group", "recipient_start_bp", "recipient_end_bp",
+            "recipient_run_start_bp", "recipient_run_end_bp",
+            "recipient_deletion_width_bp", "recipient_expected_breadth",
+            "recipient_mean_depletion", "recipient_weight",
+            "recipient_margin", "recipient_assignment",
+            "recipient_cross_group", "recipient_reliable",
+            "recipient_strong", "recipient_alternative",
+            "recipient_alternative_score", "donor_subgenome", "donor_chr_id",
             "donor_chr_name", "donor_start_bp", "donor_end_bp"
         )
     )

@@ -146,19 +146,8 @@ test_that("a cohort analysis keeps the event in the positive sample", {
 })
 
 test_that("writeCallsToBedpe() writes donor and recipient intervals", {
-    fixture <- pipeline_fixture()
-    on.exit(unlink(fixture$directory, recursive = TRUE), add = TRUE)
-    result <- analyzeBamInput(
-        fixture$bam_path, fixture$config,
-        assembly = fixture$assembly,
-        windows_per_chromosome = 100L,
-        calibration = list(
-            min_mb = 0.001,
-            length_bins_mb = c(0.001, 0.01, Inf),
-            floors = c(0.3, 0.3)
-        ),
-        cores = 1L
-    )
+    skip_if_not(bam_example_available(), "bundled example is not installed")
+    result <- bam_example_result(100)
     output <- tempfile(fileext = ".bedpe")
     on.exit(unlink(output), add = TRUE)
     writeCallsToBedpe(result, output)
@@ -167,16 +156,20 @@ test_that("writeCallsToBedpe() writes donor and recipient intervals", {
     expect_true(all(c(
         "sample", "chr_id.don", "start.don", "stop.don",
         "chr_id.rec", "start.rec", "stop.rec", "score_mean", "class",
-        "confidence", "method", "mode", "recipient_subgenome",
-        "recipient_chr_name", "recipient_assignment", "donor_subgenome",
-        "donor_chr_name"
+        "class_group", "confidence", "method", "mode", "recipient_subgenome",
+        "recipient_chr_name", "recipient_group", "recipient_assignment",
+        "recipient_cross_group", "recipient_expected_breadth",
+        "recipient_deletion_width_bp", "donor_subgenome", "donor_chr_name"
     ) %in% names(bedpe)))
-    expect_true(all(!is.na(bedpe$recipient_subgenome)))
-    expect_true(all(!is.na(bedpe$recipient_chr_name)))
+    hosted <- bedpe$recipient_assignment != "no_recipient_loss"
+    expect_true(any(hosted))
+    expect_true(all(!is.na(bedpe$recipient_subgenome[hosted])))
+    expect_true(all(!is.na(bedpe$recipient_chr_name[hosted])))
     expect_true(all(bedpe$start.don >= 0))
     expect_true(all(bedpe$stop.don > bedpe$start.don))
-    expect_true(all(bedpe$start.rec >= 0))
-    expect_true(all(bedpe$stop.rec > bedpe$start.rec))
+    expect_true(all(bedpe$start.rec[hosted] >= 0))
+    expect_true(all(bedpe$stop.rec[hosted] > bedpe$start.rec[hosted]))
+    expect_true(all(is.na(bedpe$start.rec[!hosted])))
 })
 
 test_that("donor_only scoring runs through the pipeline", {

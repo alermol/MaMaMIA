@@ -18,6 +18,8 @@ test_that("the bundled example replays a result and progress", {
         "scores", "masks", "calibration", "calls", "provenance"
     ))
     expect_gte(sum(result$calls$pass), 1L)
+    expect_true(any(result$calls$recipient_assignment == "assigned"))
+    expect_true(any(result$calls$class == "substitution"))
     stages <- character()
     bam_example_progress(
         result,

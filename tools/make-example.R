@@ -3,7 +3,8 @@
 ##
 ## The bundled example is a pre-computed BamAnalysisResult replayed by the
 ## Shiny app. It uses the synthetic 20 kb demo index and an in-memory BAM with
-## one donor addition, so the example shows a real calibrated call.
+## one donor segment that replaces recipient coverage, so the example shows a
+## real calibrated substitution and a confident positional assignment.
 
 suppressPackageStartupMessages(library(MaMaMIA))
 root <- normalizePath(file.path(getwd()), winslash = "/")
@@ -28,13 +29,14 @@ event_sam <- function(sample, contig_length = 20000L, read_length = 50L,
     }
     base <- seq(1L, contig_length - read_length + 1L, by = step)
     donor <- sort(unique(c(base, seq(event_from, event_to, by = event_step))))
+    recipient <- base[base < event_from | base > event_to]
     c(
         "@HD\tVN:1.6\tSO:coordinate",
         sprintf("@SQ\tSN:d1\tLN:%d", contig_length),
         sprintf("@SQ\tSN:r1\tLN:%d", contig_length),
         sprintf("@RG\tID:%s\tSM:%s", sample, sample),
         make_reads("d1", donor),
-        make_reads("r1", base)
+        make_reads("r1", recipient)
     )
 }
 

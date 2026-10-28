@@ -48,7 +48,14 @@ explorer_score_plot <- function(scores, calls = NULL) {
         ) +
         ggplot2::theme_minimal(base_size = 12)
     if (!is.null(calls) && nrow(calls) > 0L) {
-        rect <- calls
+        rect <- calls[
+            as.character(calls$group) %in% unique(as.character(scores$group)),
+            ,
+            drop = FALSE
+        ]
+        if (nrow(rect) == 0L) {
+            return(p)
+        }
         rect$group <- factor(rect$group, levels = unique(scores$group))
         rect$ymin <- 0
         rect$ymax <- max(scores$score, na.rm = TRUE)
@@ -161,7 +168,8 @@ explorer_karyotype_ui <- function(id, height = "calc(100vh - 360px)") {
                 paste(
                     "Donor segments are painted on their most probable",
                     "recipient chromosome; low-confidence assignments fade.",
-                    "Click a chromosome to filter its group;",
+                    "Dashed segments cross chromosome groups (translocation",
+                    "candidates). Click a chromosome to filter its group;",
                     "click the background to clear."
                 )
             )
@@ -269,6 +277,18 @@ explorer_server <- function(id, result, sample = NULL) {
             }
         }, ignoreInit = TRUE)
 
+        call_display_group <- function(x) {
+            groups <- as.character(x$group)
+            if (all(c("recipient_group", "recipient_cross_group") %in%
+                names(x))) {
+                cross <- as.logical(x$recipient_cross_group) %in% TRUE
+                recipient <- as.character(x$recipient_group)
+                move <- cross & !is.na(recipient) & nzchar(recipient)
+                groups[move] <- recipient[move]
+            }
+            groups
+        }
+
         visible_calls <- shiny::reactive({
             x <- calls()
             if (is.null(x) || nrow(x) == 0L) {
@@ -279,7 +299,10 @@ explorer_server <- function(id, result, sample = NULL) {
                 keep <- keep & isTRUE_vec(x$pass)
             }
             if (length(input$groups) > 0L) {
-                keep <- keep & as.character(x$group) %in% input$groups
+                keep <- keep & (
+                    as.character(x$group) %in% input$groups |
+                        call_display_group(x) %in% input$groups
+                )
             }
             if (length(input$class) > 0L) {
                 keep <- keep & x$class %in% input$class
@@ -376,10 +399,14 @@ explorer_server <- function(id, result, sample = NULL) {
             )
             x <- visible_calls()
             columns <- c(
-                "sample", "group", "class", "confidence",
+                "sample", "group", "class", "class_group", "confidence",
+                "recipient_group", "recipient_cross_group",
                 "recipient_subgenome", "recipient_chr_name",
                 "recipient_start_bp", "recipient_end_bp",
-                "recipient_assignment", "recipient_weight",
+                "recipient_deletion_width_bp", "recipient_assignment",
+                "recipient_weight", "recipient_margin",
+                "recipient_expected_breadth", "recipient_mean_depletion",
+                "recipient_alternative", "recipient_alternative_score",
                 "donor_subgenome", "donor_chr_name",
                 "start_bp", "end_bp", "width_bp",
                 "score_mean", "donor_mean", "recipient_mean",

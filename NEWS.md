@@ -62,17 +62,23 @@
   group. A toggle switches between the introgression-score heatmap and the
   coloured call map; clicking a chromosome filters its group and clicking the
   background clears the filter. The score profile remains as a second tab.
-* The karyotype now assigns every donor segment to its most probable
-  recipient chromosome. Detection stays group-level, but each call carries
-  `recipient_subgenome`, the recipient contig and coordinates, an assignment
-  weight and an `assigned`/`ambiguous`/`no_recipient_loss` flag. The
-  assignment compares per-recipient-subgenome depth inside the call with the
-  same chromosome outside it, after GC and sample-median normalisation; the
-  most depleted chromosome is the best substitution site. Low-confidence
-  assignments are drawn faded. A recipient chromosome is marked deleted below
-  10% of the sample's median recipient breadth, so a whole-chromosome loss is
-  visible even when the group call is classified as an addition. The call
-  table and BEDPE export carry the assigned recipient and donor contigs.
+* The karyotype now performs an all-vs-all assignment of every donor segment
+  against every recipient contig. Detection stays group-level, but candidate
+  scoring compares the observed breadth inside the call with a cohort baseline
+  (75th percentile of the other samples) or, for a single sample, with the same
+  contig outside the call. Candidates are penalised for a donor/recipient
+  width mismatch and receive a same-group homology bonus. A per-sample
+  assignment chooses at most one call per recipient contig plus a dummy
+  "no host" option, with a second pass for additional non-overlapping
+  segments. Each call records `recipient_group`, `recipient_cross_group`,
+  `recipient_expected_breadth`, `recipient_deletion_width_bp`,
+  `recipient_weight`, `recipient_margin` and an
+  `assigned`/`ambiguous`/`no_recipient_loss` flag. A strong assigned
+  recipient loss reclassifies the call as a substitution, while `class_group`
+  keeps the original group-level class. Cross-group assignments are drawn with
+  a dashed border and reported as translocation candidates. The call table and
+  BEDPE export carry the assignment; calls with no host are exported with
+  `NA` recipient coordinates.
 
 ## Validation
 
@@ -86,6 +92,11 @@
   about 19 s on one core.
 * The 24-sample panel mask masks 16.3% of windows, masks terminal artifacts and
   shortens (does not delete) the Sq76 5S event.
+* All-vs-all assignment of the five-sample UI fixture places Sq74 2S on 2D,
+  5S on 5B and 7S on 7D, and reports 4S on 5A as a cross-group translocation
+  candidate. The previous within-group assignment put 4S on 4A, whose terminal
+  windows are low in every sample; 5A is the only recipient with an
+  Sq74-specific terminal loss that matches the 4S segment width.
 
 # MaMaMIA 0.99.1
 

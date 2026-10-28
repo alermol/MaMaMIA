@@ -105,6 +105,34 @@ test_that("a deleted recipient chromosome stays in the karyotype", {
     expect_true(payload$groups[[1L]]$deleted)
 })
 
+test_that("a cross-group assignment is painted on the recipient group", {
+    result <- bam_example_result(100)
+    extra <- result$assembly$contigs$recipient[1, , drop = FALSE]
+    extra$id <- "r2"
+    extra$name <- "2A"
+    extra$subgenome <- "A"
+    extra$group <- "2"
+    result$assembly$contigs$recipient <- rbind(
+        result$assembly$contigs$recipient, extra
+    )
+    call <- result$calls[2, , drop = FALSE]
+    call$group <- "1"
+    call$recipient_group <- "2"
+    call$recipient_cross_group <- TRUE
+    call$recipient_chr_id <- "r2"
+    call$recipient_chr_name <- "2A"
+    result$calls <- call
+    payload <- karyotype_payload(result, "example-sample", "calls")
+    expect_length(payload$groups, 2L)
+    expect_length(payload$groups[[1L]]$calls, 0L)
+    expect_length(payload$groups[[2L]]$calls, 1L)
+    moved <- payload$groups[[2L]]$calls[[1L]]
+    expect_true(moved$cross_group)
+    expect_identical(moved$donor_group, "1")
+    expect_identical(moved$recipient_group, "2")
+    expect_identical(moved$recipient_chr_id, "r2")
+})
+
 test_that("the karyotype includes every recipient subgenome", {
     fixture <- multi_subgenome_fixture(samples = "sample1")
     on.exit(unlink(fixture$directory, recursive = TRUE), add = TRUE)

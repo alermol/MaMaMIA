@@ -91,6 +91,13 @@
         calls$start.don[ok] <- as.numeric(calls$donor_start_bp[ok])
         calls$stop.don[ok] <- as.numeric(calls$donor_end_bp[ok])
     }
+    if ("recipient_assignment" %in% names(calls)) {
+        no_host <- !is.na(calls$recipient_assignment) &
+            calls$recipient_assignment == "no_recipient_loss"
+        calls$chr_id.rec[no_host] <- NA_character_
+        calls$start.rec[no_host] <- NA_real_
+        calls$stop.rec[no_host] <- NA_real_
+    }
     calls
 }
 
@@ -99,8 +106,10 @@
 #' Writes one row per call with donor and recipient intervals plus the score,
 #' class, confidence, method and mode. When the calls carry a positional
 #' assignment, the recipient interval is the assigned contig and coordinates;
-#' otherwise the first contig in the chromosome group is used. Masked and
-#' failing calls are excluded by default.
+#' otherwise the first contig in the chromosome group is used. Calls with
+#' `recipient_assignment = "no_recipient_loss"` are kept with `NA` recipient
+#' coordinates because they have no host interval. Masked and failing calls are
+#' excluded by default.
 #'
 #' @param x A `BamAnalysisResult` or a `Calls` data frame with `windows`
 #'   supplied through `windows`.
@@ -155,10 +164,17 @@ writeCallsToBedpe <- function(x, file, samples = NULL, selected = NULL,
                 recipient_mean = numeric(0), class = character(0),
                 confidence = character(0), method = character(0),
                 mode = character(0), group = character(0),
+                class_group = character(0),
                 recipient_subgenome = character(0),
                 recipient_chr_name = character(0),
+                recipient_group = character(0),
                 recipient_assignment = character(0),
+                recipient_cross_group = logical(0),
                 recipient_weight = numeric(0),
+                recipient_expected_breadth = numeric(0),
+                recipient_deletion_width_bp = numeric(0),
+                recipient_alternative = character(0),
+                recipient_mean_depletion = numeric(0),
                 donor_subgenome = character(0),
                 donor_chr_name = character(0),
                 stringsAsFactors = FALSE
@@ -171,9 +187,12 @@ writeCallsToBedpe <- function(x, file, samples = NULL, selected = NULL,
         "sample", "chr_id.don", "start.don", "stop.don",
         "chr_id.rec", "start.rec", "stop.rec", "width_bp",
         "score_mean", "donor_mean", "recipient_mean", "class",
-        "confidence", "method", "mode", "group", "start_iid", "end_iid",
-        "recipient_subgenome", "recipient_chr_name", "recipient_assignment",
-        "recipient_weight", "donor_subgenome", "donor_chr_name"
+        "class_group", "confidence", "method", "mode", "group",
+        "start_iid", "end_iid", "recipient_subgenome", "recipient_chr_name",
+        "recipient_group", "recipient_assignment", "recipient_cross_group",
+        "recipient_weight", "recipient_expected_breadth",
+        "recipient_deletion_width_bp", "recipient_alternative",
+        "recipient_mean_depletion", "donor_subgenome", "donor_chr_name"
     )
     out <- calls[, intersect(columns, names(calls)), drop = FALSE]
     utils::write.table(

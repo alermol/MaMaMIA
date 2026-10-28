@@ -218,6 +218,18 @@ karyotype_payload <- function(result, sample = NULL,
         intersect(as.character(selected_groups), groups)
     }
 
+    ## A cross-group assignment is displayed on the recipient group, not on
+    ## the donor group that produced the call. The donor group stays in the
+    ## call payload so the tooltip can explain the translocation.
+    call_group <- as.character(overlay$group)
+    if (all(c("recipient_group", "recipient_cross_group") %in%
+        names(overlay))) {
+        cross <- as.logical(overlay$recipient_cross_group) %in% TRUE
+        recipient_group <- as.character(overlay$recipient_group)
+        move <- cross & !is.na(recipient_group) & nzchar(recipient_group)
+        call_group[move] <- recipient_group[move]
+    }
+
     group_payload <- lapply(groups, function(group) {
         rec <- recipient[as.character(recipient$group) == group, , drop = FALSE]
         rec <- rec[order(match(
@@ -270,9 +282,7 @@ karyotype_payload <- function(result, sample = NULL,
         } else {
             numeric()
         }
-        group_calls <- overlay[
-            as.character(overlay$group) == group, , drop = FALSE
-        ]
+        group_calls <- overlay[call_group == group, , drop = FALSE]
         call_payload <- lapply(seq_len(nrow(group_calls)), function(i) {
             start <- if (n_per > 0L) {
                 as.numeric(group_calls$start_iid[[i]]) / n_per
@@ -356,6 +366,33 @@ karyotype_payload <- function(result, sample = NULL,
                     as.character(group_calls$donor_chr_name[[i]])
                 } else {
                     NA_character_
+                },
+                donor_group = as.character(group_calls$group[[i]]),
+                recipient_group = if ("recipient_group" %in%
+                    names(group_calls)) {
+                    as.character(group_calls$recipient_group[[i]])
+                } else {
+                    NA_character_
+                },
+                cross_group = if ("recipient_cross_group" %in%
+                    names(group_calls)) {
+                    isTRUE(as.logical(
+                        group_calls$recipient_cross_group[[i]]
+                    ))
+                } else {
+                    FALSE
+                },
+                recipient_alternative = if ("recipient_alternative" %in%
+                    names(group_calls)) {
+                    as.character(group_calls$recipient_alternative[[i]])
+                } else {
+                    NA_character_
+                },
+                recipient_mean_depletion = if ("recipient_mean_depletion" %in%
+                    names(group_calls)) {
+                    as.numeric(group_calls$recipient_mean_depletion[[i]])
+                } else {
+                    NA_real_
                 }
             )
         })

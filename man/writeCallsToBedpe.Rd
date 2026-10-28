@@ -34,6 +34,8 @@ The output path, invisibly.
 Writes one row per call with donor and recipient intervals plus the score,
 class, confidence, method and mode. When the calls carry a positional
 assignment, the recipient interval is the assigned contig and coordinates;
-otherwise the first contig in the chromosome group is used. Masked and
-failing calls are excluded by default.
+otherwise the first contig in the chromosome group is used. Calls with
+\code{recipient_assignment = "no_recipient_loss"} are kept with \code{NA}
+recipient coordinates because they have no host interval. Masked and failing
+calls are excluded by default.
 }
