@@ -135,16 +135,79 @@ HTMLWidgets.widget({
       return legend;
     }
 
-    function drawHeatmap(group, bar) {
+    function hasValue(value) {
+      return value !== null && value !== undefined &&
+        String(value) !== "" && String(value) !== "NA";
+    }
+
+    function callsForRecipient(group, chromosome) {
+      var all = group.calls || [];
+      return all.filter(function (call) {
+        if (hasValue(call.recipient_chr_id)) {
+          return call.recipient_chr_id === chromosome.id;
+        }
+        if (hasValue(call.recipient_subgenome)) {
+          return call.recipient_subgenome === chromosome.subgenome;
+        }
+        return true;
+      });
+    }
+
+    function callsForDonor(group, chromosome) {
+      var all = group.calls || [];
+      return all.filter(function (call) {
+        if (hasValue(call.donor_chr_id)) {
+          return call.donor_chr_id === chromosome.id;
+        }
+        if (hasValue(call.donor_subgenome)) {
+          return call.donor_subgenome === chromosome.subgenome;
+        }
+        return true;
+      });
+    }
+
+    function callOpacity(call) {
+      var opacity = call.confidence === "high" ? 0.95 :
+        (call.confidence === "moderate" ? 0.72 : 0.45);
+      if (call.pass === false) {
+        opacity *= 0.45;
+      }
+      if (call.recipient_assignment === "ambiguous") {
+        opacity *= 0.55;
+      }
+      if (call.recipient_assignment === "no_recipient_loss") {
+        opacity *= 0.35;
+      }
+      return opacity;
+    }
+
+    function drawHeatmapForBar(group, bar, calls) {
       var scores = group.scores || [];
-      if (!scores.length) {
+      if (!scores.length || !calls.length) {
         return;
       }
-      var bins = Math.min(scores.length, Math.max(40, Math.floor(bar.height / 2)));
+      var bins = Math.min(
+        scores.length, Math.max(40, Math.floor(bar.height / 2))
+      );
       var binHeight = bar.height / bins;
+      var intervals = calls.map(function (call) {
+        return {
+          start: call.start || 0,
+          end: call.end === null || call.end === undefined ? 1 : call.end
+        };
+      });
       for (var i = 0; i < bins; i += 1) {
+        var centre = (i + 0.5) / bins;
+        var inside = intervals.some(function (interval) {
+          return centre >= interval.start && centre <= interval.end;
+        });
+        if (!inside) {
+          continue;
+        }
         var from = Math.floor(i * scores.length / bins);
-        var to = Math.max(from + 1, Math.floor((i + 1) * scores.length / bins));
+        var to = Math.max(
+          from + 1, Math.floor((i + 1) * scores.length / bins)
+        );
         var sum = 0;
         var count = 0;
         for (var j = from; j < to; j += 1) {
@@ -167,24 +230,18 @@ HTMLWidgets.widget({
       }
     }
 
-    function drawCalls(group, bar) {
-      var calls = group.calls || [];
+    function drawCallsForBar(group, bar, calls) {
       calls.forEach(function (call) {
         var y0 = bar.y + Math.max(0, Math.min(1, call.start)) * bar.height;
         var y1 = bar.y + Math.max(0, Math.min(1, call.end)) * bar.height;
         var colour = payload.palette[call.class] || payload.palette.other;
-        var opacity = call.confidence === "high" ? 0.95 :
-          (call.confidence === "moderate" ? 0.72 : 0.45);
-        if (call.pass === false) {
-          opacity *= 0.45;
-        }
         bar.group.appendChild(svgEl("rect", {
           x: bar.x,
           y: y0,
           width: bar.width,
           height: Math.max(1, y1 - y0),
           fill: colour,
-          opacity: opacity,
+          opacity: callOpacity(call),
           stroke: "#ffffff",
           "stroke-width": 0.5,
           "pointer-events": "none"
@@ -192,7 +249,7 @@ HTMLWidgets.widget({
       });
     }
 
-    function describe(group, chromosome, added, deleted, fraction) {
+    function describe(group, chromosome, added, deleted, fraction, calls) {
       var name = escapeHtml(chromosome.name || chromosome.subgenome || "");
       var mb = fraction * (chromosome.length || group.length || 0) / 1e6;
       var lines = [
@@ -203,26 +260,34 @@ HTMLWidgets.widget({
         lines.push("recipient chromosome deleted (no coverage)");
         return lines.join("<br>");
       }
-      if (added) {
-        lines.push("added donor chromosome");
-      }
-      if (payload.mode === "calls") {
-        var matched = null;
-        (group.calls || []).forEach(function (call) {
-          if (fraction >= call.start && fraction <= call.end) {
-            matched = call;
-          }
-        });
-        if (matched) {
-          lines.push(
-            escapeHtml(matched.class) + " · " +
-            escapeHtml(matched.confidence)
-          );
-          lines.push("score " + fmt(matched.score));
-        } else {
-          lines.push("no call at this position");
+      lines.push(added ? "added donor chromosome" : "recipient chromosome");
+      var matched = null;
+      (calls || []).forEach(function (call) {
+        if (fraction >= call.start && fraction <= call.end) {
+          matched = call;
         }
-      } else {
+      });
+      if (matched) {
+        lines.push(
+          escapeHtml(matched.class) + " · " +
+          escapeHtml(matched.confidence)
+        );
+        if (hasValue(matched.recipient_assignment) &&
+            matched.recipient_assignment !== "assigned") {
+          lines.push("assignment: " +
+            escapeHtml(matched.recipient_assignment));
+        }
+        if (isFinite(matched.recipient_weight)) {
+          lines.push("weight " + fmt(matched.recipient_weight));
+        }
+        if (hasValue(matched.recipient_chr_name)) {
+          lines.push("assigned to " + escapeHtml(matched.recipient_chr_name));
+        }
+        lines.push("score " + fmt(matched.score));
+      } else if (payload.mode === "calls") {
+        lines.push("no assigned donor segment at this position");
+      }
+      if (payload.mode === "heatmap" && matched) {
         var scores = group.scores || [];
         var index = scores.length
           ? Math.max(0, Math.min(scores.length - 1,
@@ -327,41 +392,58 @@ HTMLWidgets.widget({
           fill: payload.palette.text
         }));
 
-        var bars = [];
-        (group.recipient || []).forEach(function (chromosome) {
-          bars.push({ kind: "recipient", chromosome: chromosome });
-        });
-        if ((group.added || []).length) {
-          bars.push({ kind: "gap" });
-          (group.added || []).forEach(function (chromosome) {
-            bars.push({ kind: "added", chromosome: chromosome });
-          });
-        }
         var gap = 5;
         var gapWidth = 10;
+        var nChromosomes = (group.recipient || []).length +
+          (group.added || []).length;
         var barWidth = Math.max(
           9,
           Math.min(
             26,
-            (columnWidth - 20) / Math.max(1, bars.length) - gap
+            (columnWidth - 20) / Math.max(1, nChromosomes) - gap
           )
         );
-        var widthWithoutGaps = 0;
-        bars.forEach(function (bar) {
-          widthWithoutGaps += bar.kind === "gap" ? gapWidth : barWidth + gap;
+        var bars = [];
+        (group.recipient || []).forEach(function (chromosome) {
+          bars.push({
+            kind: "recipient",
+            chromosome: chromosome,
+            width: barWidth,
+            calls: callsForRecipient(group, chromosome)
+          });
         });
-        var cursorX = columnX + (columnWidth - widthWithoutGaps + gap) / 2;
+        if ((group.added || []).length) {
+          bars.push({ kind: "gap", width: gapWidth });
+          (group.added || []).forEach(function (chromosome) {
+            bars.push({
+              kind: "added",
+              chromosome: chromosome,
+              width: barWidth,
+              calls: callsForDonor(group, chromosome)
+            });
+          });
+        }
+        var totalWidth = 0;
+        bars.forEach(function (bar, index) {
+          totalWidth += bar.width;
+          if (index < bars.length - 1) {
+            totalWidth += gap;
+          }
+        });
+        var cursorX = columnX + (columnWidth - totalWidth) / 2;
 
         bars.forEach(function (bar) {
           if (bar.kind === "gap") {
-            cursorX += gapWidth;
+            cursorX += bar.width + gap;
             return;
           }
           var chromosome = bar.chromosome;
           var added = bar.kind === "added";
           var deleted = !added && chromosome.deleted === true;
+          var barCalls = bar.calls || [];
+          var width = bar.width;
           var x = cursorX;
-          cursorX += barWidth + gap;
+          cursorX += width + gap;
           var y = margin.top;
 
           var baseFill = deleted ? payload.palette.deleted :
@@ -371,7 +453,7 @@ HTMLWidgets.widget({
           var base = svgEl("rect", {
             x: x,
             y: y,
-            width: barWidth,
+            width: width,
             height: barHeight,
             fill: baseFill,
             stroke: baseStroke,
@@ -385,20 +467,20 @@ HTMLWidgets.widget({
             group: column,
             x: x,
             y: y,
-            width: barWidth,
+            width: width,
             height: barHeight
           };
-          if (!deleted) {
+          if (!deleted && barCalls.length) {
             if (payload.mode === "heatmap") {
-              drawHeatmap(group, barBox);
+              drawHeatmapForBar(group, barBox, barCalls);
             } else {
-              drawCalls(group, barBox);
+              drawCallsForBar(group, barBox, barCalls);
             }
           }
 
           if (deleted) {
             column.appendChild(textEl("deleted", {
-              x: x + barWidth / 2,
+              x: x + width / 2,
               y: 49,
               "text-anchor": "middle",
               "font-size": 8,
@@ -408,7 +490,7 @@ HTMLWidgets.widget({
           }
           if (added) {
             column.appendChild(textEl("added", {
-              x: x + barWidth / 2,
+              x: x + width / 2,
               y: 49,
               "text-anchor": "middle",
               "font-size": 8,
@@ -422,7 +504,7 @@ HTMLWidgets.widget({
             subgenome += " " + chromosome.copy;
           }
           column.appendChild(textEl(subgenome, {
-            x: x + barWidth / 2,
+            x: x + width / 2,
             y: margin.top + barHeight + 14,
             "text-anchor": "middle",
             "font-size": 9,
@@ -432,7 +514,7 @@ HTMLWidgets.widget({
           var hit = svgEl("rect", {
             x: x - 2,
             y: y - 2,
-            width: barWidth + 4,
+            width: width + 4,
             height: barHeight + 4,
             fill: "transparent",
             "class": "karyotype-hit"
@@ -447,7 +529,7 @@ HTMLWidgets.widget({
               0, Math.min(1, (pointY - y) / barHeight)
             );
             tooltip.innerHTML = describe(
-              group, chromosome, added, deleted, fraction
+              group, chromosome, added, deleted, fraction, barCalls
             );
             tooltip.style.display = "block";
             tooltip.style.left = Math.min(

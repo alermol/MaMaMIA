@@ -167,8 +167,12 @@ test_that("writeCallsToBedpe() writes donor and recipient intervals", {
     expect_true(all(c(
         "sample", "chr_id.don", "start.don", "stop.don",
         "chr_id.rec", "start.rec", "stop.rec", "score_mean", "class",
-        "confidence", "method", "mode"
+        "confidence", "method", "mode", "recipient_subgenome",
+        "recipient_chr_name", "recipient_assignment", "donor_subgenome",
+        "donor_chr_name"
     ) %in% names(bedpe)))
+    expect_true(all(!is.na(bedpe$recipient_subgenome)))
+    expect_true(all(!is.na(bedpe$recipient_chr_name)))
     expect_true(all(bedpe$start.don >= 0))
     expect_true(all(bedpe$stop.don > bedpe$start.don))
     expect_true(all(bedpe$start.rec >= 0))

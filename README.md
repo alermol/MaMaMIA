@@ -219,8 +219,11 @@ exploreIntrogressions(result)
 
 The dashboard analyses every subgenome declared for the selected species and
 offers chromosome-group, class, confidence and width filters. The main tab is
-a vertical karyotype with a score heatmap or call-map mode; a score profile,
-call table and BEDPE export follow.
+a vertical karyotype with a score heatmap or call-map mode. Each donor
+segment is assigned to its most probable recipient chromosome from
+per-recipient-subgenome depth, with an assignment weight and confidence flag;
+deleted chromosomes and added donor chromosomes are drawn separately. A score
+profile, call table and BEDPE export follow.
 
 ## Validation
 

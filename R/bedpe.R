@@ -2,10 +2,12 @@
 ##
 ## A call is group-level: `start_iid`/`end_iid` are relative windows shared by
 ## the homoeologs in one chromosome group. For a BEDPE we materialise one donor
-## interval and one recipient interval. The donor subgenome is the one recorded
-## by a `max` aggregation, or the first donor contig in the group. The
-## recipient interval uses the first recipient subgenome in the group; the
-## `group` column and the score fields carry the group-level meaning.
+## interval and one recipient interval. When assignCallPositions() has added
+## the assigned contigs and coordinates, those are used. Otherwise the donor
+## subgenome is the one recorded by a `max` aggregation (or the first donor
+## contig in the group) and the recipient interval uses the first recipient
+## subgenome in the group; the `group` column and the score fields retain the
+## group-level meaning.
 
 .bedpe_error <- function(fmt, ...) {
     .mamamia_error("MaMaMIABedpeError", fmt, ...)
@@ -72,14 +74,33 @@
     calls$chr_id.rec <- vapply(recipient_intervals, `[[`, character(1), "chr")
     calls$start.rec <- vapply(recipient_intervals, `[[`, numeric(1), "start")
     calls$stop.rec <- vapply(recipient_intervals, `[[`, numeric(1), "stop")
+
+    ## Prefer the per-call assignment produced by assignCallPositions(); the
+    ## group fallback above is only for older calls without those columns.
+    if (all(c("recipient_chr_id", "recipient_start_bp",
+              "recipient_end_bp") %in% names(calls))) {
+        ok <- !is.na(calls$recipient_chr_id)
+        calls$chr_id.rec[ok] <- as.character(calls$recipient_chr_id[ok])
+        calls$start.rec[ok] <- as.numeric(calls$recipient_start_bp[ok])
+        calls$stop.rec[ok] <- as.numeric(calls$recipient_end_bp[ok])
+    }
+    if (all(c("donor_chr_id", "donor_start_bp", "donor_end_bp") %in%
+        names(calls))) {
+        ok <- !is.na(calls$donor_chr_id)
+        calls$chr_id.don[ok] <- as.character(calls$donor_chr_id[ok])
+        calls$start.don[ok] <- as.numeric(calls$donor_start_bp[ok])
+        calls$stop.don[ok] <- as.numeric(calls$donor_end_bp[ok])
+    }
     calls
 }
 
 #' Write calls to a BEDPE file
 #'
 #' Writes one row per call with donor and recipient intervals plus the score,
-#' class, confidence, method and mode. Masked and failing calls are excluded by
-#' default.
+#' class, confidence, method and mode. When the calls carry a positional
+#' assignment, the recipient interval is the assigned contig and coordinates;
+#' otherwise the first contig in the chromosome group is used. Masked and
+#' failing calls are excluded by default.
 #'
 #' @param x A `BamAnalysisResult` or a `Calls` data frame with `windows`
 #'   supplied through `windows`.
@@ -134,6 +155,12 @@ writeCallsToBedpe <- function(x, file, samples = NULL, selected = NULL,
                 recipient_mean = numeric(0), class = character(0),
                 confidence = character(0), method = character(0),
                 mode = character(0), group = character(0),
+                recipient_subgenome = character(0),
+                recipient_chr_name = character(0),
+                recipient_assignment = character(0),
+                recipient_weight = numeric(0),
+                donor_subgenome = character(0),
+                donor_chr_name = character(0),
                 stringsAsFactors = FALSE
             ),
             file, sep = "\t", quote = FALSE, row.names = FALSE
@@ -144,7 +171,9 @@ writeCallsToBedpe <- function(x, file, samples = NULL, selected = NULL,
         "sample", "chr_id.don", "start.don", "stop.don",
         "chr_id.rec", "start.rec", "stop.rec", "width_bp",
         "score_mean", "donor_mean", "recipient_mean", "class",
-        "confidence", "method", "mode", "group", "start_iid", "end_iid"
+        "confidence", "method", "mode", "group", "start_iid", "end_iid",
+        "recipient_subgenome", "recipient_chr_name", "recipient_assignment",
+        "recipient_weight", "donor_subgenome", "donor_chr_name"
     )
     out <- calls[, intersect(columns, names(calls)), drop = FALSE]
     utils::write.table(

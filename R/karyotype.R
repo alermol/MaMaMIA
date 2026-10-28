@@ -71,7 +71,7 @@ karyotype_groups <- function(groups) {
 #' chromosome.
 #' @noRd
 karyotype_deleted <- function(result, sample, deletion_breadth = 0.001,
-                              deletion_relative = 0.05) {
+                              deletion_relative = 0.1) {
     metrics <- result$metrics
     if (is.null(metrics) || nrow(metrics) == 0L) {
         return(character())
@@ -166,7 +166,7 @@ karyotype_payload <- function(result, sample = NULL,
                               mode = c("heatmap", "calls"),
                               calls = NULL, selected_groups = NULL,
                               deletion_breadth = 0.001,
-                              deletion_relative = 0.05) {
+                              deletion_relative = 0.1) {
     mode <- match.arg(mode)
     sample <- karyotype_sample(result, sample)
     assembly <- result$assembly
@@ -297,6 +297,65 @@ karyotype_payload <- function(result, sample = NULL,
                     isTRUE(group_calls$pass[[i]])
                 } else {
                     TRUE
+                },
+                recipient_subgenome = if ("recipient_subgenome" %in%
+                    names(group_calls)) {
+                    as.character(group_calls$recipient_subgenome[[i]])
+                } else {
+                    NA_character_
+                },
+                recipient_chr_id = if ("recipient_chr_id" %in%
+                    names(group_calls)) {
+                    as.character(group_calls$recipient_chr_id[[i]])
+                } else {
+                    NA_character_
+                },
+                recipient_chr_name = if ("recipient_chr_name" %in%
+                    names(group_calls)) {
+                    as.character(group_calls$recipient_chr_name[[i]])
+                } else {
+                    NA_character_
+                },
+                recipient_start_bp = if ("recipient_start_bp" %in%
+                    names(group_calls)) {
+                    as.numeric(group_calls$recipient_start_bp[[i]])
+                } else {
+                    NA_real_
+                },
+                recipient_end_bp = if ("recipient_end_bp" %in%
+                    names(group_calls)) {
+                    as.numeric(group_calls$recipient_end_bp[[i]])
+                } else {
+                    NA_real_
+                },
+                recipient_assignment = if ("recipient_assignment" %in%
+                    names(group_calls)) {
+                    as.character(group_calls$recipient_assignment[[i]])
+                } else {
+                    NA_character_
+                },
+                recipient_weight = if ("recipient_weight" %in%
+                    names(group_calls)) {
+                    as.numeric(group_calls$recipient_weight[[i]])
+                } else {
+                    NA_real_
+                },
+                donor_subgenome = if ("donor_subgenome" %in%
+                    names(group_calls)) {
+                    as.character(group_calls$donor_subgenome[[i]])
+                } else {
+                    NA_character_
+                },
+                donor_chr_id = if ("donor_chr_id" %in% names(group_calls)) {
+                    as.character(group_calls$donor_chr_id[[i]])
+                } else {
+                    NA_character_
+                },
+                donor_chr_name = if ("donor_chr_name" %in%
+                    names(group_calls)) {
+                    as.character(group_calls$donor_chr_name[[i]])
+                } else {
+                    NA_character_
                 }
             )
         })

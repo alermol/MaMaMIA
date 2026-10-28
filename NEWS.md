@@ -62,6 +62,17 @@
   group. A toggle switches between the introgression-score heatmap and the
   coloured call map; clicking a chromosome filters its group and clicking the
   background clears the filter. The score profile remains as a second tab.
+* The karyotype now assigns every donor segment to its most probable
+  recipient chromosome. Detection stays group-level, but each call carries
+  `recipient_subgenome`, the recipient contig and coordinates, an assignment
+  weight and an `assigned`/`ambiguous`/`no_recipient_loss` flag. The
+  assignment compares per-recipient-subgenome depth inside the call with the
+  same chromosome outside it, after GC and sample-median normalisation; the
+  most depleted chromosome is the best substitution site. Low-confidence
+  assignments are drawn faded. A recipient chromosome is marked deleted below
+  10% of the sample's median recipient breadth, so a whole-chromosome loss is
+  visible even when the group call is classified as an addition. The call
+  table and BEDPE export carry the assigned recipient and donor contigs.
 
 ## Validation
 

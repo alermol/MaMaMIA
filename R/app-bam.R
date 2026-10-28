@@ -2005,6 +2005,16 @@ bam_launcher_server <- function(state) {
         sidebar_unlocked <- shiny::reactiveVal(FALSE)
         upload_epoch <- shiny::reactiveVal(0L)
 
+        ## The bundled example has 20 kb contigs, so its 2-8 kb calls would
+        ## disappear under the 5 Mb production filter. Use a toy-scale filter
+        ## while example mode is active and restore the default afterwards.
+        shiny::observeEvent(example_mode(), {
+            shiny::updateNumericInput(
+                session, "explorer-min_width",
+                value = if (isTRUE(example_mode())) 0.001 else 5
+            )
+        }, ignoreInit = TRUE)
+
         result <- shiny::reactiveVal(NULL)
         last_error <- shiny::reactiveVal(NULL)
         result_cache <- bam_result_cache()

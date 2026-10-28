@@ -32,6 +32,8 @@ The output path, invisibly.
 }
 \description{
 Writes one row per call with donor and recipient intervals plus the score,
-class, confidence, method and mode. Masked and failing calls are excluded by
-default.
+class, confidence, method and mode. When the calls carry a positional
+assignment, the recipient interval is the assigned contig and coordinates;
+otherwise the first contig in the chromosome group is used. Masked and
+failing calls are excluded by default.
 }

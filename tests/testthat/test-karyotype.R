@@ -89,9 +89,9 @@ test_that("a deleted recipient chromosome stays in the karyotype", {
     metric$chr_id <- "r2"
     metric$chr_name <- "1B"
     metric$subgenome <- "B"
-    metric$breadth <- 0.25
+    metric$breadth <- 0.02
     result$metrics <- rbind(result$metrics, metric)
-    result$metrics$breadth[result$metrics$chr_id == "r1"] <- 0
+    result$metrics$breadth[result$metrics$chr_id == "r1"] <- 0.0009
 
     payload <- karyotype_payload(result, "example-sample", "heatmap")
     recipient <- payload$groups[[1L]]$recipient

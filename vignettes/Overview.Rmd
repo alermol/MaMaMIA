@@ -206,8 +206,11 @@ exploreIntrogressions(result)
 intervals, `score_mean`, `class`, `confidence`, `method` and `mode`.
 `exploreIntrogressions()` opens the dashboard over every subgenome declared
 for the species pair: chromosome-group, class, confidence and width filters, a
-vertical karyotype with score-heatmap and call-map modes, a score profile with
-called intervals, a call table, and a BEDPE export.
+vertical karyotype with score-heatmap and call-map modes. Each donor segment
+is assigned to its most probable recipient chromosome from
+per-recipient-subgenome depth; deleted chromosomes and added donor chromosomes
+are drawn separately. A score profile with called intervals, a call table and
+a BEDPE export follow.
 
 # Session information
 
