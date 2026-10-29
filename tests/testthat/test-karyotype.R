@@ -34,6 +34,12 @@ test_that("karyotype_payload() lays out diploid pairs in config order", {
     )
     expect_length(chromosome$calls, hosted)
     expect_length(payload$chromosomes[[2L]]$calls, hosted)
+    if (hosted > 0L) {
+        expect_true(all(c(
+            "affected_copies", "recipient_copy_number",
+            "affected_fraction", "dosage_confidence"
+        ) %in% names(chromosome$calls[[1L]])))
+    }
 })
 
 test_that("a full donor chromosome is added with its diploid copies", {

@@ -104,7 +104,10 @@
 #' Write calls to a BEDPE file
 #'
 #' Writes one row per call with donor and recipient intervals plus the score,
-#' class, confidence, method and mode. When the calls carry a positional
+#' class, confidence, method, mode and the dosage fields
+#' (`recipient_observed_breadth`, `recipient_copy_number`,
+#' `affected_fraction`, `affected_copies`, `dosage_confidence`). When the
+#' calls carry a positional
 #' assignment, the recipient interval is the assigned contig and coordinates;
 #' otherwise the first contig in the chromosome group is used. Calls with
 #' `recipient_assignment = "no_recipient_loss"` are kept with `NA` recipient
@@ -172,7 +175,12 @@ writeCallsToBedpe <- function(x, file, samples = NULL, selected = NULL,
                 recipient_cross_group = logical(0),
                 recipient_weight = numeric(0),
                 recipient_expected_breadth = numeric(0),
+                recipient_observed_breadth = numeric(0),
+                recipient_copy_number = numeric(0),
                 recipient_deletion_width_bp = numeric(0),
+                affected_fraction = numeric(0),
+                affected_copies = integer(0),
+                dosage_confidence = character(0),
                 recipient_alternative = character(0),
                 recipient_mean_depletion = numeric(0),
                 donor_component = character(0),
@@ -191,7 +199,9 @@ writeCallsToBedpe <- function(x, file, samples = NULL, selected = NULL,
         "start_iid", "end_iid", "recipient_component", "recipient_chr_name",
         "recipient_group", "recipient_assignment", "recipient_cross_group",
         "recipient_weight", "recipient_expected_breadth",
-        "recipient_deletion_width_bp", "recipient_alternative",
+        "recipient_observed_breadth", "recipient_copy_number",
+        "recipient_deletion_width_bp", "affected_fraction",
+        "affected_copies", "dosage_confidence", "recipient_alternative",
         "recipient_mean_depletion", "donor_component", "donor_chr_name"
     )
     out <- calls[, intersect(columns, names(calls)), drop = FALSE]

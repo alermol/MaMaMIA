@@ -32,10 +32,13 @@ The output path, invisibly.
 }
 \description{
 Writes one row per call with donor and recipient intervals plus the score,
-class, confidence, method and mode. When the calls carry a positional
+class, confidence, method, mode and the dosage fields
+(\code{recipient_observed_breadth}, \code{recipient_copy_number},
+\code{affected_fraction}, \code{affected_copies}, \code{dosage_confidence}). When the
+calls carry a positional
 assignment, the recipient interval is the assigned contig and coordinates;
 otherwise the first contig in the chromosome group is used. Calls with
-\code{recipient_assignment = "no_recipient_loss"} are kept with \code{NA}
-recipient coordinates because they have no host interval. Masked and failing
-calls are excluded by default.
+\code{recipient_assignment = "no_recipient_loss"} are kept with \code{NA} recipient
+coordinates because they have no host interval. Masked and failing calls are
+excluded by default.
 }

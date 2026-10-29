@@ -52,6 +52,12 @@
   terminal fallback masks are applied before CBS.
 * **Length-stratified calibration.** Segment thresholds are the empirical
   `1 - fdr` quantile of control segments per length bin, raised to a floor.
+* **Recipient-copy dosage.** Assigned calls estimate how many recipient
+  copies were replaced. Breadth is converted to a per-copy depth scale with
+  `-log(1 - breadth)`; a call with donor support reports
+  `affected_fraction`, `affected_copies`, `recipient_observed_breadth`,
+  `recipient_copy_number` and `dosage_confidence`. Copy-neutral additions,
+  unassigned calls and deletion-only signals have no dosage estimate.
 * **BEDPE export.** `writeCallsToBedpe()` writes donor and recipient intervals
   with `score_mean`, `class`, `confidence`, `method` and `mode`.
 

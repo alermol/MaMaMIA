@@ -354,6 +354,18 @@ karyotype_payload <- function(result, sample = NULL,
             ),
             recipient_mean_depletion = as.numeric(
                 call_value("recipient_mean_depletion", i, NA_real_)
+            ),
+            recipient_copy_number = as.numeric(
+                call_value("recipient_copy_number", i, NA_real_)
+            ),
+            affected_fraction = as.numeric(
+                call_value("affected_fraction", i, NA_real_)
+            ),
+            affected_copies = as.numeric(
+                call_value("affected_copies", i, NA_real_)
+            ),
+            dosage_confidence = as.character(
+                call_value("dosage_confidence", i, NA_character_)
             )
         )
     }

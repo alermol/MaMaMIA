@@ -252,3 +252,44 @@ test_that("a non-passing call cannot displace a passing call", {
     expect_identical(chosen[[1L]], 1L)
     expect_identical(chosen[[2L]], 4L)
 })
+
+test_that("dosage distinguishes one and two affected copies", {
+    half_breadth <- 1 - sqrt(1 - 0.02)
+    full <- .assignment_dosage("assigned", 1, 0.02, 0.0001, 2)
+    expect_identical(full$affected_copies, 2L)
+    expect_identical(full$confidence, "high")
+    expect_gt(full$affected_fraction, 0.9)
+
+    half <- .assignment_dosage("assigned", 1, 0.02, half_breadth, 2)
+    expect_identical(half$affected_copies, 1L)
+    expect_identical(half$confidence, "high")
+    expect_equal(half$affected_fraction, 0.5, tolerance = 0.02)
+
+    partial <- .assignment_dosage("assigned", 1, 0.02, 0.015, 2)
+    expect_true(is.na(partial$affected_copies))
+    expect_identical(partial$confidence, "low")
+
+    expect_identical(
+        .assignment_dosage("ambiguous", 1, 0.02, 0.0001, 2)$confidence,
+        "unavailable"
+    )
+    expect_identical(
+        .assignment_dosage("assigned", 0.1, 0.02, 0.0001, 2)$confidence,
+        "unavailable"
+    )
+    expect_identical(
+        .assignment_dosage("assigned", 1, 0.02, 0.02, 2)$confidence,
+        "unavailable"
+    )
+})
+
+test_that("assignment records recipient dosage", {
+    fixture <- one_call(assignment_fixture())
+    fixture <- delete_interval(fixture, "S1", "r1a", value = 0.0001)
+    calls <- assign_fixture(fixture)
+    call <- calls[calls$group == "1", , drop = FALSE]
+    expect_identical(call$recipient_copy_number, 2)
+    expect_identical(call$affected_copies, 2L)
+    expect_identical(call$dosage_confidence, "high")
+    expect_gt(call$affected_fraction, 0.9)
+})

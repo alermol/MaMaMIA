@@ -393,6 +393,7 @@
             chr_name = as.character(contigs$chr_name[[j]]),
             component = as.character(contigs$component[[j]]),
             group = as.character(contigs$group[[j]]),
+            copy_number = as.numeric(contigs$copy_number[[j]]),
             inside_depletion = as.numeric(inside_depletion),
             expected_breadth = as.numeric(expected_breadth),
             observed_breadth = as.numeric(observed_breadth),
@@ -553,6 +554,76 @@
     chosen
 }
 
+#' Estimate how many recipient copies an assigned donor segment replaced
+#'
+#' The recipient breadth is converted to a per-copy depth scale with
+#' `lambda = -log(1 - breadth)`. Losing `k` of `n` copies gives
+#' `lambda_observed / lambda_expected = (n - k) / n`. The estimate is only
+#' reported for an assigned call with donor support; a recipient deletion
+#' without donor signal and a copy-neutral addition have no dosage.
+#' @noRd
+.assignment_dosage <- function(assignment, donor_mean, expected_breadth,
+                               observed_breadth, copy_number,
+                               donor_cutoff = 0.5,
+                               expected_floor = 0.005,
+                               eps = 1e-6) {
+    unavailable <- list(
+        affected_fraction = NA_real_,
+        affected_copies = NA_integer_,
+        confidence = "unavailable"
+    )
+    if (!identical(assignment, "assigned") ||
+        !is.finite(donor_mean) || donor_mean <= donor_cutoff ||
+        !is.finite(expected_breadth) || expected_breadth <= 0 ||
+        !is.finite(observed_breadth) || observed_breadth < 0 ||
+        !is.finite(copy_number) || copy_number < 1) {
+        return(unavailable)
+    }
+    copies_total <- as.integer(round(copy_number))
+    if (copies_total < 1L) {
+        return(unavailable)
+    }
+    lambda <- function(breadth) {
+        -log(pmax(1 - pmin(as.numeric(breadth), 1 - eps), eps))
+    }
+    expected_lambda <- lambda(expected_breadth)
+    observed_lambda <- lambda(observed_breadth)
+    if (!is.finite(expected_lambda) || expected_lambda <= 0 ||
+        !is.finite(observed_lambda)) {
+        return(unavailable)
+    }
+    fraction <- 1 - observed_lambda / expected_lambda
+    fraction <- min(max(fraction, 0), 1)
+    affected <- copies_total * fraction
+    copies <- as.integer(round(affected))
+    distance <- abs(affected - copies)
+    if (fraction < 0.25) {
+        return(list(
+            affected_fraction = fraction,
+            affected_copies = NA_integer_,
+            confidence = "unavailable"
+        ))
+    }
+    if (distance > 0.35) {
+        return(list(
+            affected_fraction = fraction,
+            affected_copies = NA_integer_,
+            confidence = "low"
+        ))
+    }
+    confidence <- if (donor_mean >= 1 && expected_breadth >= expected_floor &&
+        distance <= 0.2) {
+        "high"
+    } else {
+        "moderate"
+    }
+    list(
+        affected_fraction = fraction,
+        affected_copies = copies,
+        confidence = confidence
+    )
+}
+
 #' Add assignment columns without clearing existing values
 #' @noRd
 .assignment_empty <- function(calls) {
@@ -578,7 +649,12 @@
     calls$recipient_run_end_bp <- rep(NA_real_, n)
     calls$recipient_deletion_width_bp <- rep(NA_real_, n)
     calls$recipient_expected_breadth <- rep(NA_real_, n)
+    calls$recipient_observed_breadth <- rep(NA_real_, n)
+    calls$recipient_copy_number <- rep(NA_real_, n)
     calls$recipient_mean_depletion <- rep(NA_real_, n)
+    calls$affected_fraction <- rep(NA_real_, n)
+    calls$affected_copies <- rep(NA_integer_, n)
+    calls$dosage_confidence <- rep("unavailable", n)
     calls$recipient_weight <- rep(NA_real_, n)
     calls$recipient_margin <- rep(NA_real_, n)
     calls$recipient_assignment <- rep(NA_character_, n)
@@ -676,6 +752,11 @@ assignCallPositions <- function(
             chr_name = as.character(contigs$name),
             component = as.character(contigs$component),
             group = as.character(contigs$group),
+            copy_number = if ("copy_number" %in% names(contigs)) {
+                as.numeric(contigs$copy_number)
+            } else {
+                rep(2, nrow(contigs))
+            },
             stringsAsFactors = FALSE
         )
     }
@@ -878,6 +959,20 @@ assignCallPositions <- function(
                 calls$recipient_alternative_score[[i]] <-
                     as.numeric(candidates$score[[alternative]])
             }
+            dosage <- .assignment_dosage(
+                assignment = assignment,
+                donor_mean = as.numeric(call$donor_mean[[1L]]),
+                expected_breadth = as.numeric(best$expected_breadth[[1L]]),
+                observed_breadth = as.numeric(best$observed_breadth[[1L]]),
+                copy_number = as.numeric(best$copy_number[[1L]])
+            )
+            calls$recipient_observed_breadth[[i]] <-
+                as.numeric(best$observed_breadth[[1L]])
+            calls$recipient_copy_number[[i]] <-
+                as.numeric(best$copy_number[[1L]])
+            calls$affected_fraction[[i]] <- dosage$affected_fraction
+            calls$affected_copies[[i]] <- dosage$affected_copies
+            calls$dosage_confidence[[i]] <- dosage$confidence
             assigned_class <- if (identical(assignment, "assigned") &&
                 isTRUE(best$strong[[1L]]) &&
                 as.numeric(best$inside_depletion[[1L]]) >=

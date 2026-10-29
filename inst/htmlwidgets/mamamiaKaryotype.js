@@ -269,6 +269,19 @@ HTMLWidgets.widget({
         if (hasValue(matched.recipient_chr_name)) {
           lines.push("assigned to " + escapeHtml(matched.recipient_chr_name));
         }
+        if (isFinite(matched.affected_copies)) {
+          var total = isFinite(matched.recipient_copy_number)
+            ? " of " + matched.recipient_copy_number
+            : "";
+          lines.push("affected copies " + matched.affected_copies + total);
+        } else if (isFinite(matched.affected_fraction)) {
+          lines.push("recipient loss " +
+            Math.round(100 * matched.affected_fraction) + "%");
+        }
+        if (hasValue(matched.dosage_confidence) &&
+            matched.dosage_confidence !== "unavailable") {
+          lines.push("dosage " + escapeHtml(matched.dosage_confidence));
+        }
         if (matched.cross_group === true) {
           var donor = hasValue(matched.donor_chr_name)
             ? matched.donor_chr_name

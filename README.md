@@ -214,6 +214,15 @@ Calls are calibrated by segment length. The threshold is the empirical
 `1 - fdr` quantile of control segment means, raised to a per-bin floor. A
 single sample is its own control; a cohort uses all samples (or `controls`).
 
+When a call is assigned to a recipient contig, MaMaMIA also estimates a
+provisional substitution dosage. Breadth is converted to a per-copy depth
+scale with `-log(1 - breadth)`, so losing `k` of `n` copies gives
+`lambda_observed / lambda_expected = (n - k) / n`. The call reports
+`recipient_copy_number`, `recipient_observed_breadth`, `affected_fraction`,
+`affected_copies` and `dosage_confidence`. The estimate requires donor support;
+copy-neutral additions, unassigned calls and deletion-only signals are
+reported as `unavailable`.
+
 ## Result contract
 
 `BamAnalysisResult` has eleven fields:
@@ -227,7 +236,7 @@ single sample is its own control; a cohort uses all samples (or `controls`).
 | `scores` | sample × group × window: score and side residuals |
 | `masks` | window-level mask with `source` and `version` |
 | `calibration` | thresholds by mode and segment-length bin |
-| `calls` | segments with class, confidence, method and `pass` |
+| `calls` | segments with class, confidence, method, assignment, dosage and `pass` |
 | `provenance` | versions, parameters, mask/calibration hashes |
 
 ## Dashboard
