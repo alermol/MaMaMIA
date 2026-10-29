@@ -156,19 +156,6 @@ explorer_karyotype_ui <- function(id, height = "calc(100vh - 360px)") {
                 ns("karyotype_mode"), "Plot",
                 choices = c("Heatmap" = "heatmap", "Calls" = "calls"),
                 selected = "heatmap", inline = TRUE
-            ),
-            shiny::p(
-                class = "text-muted small",
-                style = "margin:0;",
-                paste(
-                    "Chromosomes are shown in config order as diploid",
-                    "homolog pairs; bar height is proportional to the",
-                    "configured length. Donor segments are painted on their",
-                    "most probable recipient chromosome; low-confidence",
-                    "assignments fade. Dashed segments cross chromosome",
-                    "groups (translocation candidates). Click a chromosome",
-                    "to filter its group; click the background to clear."
-                )
             )
         ),
         mamamia_karyotype_output(ns("karyotype"), height = height)
