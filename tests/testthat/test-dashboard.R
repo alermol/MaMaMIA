@@ -22,6 +22,30 @@ test_that("bam_run_parameters() resolves the run controls", {
     expect_null(params$calibration)
 })
 
+test_that("the resolution picker is a ten-window slider with three ticks", {
+    config <- readMaMaMIAConfig(
+        system.file("extdata", "bam-demo", "assemblies.yml",
+            package = "MaMaMIA")
+    )
+    range <- bam_resolution_range(config$defaults)
+    expect_identical(range$min, 100L)
+    expect_identical(range$max, 5000L)
+    expect_identical(range$ticks, c(100L, 1000L, 5000L))
+    expect_identical(range$step, 10L)
+    expect_identical(bam_default_resolution(config$defaults), 100L)
+    expect_identical(bam_resolution_value(1010, config$defaults), 1010L)
+    expect_error(bam_resolution_value(1005, config$defaults), "steps of 10")
+    expect_error(bam_resolution_value(5001, config$defaults), "between")
+    slider <- as.character(bam_resolution_slider_ui(config$defaults))
+    expect_match(slider, 'id="resolution"', fixed = TRUE)
+    expect_match(slider, 'data-min="100"', fixed = TRUE)
+    expect_match(slider, 'data-max="5000"', fixed = TRUE)
+    expect_match(slider, 'data-step="10"', fixed = TRUE)
+    expect_match(slider, 'mamamia-resolution-ticks', fixed = TRUE)
+    expect_match(slider, "1,000", fixed = TRUE)
+    expect_match(slider, "5,000", fixed = TRUE)
+})
+
 test_that("the BAM chooser accepts exactly one file", {
     chooser <- as.character(bam_single_file_input())
     expect_length(chooser, 1L)

@@ -112,6 +112,19 @@ test_that("a diploid species without component labels resolves", {
     expect_equal(unname(pair$assembly$sample_composition), 2)
 })
 
+test_that("resolution accepts ten-window steps between the allowed ticks", {
+    config <- tiny_species_config()
+    config$defaults$allowed_windows <- c(100L, 1000L, 5000L)
+    config$defaults$windows_per_chromosome <- 1010L
+    validated <- validateMaMaMIAConfig(config)
+    expect_identical(validated$defaults$windows_per_chromosome, 1010L)
+
+    config$defaults$windows_per_chromosome <- 1005L
+    expect_error(validateMaMaMIAConfig(config), "steps of 10")
+    config$defaults$windows_per_chromosome <- 5001L
+    expect_error(validateMaMaMIAConfig(config), "between")
+})
+
 test_that("version 1 is rejected with migration guidance", {
     config <- list(version = 1L, species = list())
     expect_error(

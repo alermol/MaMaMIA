@@ -351,7 +351,8 @@ bam_resolution_choices <- function(defaults = .config_defaults()) {
         switch(as.character(n),
             `100` = "Low (100 per chromosome)",
             `1000` = "Medium (1,000 per chromosome)",
-            `10000` = "High (10,000 per chromosome)",
+            `5000` = "High (5,000 per chromosome)",
+            `10000` = "Extra high (10,000 per chromosome)",
             sprintf(
                 "%s per chromosome",
                 format(n, big.mark = ",", scientific = FALSE)
@@ -362,30 +363,90 @@ bam_resolution_choices <- function(defaults = .config_defaults()) {
 }
 
 #' @noRd
-bam_default_resolution <- function(defaults = .config_defaults()) {
+bam_resolution_range <- function(defaults = .config_defaults(),
+                                 step = 10L) {
     allowed <- sort(unique(as.integer(defaults$allowed_windows)))
+    allowed <- allowed[!is.na(allowed) & allowed > 0L]
     if (length(allowed) == 0L) {
         allowed <- 1000L
     }
-    value <- suppressWarnings(as.integer(defaults$windows_per_chromosome))
-    if (is.na(value) || !value %in% allowed) {
-        value <- if (1000L %in% allowed) 1000L else allowed[[1L]]
+    list(
+        min = allowed[[1L]],
+        max = allowed[[length(allowed)]],
+        ticks = allowed,
+        step = as.integer(step)
+    )
+}
+
+#' @noRd
+bam_resolution_slider_ui <- function(defaults = .config_defaults()) {
+    range <- bam_resolution_range(defaults)
+    positions <- if (range$max > range$min) {
+        100 * (range$ticks - range$min) / (range$max - range$min)
+    } else {
+        rep(50, length(range$ticks))
     }
-    as.character(value)
+    labels <- lapply(seq_along(range$ticks), function(i) {
+        shiny::tags$span(
+            class = if (i == 1L) {
+                "first"
+            } else if (i == length(range$ticks)) {
+                "last"
+            } else {
+                NULL
+            },
+            style = sprintf("left:%.3f%%;", positions[[i]]),
+            format(range$ticks[[i]], big.mark = ",", scientific = FALSE)
+        )
+    })
+    shiny::div(
+        class = "mamamia-resolution-slider",
+        shiny::sliderInput(
+            "resolution", "Resolution",
+            min = range$min,
+            max = range$max,
+            value = bam_default_resolution(defaults),
+            step = range$step,
+            ticks = FALSE,
+            round = TRUE
+        ),
+        shiny::div(class = "mamamia-resolution-ticks", labels)
+    )
+}
+
+#' @noRd
+bam_default_resolution <- function(defaults = .config_defaults()) {
+    range <- bam_resolution_range(defaults)
+    valid <- function(value) {
+        !is.na(value) && value >= range$min && value <= range$max &&
+            (value - range$min) %% range$step == 0L
+    }
+    value <- suppressWarnings(as.integer(defaults$windows_per_chromosome))
+    if (!valid(value)) {
+        value <- 1000L
+    }
+    if (!valid(value)) {
+        value <- range$min
+    }
+    value
 }
 
 #' @noRd
 bam_resolution_value <- function(value, defaults = .config_defaults()) {
-    allowed <- sort(unique(as.integer(defaults$allowed_windows)))
+    range <- bam_resolution_range(defaults)
     if (length(value) != 1L || is.na(value) || !nzchar(as.character(value))) {
         .mamamia_error("MaMaMIAWindowError", "Choose an analysis resolution")
     }
     resolution <- suppressWarnings(as.integer(value))
-    if (is.na(resolution) || !resolution %in% allowed) {
+    if (is.na(resolution) || resolution < range$min ||
+        resolution > range$max ||
+        (resolution - range$min) %% range$step != 0L) {
         .mamamia_error(
             "MaMaMIAWindowError",
-            "Resolution must be one of: %s",
-            paste(allowed, collapse = ", ")
+            "Resolution must be between %s and %s in steps of %s",
+            format(range$min, big.mark = ",", scientific = FALSE),
+            format(range$max, big.mark = ",", scientific = FALSE),
+            range$step
         )
     }
     resolution
@@ -1623,6 +1684,24 @@ bam_dashboard_css <- function() {
     .mamamia-sidebar .radio-inline + .radio-inline {
         margin-left: .6rem;
     }
+    .mamamia-resolution-slider {
+        position: relative;
+    }
+    .mamamia-resolution-ticks {
+        position: relative;
+        height: .9rem;
+        margin: -.15rem .7rem .15rem;
+        color: var(--bs-secondary-color);
+        font-size: .65rem;
+        line-height: 1;
+    }
+    .mamamia-resolution-ticks span {
+        position: absolute;
+        white-space: nowrap;
+    }
+    .mamamia-resolution-ticks span.last {
+        transform: translateX(-100%);
+    }
     .mamamia-sidebar .table {
         margin-bottom: .25rem;
         font-size: .7rem;
@@ -1721,11 +1800,7 @@ bam_sidebar_details_ui <- function(config) {
             open = "Analysis",
             bslib::accordion_panel(
                 "Analysis",
-                shiny::radioButtons(
-                    "resolution", "Resolution",
-                    choices = bam_resolution_choices(defaults),
-                    selected = bam_default_resolution(defaults)
-                ),
+                shiny::uiOutput("resolution_ui"),
             ),
             bslib::accordion_panel(
                 "Assembly",
@@ -2135,11 +2210,6 @@ bam_launcher_server <- function(state) {
                 shiny::updateActionButton(
                     session, "example_data", label = "Example data"
                 )
-                shiny::updateRadioButtons(
-                    session, "resolution",
-                    choices = bam_resolution_choices(config$defaults),
-                    selected = bam_default_resolution(config$defaults)
-                )
                 log_line(
                     "Example data cleared. Upload a BAM to start a new run."
                 )
@@ -2152,11 +2222,6 @@ bam_launcher_server <- function(state) {
             upload_epoch(upload_epoch() + 1L)
             shiny::updateActionButton(
                 session, "example_data", label = "Clear example data"
-            )
-            shiny::updateRadioButtons(
-                session, "resolution",
-                choices = bam_example_resolution_choices(),
-                selected = bam_example_default_resolution()
             )
             log_line(bam_example_note())
             log_line("Example data selected.")
@@ -2188,11 +2253,6 @@ bam_launcher_server <- function(state) {
                 sidebar_unlocked(FALSE)
                 shiny::updateActionButton(
                     session, "example_data", label = "Example data"
-                )
-                shiny::updateRadioButtons(
-                    session, "resolution",
-                    choices = bam_resolution_choices(config$defaults),
-                    selected = bam_default_resolution(config$defaults)
                 )
                 log_line(
                     "Uploaded BAM selected; example data is no longer active."
@@ -2473,6 +2533,17 @@ bam_launcher_server <- function(state) {
                 return(NULL)
             }
             bam_sidebar_details_ui(config)
+        })
+
+        output$resolution_ui <- shiny::renderUI({
+            if (isTRUE(example_mode())) {
+                return(shiny::radioButtons(
+                    "resolution", "Resolution",
+                    choices = bam_example_resolution_choices(),
+                    selected = bam_example_default_resolution()
+                ))
+            }
+            bam_resolution_slider_ui(config$defaults)
         })
 
         output$control_samples_ui <- shiny::renderUI({

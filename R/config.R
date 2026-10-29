@@ -25,7 +25,7 @@
 .config_defaults <- function() {
     list(
         windows_per_chromosome = 1000L,
-        allowed_windows = c(100L, 1000L, 10000L),
+        allowed_windows = c(100L, 1000L, 5000L),
         mapq = 20L,
         exclude_flags = 1796L,
         gc_mmap = TRUE,
@@ -821,11 +821,19 @@ chr_number <- function(chr_name) {
             min = 1L
         )
     }
-    if (!out$windows_per_chromosome %in% out$allowed_windows) {
+    resolution_min <- min(out$allowed_windows)
+    resolution_max <- max(out$allowed_windows)
+    if (out$windows_per_chromosome < resolution_min ||
+        out$windows_per_chromosome > resolution_max ||
+        (out$windows_per_chromosome - resolution_min) %% 10L != 0L) {
         .config_error(
-            "`defaults.windows_per_chromosome` (%s) must be one of `defaults.allowed_windows` (%s)",
+            paste0(
+                "`defaults.windows_per_chromosome` (%s) must be between ",
+                "%s and %s in steps of 10"
+            ),
             out$windows_per_chromosome,
-            paste(out$allowed_windows, collapse = ", ")
+            resolution_min,
+            resolution_max
         )
     }
     if (!is.null(defaults$mapq)) {

@@ -4,7 +4,7 @@ defaults:
   allowed_windows:
   - 100
   - 1000
-  - 10000
+  - 5000
   mapq: 20
   exclude_flags: 1796
   gc_mmap: true

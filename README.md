@@ -59,7 +59,7 @@ version: 2
 
 defaults:
   windows_per_chromosome: 1000
-  allowed_windows: [100, 1000, 10000]
+  allowed_windows: [100, 1000, 5000]
   mapq: 20
   exclude_flags: 1796      # unmapped + secondary + QC-fail + duplicate
   metric: breadth
@@ -126,8 +126,10 @@ result$calls[result$calls$pass, ]
 writeCallsToBedpe(result, "calls.bedpe")
 ```
 
-`windows_per_chromosome` must be one of `defaults.allowed_windows`. The default
-`1000` gives about 28,000 windows for the wheat + *Ae. speltoides* reference.
+`windows_per_chromosome` must lie between the smallest and largest
+`defaults.allowed_windows` value in steps of 10. The allowed values are the
+slider tick marks (100, 1,000 and 5,000 by default). The default `1000` gives
+about 28,000 windows for the wheat + *Ae. speltoides* reference.
 
 The bundled demo runs the same path:
 

@@ -23,8 +23,10 @@
 version: 2
 
 defaults:
+  # allowed_windows are the slider ticks; any 10-window step between the
+  # smallest and largest value is accepted.
   windows_per_chromosome: 1000
-  allowed_windows: [100, 1000, 10000]
+  allowed_windows: [100, 1000, 5000]
   mapq: 20
   exclude_flags: 1796      # unmapped + secondary + QC-fail + duplicate
   gc_mmap: true
