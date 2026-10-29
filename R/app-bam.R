@@ -1970,16 +1970,20 @@ bam_launcher_ui <- function(state) {
                                 "btn btn-sm btn-outline-secondary",
                                 "mamamia-footer-toggle"
                             ),
-                            `aria-expanded` = "true",
+                            `aria-expanded` = "false",
                             `aria-controls` = "calculation_log",
-                            title = "Collapse the calculation log",
-                            "Hide log"
+                            title = "Expand the calculation log",
+                            "Show log"
                         )
                     ),
                     shiny::verbatimTextOutput("calculation_log")
                 )
             )
-        )
+        ),
+        shiny::tags$script(shiny::HTML(
+            "document.getElementById('mamamia-grid')",
+            ".classList.add('mamamia-footer-collapsed');"
+        ))
     )
 }
 
