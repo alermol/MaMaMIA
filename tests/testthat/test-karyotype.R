@@ -224,3 +224,46 @@ test_that("the explorer exposes the karyotype tab and mode switch", {
     expect_match(html, "explorer-karyotype_mode", fixed = TRUE)
     expect_match(html, "explorer-karyotype", fixed = TRUE)
 })
+
+test_that("added donor chromosomes preserve registry order", {
+    result <- bam_example_result(100)
+    donor <- result$assembly$contigs$donor
+    extra <- donor[1, , drop = FALSE]
+    extra$id <- "d2"
+    extra$name <- "2R"
+    extra$group <- "2"
+    extra$component <- "R"
+    extra$length <- 20000
+    extra$copy_number <- 2
+    result$assembly$contigs$donor <- rbind(extra, donor)
+
+    scores2 <- result$scores[
+        as.character(result$scores$group) == "1", , drop = FALSE
+    ]
+    scores2$group <- "2"
+    scores2$chr_name <- "2R"
+    result$scores <- rbind(result$scores, scores2)
+
+    base <- result$calls[1, , drop = FALSE]
+    first <- base
+    first$group <- "1"
+    first$start_iid <- 0L
+    first$end_iid <- 99L
+    first$width_bp <- 20000
+    first$donor_mean <- 2
+    first$pass <- TRUE
+    first$donor_chr_id <- donor$id[[1L]]
+    first$donor_chr_name <- donor$name[[1L]]
+    second <- first
+    second$group <- "2"
+    second$donor_chr_id <- "d2"
+    second$donor_chr_name <- "2R"
+    result$calls <- rbind(first, second)
+
+    payload <- karyotype_payload(result, "example-sample", "calls")
+    added <- vapply(payload$chromosomes, function(x) isTRUE(x$added), logical(1))
+    expect_identical(
+        vapply(payload$chromosomes[added], function(x) x$name, character(1)),
+        c("2R", "2R", "1R", "1R")
+    )
+})

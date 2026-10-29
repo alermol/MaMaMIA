@@ -413,13 +413,11 @@ karyotype_payload <- function(result, sample = NULL,
             copy_number = numeric(), stringsAsFactors = FALSE
         )
     }
+    ## Preserve the registry order for donor chromosomes as well as for the
+    ## recipient chromosomes above.
     added_donor <- donor[
         as.character(donor$group) %in% added_groups, , drop = FALSE
     ]
-    added_donor <- added_donor[order(
-        suppressWarnings(as.numeric(added_donor$group)),
-        as.character(added_donor$name)
-    ), , drop = FALSE]
     chromosome_payload <- list()
     for (i in seq_len(nrow(recipient))) {
         chr_id <- as.character(recipient$id[[i]])
