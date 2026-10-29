@@ -152,8 +152,10 @@ The sidebar has no predefined-assembly selector. A "Swap donor and recipient"
 button reverses the comparison without reselecting the species. These
 selectors live in the **Assembly** panel, which appears after preflight
 succeeds. The collapsed **Advanced** panel exposes donor aggregation
-(`max` by default, or `mean`/`sum`); the registry supplies the initial value,
-and changing it clears the current result until the analysis is rerun. The
+(`max` by default, or `mean`/`sum`) and calibration controls. Chosen control
+samples are used only to estimate the cohort null; an empty selection pools
+all samples. The registry supplies the initial aggregation value, and changing
+either setting clears the current result until the analysis is rerun. The
 resolution, upload limits, resource limits and registry-growth caveats are
 unchanged.
 

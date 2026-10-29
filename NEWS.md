@@ -42,8 +42,9 @@
   the strongest donor/recipient log-ratio is used, so a single-component
   signal is not diluted by the other donor homoeologs. The registry supplies
   the default (`defaults.donor_aggregation`); the dashboard exposes the
-  setting in the **Advanced** sidebar panel. A donor-only fallback is
-  available for CNV-rich material.
+  setting in the **Advanced** sidebar panel, where calibration controls can
+  also be selected. An empty control selection pools all cohort samples. A
+  donor-only fallback is available for CNV-rich material.
 * **GC correction.** A single sample uses a natural spline and centring; a
   cohort uses median polish. The vendored gcrank library remains the only GC
   backend.
@@ -166,9 +167,9 @@
   collapsible panels (**Analysis**, **Assembly**). **Run analysis** sits below
   both panels and is disabled until preflight and the selected resolution are
   ready. There is no manual single/multi mode switch: the sample count is
-  detected from the BAM header and cohort controls appear automatically for
-  several samples. **Advanced** was removed: MAPQ, flag masks, fit limits and
-  cores come from the validated registry and the BAM is processed as-is.
+  detected from the BAM header. The **Advanced** panel exposes donor
+  aggregation and calibration-control selection; MAPQ, flag masks, fit limits
+  and cores come from the validated registry and the BAM is processed as-is.
 * The **Filters** and **Export** panels were removed from the sidebar. The main
   area now keeps the chromosome, chromosome-pair and putative-only filters
   above every result tab; call threshold, minimum width and row selection live

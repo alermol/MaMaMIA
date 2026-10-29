@@ -175,7 +175,9 @@ default: at each window the donor component with the strongest donor/recipient
 log-ratio is used, so one strongly supported donor component is not diluted by
 the other donor homoeologs. `mean` and `sum` remain available in the registry
 (`defaults.donor_aggregation`); the dashboard exposes the setting in the
-**Advanced** sidebar panel. A single sample is GC-corrected with a natural
+**Advanced** sidebar panel. The same panel selects calibration controls:
+chosen samples are used only to estimate the cohort null, and an empty
+selection pools every sample. A single sample is GC-corrected with a natural
 spline and centred; a cohort uses median polish. `score = "donor_only"` is the
 CNV-robust fallback.
 

@@ -923,6 +923,26 @@ bam_run_parameters <- function(input, config, samples) {
             "`donor_aggregation` must be one of: mean, max, sum"
         )
     }
+    control_samples <- input$control_samples
+    if (is.null(control_samples) || length(control_samples) == 0L ||
+        length(samples) < 2L) {
+        control_samples <- character(0)
+    } else {
+        control_samples <- unique(as.character(control_samples))
+        control_samples <- control_samples[nzchar(control_samples)]
+        unknown <- setdiff(control_samples, samples)
+        if (length(unknown) > 0L) {
+            .mamamia_error(
+                "MaMaMIAAnalysisError",
+                "Unknown control sample(s): %s", paste(unknown, collapse = ", ")
+            )
+        }
+    }
+    calibration <- if (length(control_samples) == 0L) {
+        NULL
+    } else {
+        list(controls = control_samples)
+    }
     list(
         resolution = resolution,
         mapq = mapq,
@@ -930,7 +950,9 @@ bam_run_parameters <- function(input, config, samples) {
         cores = cores,
         metric = defaults$metric,
         score = defaults$score,
-        donor_aggregation = donor_aggregation
+        donor_aggregation = donor_aggregation,
+        control_samples = control_samples,
+        calibration = calibration
     )
 }
 
@@ -1256,7 +1278,8 @@ bam_result_cache <- function(max_entries = 3L) {
 #' reaches [analyzeBamInput()] and changes the result.
 #'
 #' @noRd
-bam_analysis_key <- function(preflight, resolution, donor_aggregation = NULL) {
+bam_analysis_key <- function(preflight, resolution, donor_aggregation = NULL,
+                             controls = NULL) {
     if (!isTRUE(preflight$ok) || is.null(preflight$table) ||
         !all(c("path", "sample") %in% names(preflight$table))) {
         return(NULL)
@@ -1270,6 +1293,12 @@ bam_analysis_key <- function(preflight, resolution, donor_aggregation = NULL) {
         donor_aggregation <- defaults$donor_aggregation
     }
     samples <- unique(as.character(preflight$table$sample))
+    controls <- unique(as.character(controls))
+    controls <- controls[nzchar(controls)]
+    controls <- sort(intersect(controls, samples))
+    if (length(controls) > 0L && setequal(controls, samples)) {
+        controls <- character(0)
+    }
     resolution_key <- tryCatch(
         as.character(bam_resolution_value(resolution, defaults)),
         error = function(e) as.character(resolution)
@@ -1284,7 +1313,8 @@ bam_analysis_key <- function(preflight, resolution, donor_aggregation = NULL) {
         exclude_flags = as.integer(defaults$exclude_flags),
         metric = as.character(defaults$metric),
         score = as.character(defaults$score),
-        donor_aggregation = as.character(donor_aggregation)
+        donor_aggregation = as.character(donor_aggregation),
+        controls = controls
     ))
 }
 
@@ -1721,7 +1751,8 @@ bam_sidebar_details_ui <- function(config) {
                         ),
                         defaults$donor_aggregation
                     )
-                )
+                ),
+                shiny::uiOutput("control_samples_ui")
             )
         ),
         shiny::div(
@@ -2444,6 +2475,43 @@ bam_launcher_server <- function(state) {
             bam_sidebar_details_ui(config)
         })
 
+        output$control_samples_ui <- shiny::renderUI({
+            pf <- preflight_state()
+            if (!isTRUE(pf$ok) || is.null(pf$table) ||
+                !"sample" %in% names(pf$table)) {
+                return(NULL)
+            }
+            samples <- unique(as.character(pf$table$sample))
+            samples <- samples[!is.na(samples) & nzchar(samples)]
+            if (length(samples) < 2L) {
+                return(shiny::p(
+                    class = "text-muted small mb-0",
+                    "Control samples apply only to multi-sample cohorts."
+                ))
+            }
+            selected <- shiny::isolate(input$control_samples)
+            selected <- intersect(as.character(selected), samples)
+            shiny::tagList(
+                shiny::selectizeInput(
+                    "control_samples", "Calibration controls",
+                    choices = samples,
+                    selected = selected,
+                    multiple = TRUE,
+                    options = list(
+                        placeholder = "All samples (default)",
+                        plugins = list("remove_button")
+                    )
+                ),
+                shiny::p(
+                    class = "text-muted small mb-0",
+                    paste(
+                        "Used only to calibrate call thresholds.",
+                        "Leave empty to pool all samples."
+                    )
+                )
+            )
+        })
+
         output$sidebar_recovery <- shiny::renderUI({
             if (isTRUE(sidebar_unlocked())) {
                 return(NULL)
@@ -2652,7 +2720,8 @@ bam_launcher_server <- function(state) {
             bam_analysis_key(
                 preflight_state(),
                 input$resolution,
-                input$donor_aggregation
+                input$donor_aggregation,
+                input$control_samples
             )
         })
 
@@ -2825,6 +2894,12 @@ bam_launcher_server <- function(state) {
                 format(params$resolution, big.mark = ",", scientific = FALSE),
                 params$metric, params$score, params$donor_aggregation
             ))
+            if (length(params$control_samples) > 0L) {
+                log_line(paste(
+                    "Calibration controls:",
+                    paste(params$control_samples, collapse = ", ")
+                ))
+            }
 
             result_cache$reserve(result_cache$size() + 1L)
 
@@ -2846,6 +2921,7 @@ bam_launcher_server <- function(state) {
                     metric = params$metric,
                     score = params$score,
                     donor_aggregation = params$donor_aggregation,
+                    calibration = params$calibration,
                     mapq = params$mapq,
                     exclude_flags = params$exclude_flags,
                     cores = params$cores,

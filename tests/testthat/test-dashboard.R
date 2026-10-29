@@ -16,8 +16,10 @@ test_that("bam_run_parameters() resolves the run controls", {
     )
     expect_named(params, c(
         "resolution", "mapq", "exclude_flags", "cores", "metric", "score",
-        "donor_aggregation"
+        "donor_aggregation", "control_samples", "calibration"
     ))
+    expect_identical(params$control_samples, character(0))
+    expect_null(params$calibration)
 })
 
 test_that("the BAM chooser accepts exactly one file", {
@@ -75,6 +77,58 @@ test_that("donor aggregation defaults from the registry and is set under Advance
     html <- as.character(bam_sidebar_details_ui(config))
     expect_match(html, 'id="donor_aggregation"', fixed = TRUE)
     expect_match(html, "Advanced", fixed = TRUE)
+})
+
+test_that("control samples are selected under Advanced", {
+    config <- readMaMaMIAConfig(
+        system.file("extdata", "bam-demo", "assemblies.yml",
+            package = "MaMaMIA")
+    )
+    samples <- c("S1", "S2", "S3")
+    selected <- bam_run_parameters(
+        list(resolution = 100, control_samples = c("S2", "S3")),
+        config, samples = samples
+    )
+    expect_identical(selected$control_samples, c("S2", "S3"))
+    expect_identical(selected$calibration$controls, c("S2", "S3"))
+    expect_error(
+        bam_run_parameters(
+            list(resolution = 100, control_samples = "S9"),
+            config, samples = samples
+        ),
+        "Unknown control sample"
+    )
+    single <- bam_run_parameters(
+        list(resolution = 100, control_samples = "S1"),
+        config, samples = "S1"
+    )
+    expect_identical(single$control_samples, character(0))
+    expect_null(single$calibration)
+    html <- as.character(bam_sidebar_details_ui(config))
+    expect_match(html, 'id="control_samples_ui"', fixed = TRUE)
+})
+
+test_that("the analysis key changes with control samples", {
+    config <- readMaMaMIAConfig(
+        system.file("extdata", "bam-demo", "assemblies.yml",
+            package = "MaMaMIA")
+    )
+    preflight <- list(
+        ok = TRUE,
+        table = data.frame(
+            path = c("a.bam", "b.bam", "c.bam"),
+            sample = c("S1", "S2", "S3"),
+            stringsAsFactors = FALSE
+        ),
+        assembly = "triticum_like__A__secale_like__R",
+        config = config
+    )
+    none <- bam_analysis_key(preflight, 100, "max", NULL)
+    controls <- bam_analysis_key(preflight, 100, "max", c("S2"))
+    all <- bam_analysis_key(preflight, 100, "max", c("S1", "S2", "S3"))
+    expect_true(is.character(none) && nzchar(none))
+    expect_false(identical(none, controls))
+    expect_identical(none, all)
 })
 
 test_that("the analysis key changes with the donor aggregation", {
