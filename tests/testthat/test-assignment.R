@@ -141,8 +141,12 @@ test_that("a cross-group deletion is reported as a translocation candidate", {
     expect_identical(call$recipient_chr_name, "2A")
     expect_identical(call$recipient_group, "2")
     expect_true(call$recipient_cross_group)
-    expect_identical(call$recipient_assignment, "assigned")
-    expect_identical(call$class, "substitution")
+    ## Without a reliable candidate in the call's own group this is a
+    ## translocation candidate, not a confirmed host. This stops a
+    ## copy-neutral event from being assigned to an unrelated deletion.
+    expect_identical(call$recipient_assignment, "ambiguous")
+    expect_identical(call$class, "addition")
+    expect_identical(call$class_group, "addition")
     expect_true(is.finite(call$recipient_margin))
 })
 
@@ -152,6 +156,18 @@ test_that("an addition with no recipient loss is not forced onto a host", {
     call <- calls[calls$group == "1", , drop = FALSE]
     expect_identical(call$recipient_assignment, "no_recipient_loss")
     expect_true(is.na(call$recipient_chr_id))
+    expect_identical(call$class, "addition")
+    expect_identical(call$class_group, "addition")
+})
+
+test_that("a copy-neutral call is not assigned to an unrelated deletion", {
+    fixture <- one_call(assignment_fixture())
+    fixture <- delete_interval(fixture, "S1", "r2a")
+    calls <- assign_fixture(fixture)
+    call <- calls[calls$group == "1", , drop = FALSE]
+    expect_identical(call$recipient_chr_name, "2A")
+    expect_true(call$recipient_cross_group)
+    expect_identical(call$recipient_assignment, "ambiguous")
     expect_identical(call$class, "addition")
     expect_identical(call$class_group, "addition")
 })
@@ -216,4 +232,23 @@ test_that("the assignment is stable when it is run twice", {
     expect_identical(first$recipient_chr_name, second$recipient_chr_name)
     expect_identical(first$class, second$class)
     expect_identical(first$class_group, second$class_group)
+})
+
+test_that("a non-passing call cannot displace a passing call", {
+    candidates <- data.frame(
+        call = c(1L, 1L, 2L, 2L),
+        chr_id = c("r1a", "r2a", "r1a", "r2a"),
+        score = c(5, 4.5, 4.4, 3.5),
+        run_start_iid = c(0L, 0L, 0L, 0L),
+        run_end_iid = c(1L, 1L, 1L, 1L),
+        reliable = c(TRUE, TRUE, TRUE, TRUE),
+        pass = c(TRUE, TRUE, FALSE, FALSE),
+        stringsAsFactors = FALSE
+    )
+    contigs <- data.frame(
+        chr_id = c("r1a", "r2a"), stringsAsFactors = FALSE
+    )
+    chosen <- .assignment_match_sample(candidates, 2L, contigs)
+    expect_identical(chosen[[1L]], 1L)
+    expect_identical(chosen[[2L]], 4L)
 })

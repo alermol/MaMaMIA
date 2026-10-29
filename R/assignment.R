@@ -9,7 +9,9 @@
 ## homology bonus. A per-sample assignment then chooses at most one call per
 ## recipient contig (with a second pass for extra non-overlapping segments) and
 ## a dummy "no host" option, so an addition is not forced onto a normal
-## chromosome. A cross-group choice is reported as a translocation candidate.
+## chromosome. A cross-group choice is reported as a translocation candidate
+## and is only marked assigned when the call's own group also has a reliable
+## candidate.
 
 .assignment_error <- function(fmt, ...) {
     .mamamia_error("MaMaMIAAssignmentError", fmt, ...)
@@ -459,21 +461,29 @@
     if (length(priority) > 0L) {
         call_priority[candidates$call] <- priority
     }
+    ## Passing calls are optimised lexicographically before non-passing calls:
+    ## one point of a passing call must outweigh every non-passing candidate
+    ## combined, otherwise a non-passing call can take the best host and push
+    ## the passing call onto a worse one. Non-passing calls still fill the
+    ## hosts that remain.
+    pass_weight <- 1e6
+    weight <- ifelse(call_priority > 0, pass_weight, 1)
     score <- matrix(-1e6, nrow = n_calls, ncol = n_contigs)
     for (i in seq_len(n_calls)) {
+        ## An impossible cell must be as unattractive as an unreliable
+        ## candidate on the same scale.
+        score[i, ] <- -1e6 * weight[[i]]
         for (j in seq_len(n_contigs)) {
             r <- candidate_index[i, j]
             if (!is.na(r)) {
-                score[i, j] <- candidates$score[[r]] + call_priority[[i]]
+                score[i, j] <- candidates$score[[r]] * weight[[i]]
             }
         }
     }
-    ## Each call has its own dummy column. A passing call's dummy carries the
-    ## same priority as its real candidates, so the priority changes which call
-    ## wins a host but not whether a call with a positive score prefers a host
-    ## over "no host".
+    ## Each call has its own dummy column. A positive candidate score always
+    ## beats "no host"; a negative one does not.
     dummy <- matrix(-1e6, nrow = n_calls, ncol = n_calls)
-    diag(dummy) <- call_priority
+    diag(dummy) <- 0
     full <- cbind(score, dummy)
     assignment <- .assignment_hungarian(full)
     chosen <- rep(NA_integer_, n_calls)
@@ -804,6 +814,12 @@ assignCallPositions <- function(
             is_cross <- isTRUE(best$cross_group[[1L]])
             assignment <- if (!isTRUE(best$reliable[[1L]])) {
                 "ambiguous"
+            } else if (is_cross && !is.finite(same_group_best)) {
+                ## A cross-group host without any reliable candidate in the
+                ## call's own group is a translocation candidate, not a
+                ## confirmed position. This keeps a copy-neutral event from
+                ## being "assigned" to an unrelated deletion.
+                "ambiguous"
             } else if (is_cross &&
                 (as.numeric(best$score[[1L]]) - same_group_best) <
                     cross_group_margin) {
@@ -862,7 +878,8 @@ assignCallPositions <- function(
                 calls$recipient_alternative_score[[i]] <-
                     as.numeric(candidates$score[[alternative]])
             }
-            assigned_class <- if (isTRUE(best$strong[[1L]]) &&
+            assigned_class <- if (identical(assignment, "assigned") &&
+                isTRUE(best$strong[[1L]]) &&
                 as.numeric(best$inside_depletion[[1L]]) >=
                     substitution_cutoff) {
                 "substitution"

@@ -91,17 +91,29 @@
   a dashed border and reported as translocation candidates. The call table and
   BEDPE export carry the assignment; calls with no host are exported with
   `NA` recipient coordinates.
+* Passing calls are matched before non-passing calls, so a non-passing
+  segment cannot take the best host and push a passing call onto a worse
+  one. A cross-group host is marked `assigned` only when the call's own group
+  also has a reliable candidate; otherwise it stays `ambiguous` as a
+  translocation candidate. This keeps a copy-neutral event from being
+  confirmed on an unrelated deletion.
 
 ## Validation
 
 * The paired log-ratio recovers **6/6** reference events on the 24
   *Aegilops speltoides* BAMs (Sq74 7S; Sq75 7S/2S/6S/5S; Sq76 7S), with one
   control call >= 20 Mb.
+* Global assignment places those six events on their expected recipient
+  chromosomes: 7D for Sq74, 7D/2B/6D/5B for Sq75 and 7A for Sq76. Across 198
+  synthetic copy-neutral sample/group events (donor present, no loss in the
+  call's own group), none is marked `assigned`: 137 receive no host and 61
+  remain ambiguous translocation candidates when the background sample carries
+  a natural deletion elsewhere. All 198 retain `class = addition`.
 * The donor-only fallback also recovers 6/6, with two control calls >= 20 Mb.
 * Single-sample analysis recovers the same six events, including the distal
   Sq75 5S and Sq76 5S segments.
-* The 24-BAM run takes about 185 s with 30 cores; one 28,000-window BAM takes
-  about 19 s on one core.
+* The 24-BAM run, including global assignment, takes about 450 s with 30
+  cores; one 28,000-window BAM takes about 19 s on one core.
 * The 24-sample panel mask masks 16.3% of windows, masks terminal artifacts and
   shortens (does not delete) the Sq76 5S event.
 * All-vs-all assignment of the five-sample UI fixture places Sq74 2S on 2D,

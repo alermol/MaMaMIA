@@ -151,6 +151,25 @@ print(
     row.names = FALSE
 )
 
+if (all(c(
+    "recipient_assignment", "recipient_group", "recipient_component",
+    "recipient_cross_group"
+) %in% names(calls))) {
+    report <- calls[, c(
+        "sample", "group", "recipient_assignment", "recipient_group",
+        "recipient_component", "recipient_chr_name", "recipient_cross_group",
+        "recipient_mean_depletion"
+    ), drop = FALSE]
+    report$recipient <- ifelse(
+        is.na(report$recipient_group), NA_character_,
+        paste0(report$recipient_group, report$recipient_component)
+    )
+    cat("\nAssignment:\n")
+    print(report, row.names = FALSE)
+    cat("\nAssignment status:\n")
+    print(table(report$recipient_assignment, useNA = "ifany"))
+}
+
 truth <- data.frame(
     sample = c("Sq74", "Sq75", "Sq75", "Sq75", "Sq75", "Sq76"),
     group = c("7", "7", "2", "6", "5", "7"),
@@ -162,6 +181,34 @@ truth$detected <- vapply(seq_len(nrow(truth)), function(i) {
             calls$group == truth$group[[i]]
     )
 }, logical(1))
+if (all(c(
+    "recipient_assignment", "recipient_group", "recipient_component"
+) %in% names(calls))) {
+    truth$recipient <- vapply(seq_len(nrow(truth)), function(i) {
+        rows <- calls[
+            calls$sample == truth$sample[[i]] &
+                calls$group == truth$group[[i]], ,
+            drop = FALSE
+        ]
+        rows <- rows[order(-rows$width_bp), , drop = FALSE]
+        if (nrow(rows) == 0L || is.na(rows$recipient_group[[1L]])) {
+            return(NA_character_)
+        }
+        paste0(rows$recipient_group[[1L]], rows$recipient_component[[1L]])
+    }, character(1))
+    truth$assignment <- vapply(seq_len(nrow(truth)), function(i) {
+        rows <- calls[
+            calls$sample == truth$sample[[i]] &
+                calls$group == truth$group[[i]], ,
+            drop = FALSE
+        ]
+        rows <- rows[order(-rows$width_bp), , drop = FALSE]
+        if (nrow(rows) == 0L) {
+            return(NA_character_)
+        }
+        as.character(rows$recipient_assignment[[1L]])
+    }, character(1))
+}
 cat("\nReference events detected:", sum(truth$detected), "/", nrow(truth), "\n")
 print(truth, row.names = FALSE)
 cat(

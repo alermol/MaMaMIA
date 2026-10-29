@@ -227,9 +227,10 @@ homolog pairs: a small gap inside each pair, a larger gap between chromosomes,
 the same `1A`/`1B` label on both copies, and every bar scaled by its configured
 length. Every donor segment is compared with every recipient contig; a cohort
 breadth baseline, a donor/recipient width match and a same-group homology
-prior feed a per-sample global assignment with a "no host" option. Cross-group
-choices are reported as translocation candidates, and a strong assigned loss
-reclassifies the call as a substitution. Deleted chromosomes and added donor
+prior feed a per-sample global assignment with a "no host" option. Passing
+calls are matched before non-passing calls, cross-group choices are reported
+as translocation candidates rather than confirmed hosts, and a strong assigned
+loss reclassifies the call as a substitution. Deleted chromosomes and added donor
 chromosomes are drawn separately. A score profile, call table and BEDPE export
 follow.
 
@@ -238,8 +239,10 @@ follow.
 The paired log-ratio recovers **6/6** reference events on the 24
 *Aegilops speltoides* BAMs (Sq74 7S; Sq75 7S/2S/6S/5S; Sq76 7S), with one
 control call >= 20 Mb. The donor-only fallback also recovers 6/6. A
-28,000-window BAM takes about 19 s on one core; the 24-BAM cohort takes about
-185 s with 30 cores. The reproducible check is:
+28,000-window BAM takes about 19 s on one core; the 24-BAM cohort, including
+global assignment, takes about 450 s with 30 cores. Global assignment places
+all six events on 7D/7D/2B/6D/5B/7A, and synthetic copy-neutral events are
+never marked `assigned`. The reproducible check is:
 
 ```sh
 Rscript tools/validate-24.R --out test_data/introgression-study/results/validation_24bam.rds
