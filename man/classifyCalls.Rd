@@ -2,33 +2,45 @@
 % Please edit documentation in R/calls.R
 \name{classifyCalls}
 \alias{classifyCalls}
-\title{Classify introgression calls}
+\title{Classify introgression calls from donor and recipient evidence}
 \usage{
 classifyCalls(
   calls,
+  controls = NULL,
   substitution_cutoff = -0.5,
   addition_cutoff = 0.5,
   high = 1,
-  moderate = 0.5
+  moderate = 0.5,
+  min_control = 5L
 )
 }
 \arguments{
 \item{calls}{A \code{Calls} data frame from \code{\link[=calibrateSegments]{calibrateSegments()}}.}
 
-\item{substitution_cutoff}{Recipient residual below which a call is a
-substitution.}
+\item{controls}{Optional control sample names used to calibrate the class
+cutoffs. When \code{NULL}, every sample contributes.}
 
-\item{addition_cutoff}{Donor residual above which a call is an addition.}
+\item{substitution_cutoff}{Minimum recipient-loss cutoff.}
 
-\item{high, moderate}{Donor-residual cutoffs for \code{high} and \code{moderate}
-confidence.}
+\item{addition_cutoff}{Minimum donor-gain cutoff.}
+
+\item{high, moderate}{Effect floors for high and moderate class confidence.}
+
+\item{min_control}{Minimum number of control segments per mode/length bin
+before empirical cutoffs are used.}
 }
 \value{
-The calls with \code{class} and \code{confidence}.
+The calls with \code{class}, \code{class_evidence}, \code{class_confidence},
+\code{class_status} and \code{confidence}.
 }
 \description{
-A call is a \code{substitution} when the recipient side lost coverage
-(\code{recipient_mean < -0.5}), an \code{addition} when the donor side gained coverage
-(\code{donor_mean > 0.5}), and \code{other} otherwise. Confidence combines the donor
-effect with the calibration pass flag.
+The classifier uses both sides of the paired score. A call is a
+\code{substitution} when donor coverage is gained and recipient coverage is lost,
+an \code{addition} when only the donor side is gained, a \code{deletion} when only the
+recipient side is lost, and \code{other} when neither side has a strong effect.
+\code{class_evidence} records which side(s) supported the call,
+\code{class_confidence} is a class-level confidence, and \code{class_status} is
+\code{confident}, \code{ambiguous} or \code{needs_review}. The older \code{confidence} column
+remains the donor-effect confidence. Donor and recipient cutoffs are
+calibrated from control segments when enough controls are available.
 }

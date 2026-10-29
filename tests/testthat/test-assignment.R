@@ -293,3 +293,38 @@ test_that("assignment records recipient dosage", {
     expect_identical(call$dosage_confidence, "high")
     expect_gt(call$affected_fraction, 0.9)
 })
+
+test_that("a deletion-only call is not classified as a substitution", {
+    fixture <- one_call(assignment_fixture())
+    fixture$calls$donor_mean <- 0.1
+    fixture <- delete_interval(fixture, "S1", "r1a", value = 0.0001)
+    calls <- assign_fixture(fixture)
+    call <- calls[calls$group == "1", , drop = FALSE]
+    expect_identical(call$recipient_assignment, "assigned")
+    expect_identical(call$class, "deletion")
+    expect_identical(call$class_evidence, "recipient")
+    expect_identical(call$class_group, "addition")
+    expect_true(is.na(call$affected_copies))
+})
+
+test_that("assignment records donor and recipient evidence", {
+    fixture <- one_call(assignment_fixture())
+    fixture <- delete_interval(fixture, "S1", "r1a", value = 0.0001)
+    calls <- assign_fixture(fixture)
+    call <- calls[calls$group == "1", , drop = FALSE]
+    expect_identical(call$class, "substitution")
+    expect_identical(call$class_evidence, "donor+recipient")
+    expect_identical(call$class_confidence, "high")
+})
+
+test_that("a width-mismatched substitution is complex and needs review", {
+    fixture <- one_call(assignment_fixture())
+    fixture$calls$width_bp <- 200
+    fixture$calls$end_bp <- 700
+    fixture <- delete_interval(fixture, "S1", "r1a", value = 0.0001)
+    calls <- assign_fixture(fixture)
+    call <- calls[calls$group == "1", , drop = FALSE]
+    expect_identical(call$class, "complex")
+    expect_identical(call$class_evidence, "donor+recipient; width mismatch")
+    expect_identical(call$class_status, "needs_review")
+})

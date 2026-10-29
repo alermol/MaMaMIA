@@ -111,6 +111,8 @@ HTMLWidgets.widget({
         var entries = [
           ["substitution", "substitution"],
           ["addition", "addition"],
+          ["deletion", "deletion"],
+          ["complex", "complex"],
           ["other", "other"],
           ["deleted", "deleted"],
           ["added", "added donor"]
@@ -258,6 +260,16 @@ HTMLWidgets.widget({
           escapeHtml(matched.class) + " · " +
           escapeHtml(matched.confidence)
         );
+        if (hasValue(matched.class_confidence)) {
+          lines.push("class confidence " +
+            escapeHtml(matched.class_confidence));
+        }
+        if (hasValue(matched.class_evidence)) {
+          lines.push("evidence " + escapeHtml(matched.class_evidence));
+        }
+        if (hasValue(matched.class_status)) {
+          lines.push("class status " + escapeHtml(matched.class_status));
+        }
         if (hasValue(matched.recipient_assignment) &&
             matched.recipient_assignment !== "assigned") {
           lines.push("assignment: " +

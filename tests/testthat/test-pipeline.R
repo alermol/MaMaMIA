@@ -156,7 +156,8 @@ test_that("writeCallsToBedpe() writes donor and recipient intervals", {
     expect_true(all(c(
         "sample", "chr_id.don", "start.don", "stop.don",
         "chr_id.rec", "start.rec", "stop.rec", "score_mean", "class",
-        "class_group", "confidence", "method", "mode", "recipient_component",
+        "class_group", "class_evidence", "class_confidence", "class_status",
+        "confidence", "method", "mode", "recipient_component",
         "recipient_chr_name", "recipient_group", "recipient_assignment",
         "recipient_cross_group", "recipient_expected_breadth",
         "recipient_deletion_width_bp", "recipient_observed_breadth",

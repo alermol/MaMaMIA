@@ -7,8 +7,8 @@ Version 0.99.2 uses **breadth of coverage and read counts** in exact windows. It
 computes a paired donor/recipient log-ratio of per-component depth, corrects GC
 bias with a spline (single sample) or median polish (cohort), applies a
 window-level recurrence/blacklist mask, segments with CBS, calibrates
-thresholds by segment length, and classifies calls as substitutions, additions
-or other. The method is ploidy-agnostic: a donor and a recipient may each
+thresholds by segment length, and classifies calls as substitutions, additions,
+deletions or other. The method is ploidy-agnostic: a donor and a recipient may each
 contribute any number of components. A **component** is an arbitrary label for
 a set of contigs (for example `A`, `B` or `D`); it carries no genome-type or
 ploidy assumption, and donor and recipient labels may overlap.
@@ -157,7 +157,7 @@ preflightBams()                  headers, samples, CSI status
   -> buildWindowMask()           panel / cohort / blacklist / physical
   -> segmentScores()             CBS + gap merging
   -> calibrateSegments()         length-stratified empirical null
-  -> classifyCalls()             substitution / addition / other
+  -> classifyCalls()             substitution / addition / deletion / other
   -> BamAnalysisResult
 ```
 
@@ -225,6 +225,14 @@ scale with `-log(1 - breadth)`, so losing `k` of `n` copies gives
 copy-neutral additions, unassigned calls and deletion-only signals are
 reported as `unavailable`.
 
+Classification uses both sides of the score. Donor and recipient cutoffs are
+calibrated from control segments when enough controls are available;
+`class_evidence` records whether the call was supported by donor gain,
+recipient loss, both or neither. `class_confidence` is a class-level confidence
+separate from the donor-effect `confidence`, and `class_status` is `confident`,
+`ambiguous` or `needs_review`. A recipient loss without donor support is
+classified as `deletion`; a donor/recipient width mismatch is `complex`.
+
 ## Result contract
 
 `BamAnalysisResult` has eleven fields:
@@ -250,7 +258,8 @@ exploreIntrogressions(result)
 ```
 
 The dashboard analyses every component declared for the selected species and
-offers chromosome-group, class, confidence and width filters. The main tab is
+offers chromosome-group, class, class-status, confidence and width filters;
+class choices are substitution, addition, deletion, complex and other. The main tab is
 a vertical karyotype with a score heatmap or call-map mode. Chromosomes are
 shown in assembly-config order without group or component columns, as diploid
 homolog pairs: a small gap inside each pair, a larger gap between chromosomes,

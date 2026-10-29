@@ -641,7 +641,7 @@ analyzeBamInput <- function(bam_paths,
         fdr = cal$fdr,
         floors = cal_floors
     )
-    calls <- classifyCalls(calibrated$calls)
+    calls <- classifyCalls(calibrated$calls, controls = cal$controls)
     calls <- assignCallPositions(
         calls,
         metrics = metrics,

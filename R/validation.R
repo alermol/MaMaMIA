@@ -47,7 +47,8 @@ validateBamAnalysisResult <- function(x) {
         calls = c(
             "sample", "group", "start_iid", "end_iid", "start_bp", "end_bp",
             "width_bp", "score_mean", "donor_mean", "recipient_mean", "class",
-            "class_group", "confidence", "method", "mode",
+            "class_group", "class_evidence", "class_confidence",
+            "class_status", "confidence", "method", "mode",
             "recipient_component", "recipient_chr_id", "recipient_chr_name",
             "recipient_group", "recipient_start_bp", "recipient_end_bp",
             "recipient_run_start_bp", "recipient_run_end_bp",

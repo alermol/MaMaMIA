@@ -267,6 +267,9 @@ test_that("the explorer has no chromosome group selector", {
         expect_false(grepl("Chromosome groups", html, fixed = TRUE))
     }
     expect_match(filters, "Call class", fixed = TRUE)
+    expect_match(filters, "deletion", fixed = TRUE)
+    expect_match(filters, "complex", fixed = TRUE)
+    expect_match(filters, "Class status", fixed = TRUE)
     expect_match(filters, "Confidence", fixed = TRUE)
 })
 

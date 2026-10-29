@@ -639,6 +639,19 @@
         ## not from a previous assignment-aware class.
         calls$class <- calls$class_group
     }
+    if (!"class_confidence" %in% names(calls)) {
+        calls$class_confidence <- if ("confidence" %in% names(calls)) {
+            as.character(calls$confidence)
+        } else {
+            rep(NA_character_, n)
+        }
+    }
+    if (!"class_evidence" %in% names(calls)) {
+        calls$class_evidence <- rep(NA_character_, n)
+    }
+    if (!"class_status" %in% names(calls)) {
+        calls$class_status <- rep("needs_review", n)
+    }
     calls$recipient_component <- rep(NA_character_, n)
     calls$recipient_chr_id <- rep(NA_character_, n)
     calls$recipient_chr_name <- rep(NA_character_, n)
@@ -973,18 +986,76 @@ assignCallPositions <- function(
             calls$affected_fraction[[i]] <- dosage$affected_fraction
             calls$affected_copies[[i]] <- dosage$affected_copies
             calls$dosage_confidence[[i]] <- dosage$confidence
-            assigned_class <- if (identical(assignment, "assigned") &&
-                isTRUE(best$strong[[1L]]) &&
-                as.numeric(best$inside_depletion[[1L]]) >=
-                    substitution_cutoff) {
-                "substitution"
-            } else if (!is.na(call$donor_mean[[1L]]) &&
-                as.numeric(call$donor_mean[[1L]]) > addition_cutoff) {
-                "addition"
+            assigned_class <- calls$class_group[[i]]
+            assigned_evidence <- calls$class_evidence[[i]]
+            assigned_confidence <- calls$class_confidence[[i]]
+            assigned_status <- calls$class_status[[i]]
+            donor_mean <- as.numeric(call$donor_mean[[1L]])
+            donor_supported <- is.finite(donor_mean) &&
+                donor_mean > addition_cutoff
+            local_loss <- isTRUE(best$strong[[1L]]) &&
+                as.numeric(best$inside_depletion[[1L]]) >= substitution_cutoff
+            width_ratio <- if (isTRUE(best$run_found[[1L]]) &&
+                is.finite(best$run_width_bp[[1L]]) &&
+                best$run_width_bp[[1L]] > 0 &&
+                is.finite(best$donor_width_bp[[1L]]) &&
+                best$donor_width_bp[[1L]] > 0) {
+                as.numeric(best$donor_width_bp[[1L]]) /
+                    as.numeric(best$run_width_bp[[1L]])
             } else {
-                calls$class_group[[i]]
+                NA_real_
+            }
+            if (identical(assignment, "assigned")) {
+                if (donor_supported && local_loss) {
+                    if (is.finite(width_ratio) &&
+                        (width_ratio < 0.5 || width_ratio > 2)) {
+                        assigned_class <- "complex"
+                        assigned_evidence <- "donor+recipient; width mismatch"
+                        assigned_confidence <- "low"
+                        assigned_status <- "needs_review"
+                    } else {
+                        assigned_class <- "substitution"
+                        assigned_evidence <- "donor+recipient"
+                        assigned_confidence <- if (isTRUE(best$strong[[1L]]) &&
+                            donor_mean >= 1) {
+                            "high"
+                        } else {
+                            "moderate"
+                        }
+                        assigned_status <- if (assigned_confidence == "high") {
+                            "confident"
+                        } else {
+                            "ambiguous"
+                        }
+                    }
+                } else if (donor_supported) {
+                    assigned_class <- "addition"
+                    assigned_evidence <- "donor"
+                    assigned_confidence <- if (donor_mean >= 1) {
+                        "high"
+                    } else {
+                        "moderate"
+                    }
+                    assigned_status <- if (assigned_confidence == "high") {
+                        "confident"
+                    } else {
+                        "ambiguous"
+                    }
+                } else if (local_loss) {
+                    assigned_class <- "deletion"
+                    assigned_evidence <- "recipient"
+                    assigned_confidence <- if (isTRUE(best$strong[[1L]])) {
+                        "moderate"
+                    } else {
+                        "low"
+                    }
+                    assigned_status <- "ambiguous"
+                }
             }
             calls$class[[i]] <- assigned_class
+            calls$class_evidence[[i]] <- assigned_evidence
+            calls$class_confidence[[i]] <- assigned_confidence
+            calls$class_status[[i]] <- assigned_status
         }
     }
     calls

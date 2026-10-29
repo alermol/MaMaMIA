@@ -11,6 +11,13 @@
 * **New result contract.** `BamAnalysisResult` now exposes `metrics`, `scores`,
   `masks`, `calibration` and `calls`. The `counts`, `rca`, `isa` and
   `normalization` fields were removed.
+* **Call classes are two-sided.** A recipient loss without donor support is
+  now `deletion`; donor gain with recipient loss is `substitution`; donor gain
+  alone is `addition`; a width mismatch is `complex`. Donor and recipient
+  cutoffs are calibrated from control segments. Calls add `class_evidence`,
+  `class_confidence` and `class_status` (`confident`, `ambiguous`,
+  `needs_review`). Deletion-only calls previously labelled `substitution`
+  change class.
 * **Components replace genome-type labels.** Every normalized contig carries
   an arbitrary `component` label. The label is used only to aggregate contigs
   and copies; it carries no ploidy or genome-type assumption, and donor and
@@ -58,8 +65,14 @@
   `affected_fraction`, `affected_copies`, `recipient_observed_breadth`,
   `recipient_copy_number` and `dosage_confidence`. Copy-neutral additions,
   unassigned calls and deletion-only signals have no dosage estimate.
+* **Two-sided classification.** Calls now use donor gain and recipient loss
+  together: both = `substitution`, donor only = `addition`, recipient only =
+  `deletion`, neither = `other`. `class_evidence` records the supporting
+  side(s), and `class_confidence` is a separate class-level confidence. A
+  deletion-only signal is no longer promoted to substitution.
 * **BEDPE export.** `writeCallsToBedpe()` writes donor and recipient intervals
-  with `score_mean`, `class`, `confidence`, `method` and `mode`.
+  with `score_mean`, `class`, `class_group`, `class_evidence`,
+  `class_confidence`, `confidence`, `method` and `mode`.
 
 ## Dashboard
 

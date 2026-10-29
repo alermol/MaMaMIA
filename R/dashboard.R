@@ -103,8 +103,18 @@ explorer_view_filters_ui <- function(id) {
     shiny::tagList(
         shiny::checkboxGroupInput(
             ns("class"), "Call class",
-            choices = c("substitution", "addition", "other"),
-            selected = c("substitution", "addition", "other"), inline = TRUE
+            choices = c(
+                "substitution", "addition", "deletion", "complex", "other"
+            ),
+            selected = c(
+                "substitution", "addition", "deletion", "complex", "other"
+            ), inline = TRUE
+        ),
+        shiny::checkboxGroupInput(
+            ns("class_status"), "Class status",
+            choices = c("confident", "ambiguous", "needs_review"),
+            selected = c("confident", "ambiguous", "needs_review"),
+            inline = TRUE
         ),
         shiny::checkboxGroupInput(
             ns("confidence"), "Confidence",
@@ -283,6 +293,9 @@ explorer_server <- function(id, result, sample = NULL) {
             if (length(input$class) > 0L) {
                 keep <- keep & x$class %in% input$class
             }
+            if (length(input$class_status) > 0L) {
+                keep <- keep & x$class_status %in% input$class_status
+            }
             if (length(input$confidence) > 0L) {
                 keep <- keep & x$confidence %in% input$confidence
             }
@@ -376,8 +389,9 @@ explorer_server <- function(id, result, sample = NULL) {
             )
             x <- visible_calls()
             columns <- c(
-                "sample", "group", "class", "class_group", "confidence",
-                "recipient_group", "recipient_cross_group",
+                "sample", "group", "class", "class_group",
+                "class_evidence", "class_confidence", "class_status",
+                "confidence", "recipient_group", "recipient_cross_group",
                 "recipient_component", "recipient_chr_name",
                 "recipient_start_bp", "recipient_end_bp",
                 "recipient_deletion_width_bp", "recipient_assignment",

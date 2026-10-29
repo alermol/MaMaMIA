@@ -13,6 +13,8 @@ karyotype_palette <- function() {
         positive = "#b2182b",
         substitution = "#d95f02",
         addition = "#1f78b4",
+        deletion = "#e31a1c",
+        complex = "#e6ab02",
         other = "#7570b3",
         deleted = "#d9d9d9",
         added = "#a6cee3",
@@ -354,6 +356,15 @@ karyotype_payload <- function(result, sample = NULL,
             ),
             recipient_mean_depletion = as.numeric(
                 call_value("recipient_mean_depletion", i, NA_real_)
+            ),
+            class_evidence = as.character(
+                call_value("class_evidence", i, NA_character_)
+            ),
+            class_confidence = as.character(
+                call_value("class_confidence", i, NA_character_)
+            ),
+            class_status = as.character(
+                call_value("class_status", i, NA_character_)
             ),
             recipient_copy_number = as.numeric(
                 call_value("recipient_copy_number", i, NA_real_)

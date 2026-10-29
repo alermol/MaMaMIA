@@ -104,7 +104,8 @@
 #' Write calls to a BEDPE file
 #'
 #' Writes one row per call with donor and recipient intervals plus the score,
-#' class, confidence, method, mode and the dosage fields
+#' class, group class, class evidence/confidence/status, confidence, method,
+#' mode and the dosage fields
 #' (`recipient_observed_breadth`, `recipient_copy_number`,
 #' `affected_fraction`, `affected_copies`, `dosage_confidence`). When the
 #' calls carry a positional
@@ -165,7 +166,10 @@ writeCallsToBedpe <- function(x, file, samples = NULL, selected = NULL,
                 stop.rec = numeric(0), width_bp = numeric(0),
                 score_mean = numeric(0), donor_mean = numeric(0),
                 recipient_mean = numeric(0), class = character(0),
-                confidence = character(0), method = character(0),
+                class_group = character(0), class_evidence = character(0),
+                class_confidence = character(0), class_status = character(0),
+                confidence = character(0),
+                method = character(0),
                 mode = character(0), group = character(0),
                 class_group = character(0),
                 recipient_component = character(0),
@@ -195,7 +199,8 @@ writeCallsToBedpe <- function(x, file, samples = NULL, selected = NULL,
         "sample", "chr_id.don", "start.don", "stop.don",
         "chr_id.rec", "start.rec", "stop.rec", "width_bp",
         "score_mean", "donor_mean", "recipient_mean", "class",
-        "class_group", "confidence", "method", "mode", "group",
+        "class_group", "class_evidence", "class_confidence", "class_status",
+        "confidence", "method", "mode", "group",
         "start_iid", "end_iid", "recipient_component", "recipient_chr_name",
         "recipient_group", "recipient_assignment", "recipient_cross_group",
         "recipient_weight", "recipient_expected_breadth",
