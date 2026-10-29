@@ -43,6 +43,75 @@ test_that("the tiny fixture is a valid configuration", {
     expect_equal(unname(assembly$sample_composition), 2)
 })
 
+test_that("a single-component species can omit component labels", {
+    entries <- .species_contig_entries(
+        list(
+            list(id = "chr1", name = "1"),
+            list(id = "chr2", name = "2")
+        ),
+        "diploid"
+    )
+    expect_identical(entries$component, c("default", "default"))
+    expect_identical(entries$group, c("1", "2"))
+    expect_identical(entries$copy_number, c(2, 2))
+
+    named <- .species_contig_entries(
+        list(list(id = "chr1", name = "1")),
+        "diploid", default_component = "main"
+    )
+    expect_identical(named$component, "main")
+
+    mixed <- .species_contig_entries(
+        list(
+            list(id = "chr1", name = "1", component = "A"),
+            list(id = "chr2", name = "2")
+        ),
+        "diploid"
+    )
+    expect_identical(mixed$component, c("A", "A"))
+
+    expect_error(
+        .species_contig_entries(
+            list(
+                list(id = "chr1", name = "1", component = "A"),
+                list(id = "chr2", name = "1", component = "B"),
+                list(id = "chr3", name = "2")
+            ),
+            "polyploid"
+        ),
+        "every contig must declare"
+    )
+})
+
+test_that("a diploid species without component labels resolves", {
+    config <- tiny_species_config()
+    config$species$tiny_recipient$default_component <- NULL
+    config$species$tiny_recipient$contigs <- list(
+        list(id = "r1", name = "1")
+    )
+    config$species$tiny_donor$default_component <- NULL
+    config$species$tiny_donor$contigs <- list(
+        list(id = "d1", name = "1")
+    )
+    config <- validateMaMaMIAConfig(config)
+    expect_identical(
+        unique(config$species$tiny_recipient$contigs$component),
+        "default"
+    )
+    expect_identical(
+        unique(config$species$tiny_recipient$contigs$group), "1"
+    )
+    expect_identical(
+        config$species$tiny_recipient$default_component, "default"
+    )
+    pair <- resolveSpeciesAssembly(
+        config, donor = "tiny_donor", recipient = "tiny_recipient"
+    )
+    expect_identical(pair$recipient_components, "default")
+    expect_identical(pair$donor_components, "default")
+    expect_equal(unname(pair$assembly$sample_composition), 2)
+})
+
 test_that("version 1 is rejected with migration guidance", {
     config <- list(version = 1L, species = list())
     expect_error(
@@ -169,7 +238,7 @@ test_that("the shipped registry example is role-free", {
         expect_true(all(c("label", "gc_indexes", "contigs") %in%
             names(species)))
         expect_true(all(vapply(species$contigs, function(contig) {
-            all(c("id", "name", "component") %in% names(contig))
+            all(c("id", "name") %in% names(contig))
         }, logical(1))))
     }
     expect_identical(example$defaults$exclude_flags, 1796)

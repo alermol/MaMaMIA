@@ -5,10 +5,10 @@
 ## broken index or an inconsistent contig map fails with a message that names
 ## the assembly, contig and file.
 ##
-## Version 2 is ploidy-aware: a species declares its components per contig and
-## an assembly selects one or more recipient and donor components. Contigs are
-## paired by chromosome group; the scoring layer aggregates homoeologs within a
-## group instead of requiring a one-to-one contig map.
+## Version 2 is ploidy-aware: a species declares an optional component per
+## contig and an assembly selects one or more recipient and donor components.
+## Contigs are paired by chromosome group; the scoring layer aggregates
+## homoeologs within a group instead of requiring a one-to-one contig map.
 
 .MaMaMIASupportedConfigVersions <- 2L
 .MaMaMIASupportedGcrankFormatVersions <- "0.1.0"
@@ -283,7 +283,8 @@ chr_number <- function(chr_name) {
     .config_integer(x, what, min = 0L, max = 1000L)
 }
 
-.species_contig_entries <- function(x, species_key) {
+.species_contig_entries <- function(x, species_key,
+                                    default_component = NULL) {
     if (is.null(x) || length(x) == 0L) {
         return(data.frame(
             id = character(0), name = character(0),
@@ -307,15 +308,20 @@ chr_number <- function(chr_name) {
         entry <- entries[[i]]
         where <- sprintf("Species '%s': contigs[[%d]]", species_key, i)
         if (!is.list(entry)) {
-            .config_error("%s must be a mapping with id, name and component", where)
+            .config_error(
+                "%s must be a mapping with id and optional name/component",
+                where
+            )
         }
         id <- .config_string(entry$id, paste0(where, ".id"))
         name <- if (is.null(entry$name)) id else {
             .config_string(entry$name, paste0(where, ".name"))
         }
-        component <- .config_string(
-            entry$component, paste0(where, ".component")
-        )
+        component <- if (is.null(entry$component)) {
+            NA_character_
+        } else {
+            .config_string(entry$component, paste0(where, ".component"))
+        }
         group <- if (is.null(entry$group)) {
             NA_character_
         } else {
@@ -331,6 +337,27 @@ chr_number <- function(chr_name) {
     })
     out <- do.call(rbind, rows)
     rownames(out) <- NULL
+
+    missing_component <- is.na(out$component) | !nzchar(out$component)
+    if (any(missing_component)) {
+        explicit <- unique(out$component[!missing_component])
+        if (!is.null(default_component)) {
+            out$component[missing_component] <- default_component
+        } else if (length(explicit) == 0L) {
+            ## A species with one copy set needs no subgenome-like label.
+            out$component[missing_component] <- "default"
+        } else if (length(explicit) == 1L) {
+            out$component[missing_component] <- explicit
+        } else {
+            .config_error(
+                paste0(
+                    "Species '%s': every contig must declare `component` ",
+                    "when the species has more than one component"
+                ),
+                species_key
+            )
+        }
+    }
 
     if (anyDuplicated(out$id)) {
         duplicate <- unique(out$id[duplicated(out$id)])[[1L]]
@@ -373,7 +400,15 @@ chr_number <- function(chr_name) {
     gc_indexes <- .config_gc_indexes(
         species$gc_indexes, sprintf("Species '%s'", key), config_dir
     )
-    contigs <- .species_contig_entries(species$contigs, key)
+    default_component <- if (is.null(species$default_component)) NULL else {
+        .config_string(
+            species$default_component,
+            sprintf("species.%s.default_component", key)
+        )
+    }
+    contigs <- .species_contig_entries(
+        species$contigs, key, default_component
+    )
     if (nrow(contigs) == 0L) {
         .config_error("Species '%s' must have at least one contig", key)
     }
@@ -393,18 +428,15 @@ chr_number <- function(chr_name) {
     }
 
     available <- unique(contigs$component)
-    default_component <- if (is.null(species$default_component)) NULL else {
-        value <- .config_string(
-            species$default_component,
-            sprintf("species.%s.default_component", key)
+    if (!is.null(default_component) &&
+        !default_component %in% available) {
+        .config_error(
+            "Species '%s': default_component '%s' is not one of: %s",
+            key, default_component, paste(available, collapse = ", ")
         )
-        if (!value %in% available) {
-            .config_error(
-                "Species '%s': default_component '%s' is not one of: %s",
-                key, value, paste(available, collapse = ", ")
-            )
-        }
-        value
+    }
+    if (is.null(default_component) && length(available) == 1L) {
+        default_component <- available
     }
 
     list(

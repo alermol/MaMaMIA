@@ -11,11 +11,14 @@
 * **New result contract.** `BamAnalysisResult` now exposes `metrics`, `scores`,
   `masks`, `calibration` and `calls`. The `counts`, `rca`, `isa` and
   `normalization` fields were removed.
-* **Components replace genome-type labels.** Every contig carries an arbitrary
-  `component` label. The label is used only to aggregate contigs and copies;
-  it carries no ploidy or genome-type assumption, and donor and recipient
-  labels may overlap. Configuration and result columns use `component`,
-  `recipient_component` and `donor_component`.
+* **Components replace genome-type labels.** Every normalized contig carries
+  an arbitrary `component` label. The label is used only to aggregate contigs
+  and copies; it carries no ploidy or genome-type assumption, and donor and
+  recipient labels may overlap. Configuration and result columns use
+  `component`, `recipient_component` and `donor_component`. A
+  single-component species may omit `component`; it defaults to the species
+  `default_component`, or to `"default"` when none is declared. A truly
+  diploid species can therefore declare only `id` and `name` per contig.
 * **Removed API.** `RCA()`, `correctReadCounts()`, `normalizeReadCounts()`,
   `segments()`, `buildSampleTables()`, `writeCohortToBedpe()` and
   `writeToBedpe()` were removed, together with the `RCA`/`ISA` S3 methods.

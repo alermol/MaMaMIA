@@ -75,16 +75,32 @@ species:
     label: "Triticum aestivum CS T2T"
     gc_indexes: [/srv/mamamia/gcidx/triticum-aestivum/index.gcrank]
     contigs:
-      - {id: CP155614.1, name: 1A, component: A, group: 1}
+      - {id: CP155614.1, name: 1A, component: A}
       # ... 21 wheat contigs
   aegilops_speltoides:
     label: "Aegilops speltoides"
     gc_indexes: [/srv/mamamia/gcidx/aegilops-speltoides/index.gcrank]
     contigs:
-      - {id: CH1S, name: 1S, component: S, group: 1}
+      - {id: CH1S, name: 1S}
       # ... 7 S contigs
-
 ```
+
+`group` is optional. When omitted, MaMaMIA uses the first number in the contig
+`name` (`1A` and `1S` are both group 1). Provide an explicit `group` only when
+the names do not encode it.
+
+`component` is also optional for a single-component species. It defaults to
+the species `default_component`, or to `"default"` when no default is given.
+A truly diploid species therefore needs only `id` and `name`:
+
+```yaml
+contigs:
+  - {id: chr1, name: 1}
+  - {id: chr2, name: 2}
+```
+
+`group` becomes 1 and 2, `component` becomes `"default"`, and `copy_number`
+defaults to 2.
 
 The registry is species-only: there is no `assemblies:` section. The donor and
 recipient are chosen at run time, and the assembly is derived from the two
@@ -165,8 +181,8 @@ CNV-robust fallback.
 
 ### Ploidy
 
-The assembly selects components, not individual contigs, and it is built at
-run time from two species:
+The assembly selects one or more components (or the species default), not
+individual contigs, and it is built at run time from two species:
 
 ```r
 pair <- resolveSpeciesAssembly(
@@ -180,9 +196,10 @@ pair <- resolveSpeciesAssembly(
 ```
 
 A diploid donor/recipient, a tetraploid recipient, a hexaploid recipient, a
-multi-donor design and an autotetraploid donor all use the same code path. A
-runtime `sample_composition` overrides the default; `copy_number: 0` removes a
-component from the recipient aggregate.
+multi-donor design and an autotetraploid donor all use the same code path. When
+a species has only one component, `recipient_components` and
+`donor_components` can be omitted. A runtime `sample_composition` overrides the
+default; `copy_number: 0` removes a component from the recipient aggregate.
 
 ### Masks and calibration
 

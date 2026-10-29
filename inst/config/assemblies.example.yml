@@ -11,7 +11,9 @@
 # `group` field or from the first number in `name` (1A and 1R are both group
 # 1). Components are arbitrary contig-set labels, not genome types. The
 # dashboard analyses every declared component; `default_component` is only
-# used by API calls that do not name a component explicitly.
+# used by API calls that do not name a component explicitly. A single-component
+# species may omit `component` on its contigs; it then defaults to
+# `default_component`, or to "default" when no default is declared.
 #
 # `defaults.donor_aggregation` accepts mean, max or sum and supplies the
 # dashboard default; the sidebar exposes it under Advanced.
@@ -69,13 +71,13 @@ species:
     gc_indexes:
       - /srv/mamamia/gcidx/secale-cereale/index.gcrank
     contigs:
-      - {id: OZ284382.1, name: 1R, component: R}
-      - {id: OZ284383.1, name: 2R, component: R}
-      - {id: OZ284384.1, name: 3R, component: R}
-      - {id: OZ284385.1, name: 4R, component: R}
-      - {id: OZ284386.1, name: 5R, component: R}
-      - {id: OZ284387.1, name: 6R, component: R}
-      - {id: OZ284388.1, name: 7R, component: R}
+      - {id: OZ284382.1, name: 1R}
+      - {id: OZ284383.1, name: 2R}
+      - {id: OZ284384.1, name: 3R}
+      - {id: OZ284385.1, name: 4R}
+      - {id: OZ284386.1, name: 5R}
+      - {id: OZ284387.1, name: 6R}
+      - {id: OZ284388.1, name: 7R}
   aegilops_speltoides:
     label: "Aegilops speltoides"
     description: "Wild wheat relative (S component)"
@@ -83,10 +85,10 @@ species:
     gc_indexes:
       - /srv/mamamia/gcidx/aegilops-speltoides/index.gcrank
     contigs:
-      - {id: CH1S, name: 1S, component: S, group: 1}
-      - {id: CH2S, name: 2S, component: S, group: 2}
-      - {id: CH3S, name: 3S, component: S, group: 3}
-      - {id: CH4S, name: 4S, component: S, group: 4}
-      - {id: CH5S, name: 5S, component: S, group: 5}
-      - {id: CH6S, name: 6S, component: S, group: 6}
-      - {id: CH7S, name: 7S, component: S, group: 7}
+      - {id: CH1S, name: 1S}
+      - {id: CH2S, name: 2S}
+      - {id: CH3S, name: 3S}
+      - {id: CH4S, name: 4S}
+      - {id: CH5S, name: 5S}
+      - {id: CH6S, name: 6S}
+      - {id: CH7S, name: 7S}

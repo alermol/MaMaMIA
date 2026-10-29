@@ -22,7 +22,6 @@ species:
     contigs:
     - id: r1
       name: 1A
-      component: A
   secale_like:
     label: Secale-like (R)
     description: Synthetic 20 kb contig with variable GC
@@ -32,4 +31,3 @@ species:
     contigs:
     - id: d1
       name: 1R
-      component: R

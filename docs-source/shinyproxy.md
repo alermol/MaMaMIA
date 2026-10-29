@@ -52,10 +52,13 @@ species the registry must provide:
 - a `gcrank` index directory per genome with `contigs.tsv`, `manifest.json`,
   `genome.bv` and `genome.rb` (the `index.gcrank` directory produced by
   `tools/build-gcrank-index.sh`; the format version must be `0.1.0`);
-- contig ids that exist in those indexes, with a `component` and a chromosome
-  group (from `group` or the first number in `name`);
-- a `default_component` for a polyploid species, so the application does not
-  have to ask which component to use.
+- contig ids that exist in those indexes, with a chromosome group (from the
+  optional `group` field or the first number in `name`);
+- an optional `component` per contig. A single-component species can omit it:
+  it defaults to `default_component`, or to `"default"` when no default is
+  declared;
+- a `default_component` for a multi-component species, so API calls do not
+  have to name one explicitly.
 
 A species has no donor/recipient role. The user chooses the recipient and the
 donor in the app, and the assembly is derived from those two species. The

@@ -22,7 +22,6 @@ species:
     contigs:
     - id: r1
       name: 1R
-      component: R
   tiny_donor:
     label: Tiny synthetic donor
     description: Two 20 kb contigs with 40% and 60% GC
@@ -32,4 +31,3 @@ species:
     contigs:
     - id: d1
       name: 1D
-      component: D
