@@ -1,5 +1,5 @@
 HTMLWidgets.widget({
-  name: "mamamiaKaryotype",
+  name: "mamamiaKaryotypeCard",
   type: "output",
 
   factory: function (el, width, height) {
@@ -53,7 +53,7 @@ HTMLWidgets.widget({
     }
 
     function scoreColour(value, limit, palette) {
-      if (value === null || value === undefined || !isFinite(value)) {
+      if (!isNumber(value)) {
         return "#eeeeee";
       }
       var t = Math.max(-1, Math.min(1, value / limit));
@@ -63,8 +63,12 @@ HTMLWidgets.widget({
       return mixColour(palette.zero, palette.positive, t);
     }
 
+    function isNumber(value) {
+      return typeof value === "number" && Number.isFinite(value);
+    }
+
     function fmt(value) {
-      return isFinite(value) ? Number(value).toFixed(2) : "NA";
+      return isNumber(value) ? Number(value).toFixed(2) : "NA";
     }
 
     function addLegend(svg, x, y, payload) {
@@ -230,111 +234,385 @@ HTMLWidgets.widget({
       });
     }
 
+    function safeColour(value, fallback) {
+      return /^#[0-9a-fA-F]{6}$/.test(String(value || ""))
+        ? String(value)
+        : fallback;
+    }
+
+    function fmtSigned(value, digits) {
+      if (!isNumber(value)) {
+        return "NA";
+      }
+      var number = Number(value);
+      return (number > 0 ? "+" : "") + number.toFixed(digits || 2);
+    }
+
+    function signClass(value) {
+      if (!isNumber(value)) {
+        return "muted";
+      }
+      return Number(value) > 0 ? "pos" : Number(value) < 0 ? "neg" : "muted";
+    }
+
+    function fmtBp(value) {
+      if (!isNumber(value) || Number(value) < 0) {
+        return "NA";
+      }
+      var number = Number(value);
+      if (number >= 1e6) {
+        return (number / 1e6).toFixed(1) + " Mb";
+      }
+      if (number >= 1e3) {
+        return (number / 1e3).toFixed(1) + " kb";
+      }
+      return Math.round(number) + " bp";
+    }
+
+    function fmtSpan(start, end) {
+      if (isNumber(start) && isNumber(end)) {
+        return fmtBp(start) + " – " + fmtBp(end);
+      }
+      if (isNumber(start)) {
+        return "from " + fmtBp(start);
+      }
+      if (isNumber(end)) {
+        return "to " + fmtBp(end);
+      }
+      return "";
+    }
+
+    function fmtPercent(value) {
+      return isNumber(value) ? Math.round(100 * Number(value)) + "%" : "NA";
+    }
+
+    function statusClass(value) {
+      var key = String(value || "").toLowerCase();
+      if (key === "confident") {
+        return "mamamia-tip-status-confident";
+      }
+      if (key === "ambiguous") {
+        return "mamamia-tip-status-ambiguous";
+      }
+      if (key === "needs review" || key === "needs_review") {
+        return "mamamia-tip-status-review";
+      }
+      return "mamamia-tip-status-neutral";
+    }
+
+    function statusLabel(value) {
+      return String(value || "call").replace(/_/g, " ");
+    }
+
+    function tipRow(label, value) {
+      if (!hasValue(value)) {
+        return "";
+      }
+      return '<div class="mamamia-tip-key">' + escapeHtml(label) +
+        '</div><div class="mamamia-tip-value">' +
+        escapeHtml(value) + "</div>";
+    }
+
+    function tipGrid(rows) {
+      var body = (rows || []).filter(function (row) { return row; }).join("");
+      return body ? '<div class="mamamia-tip-grid">' + body + "</div>" : "";
+    }
+
+    function tipSection(label, body) {
+      if (!body) {
+        return "";
+      }
+      return '<div class="mamamia-tip-section">' +
+        '<div class="mamamia-tip-label">' + escapeHtml(label) + "</div>" +
+        body + "</div>";
+    }
+
+    function tipChip(value, kind) {
+      if (!hasValue(value)) {
+        return "";
+      }
+      return '<span class="mamamia-tip-chip ' +
+        escapeHtml(kind || "neutral") + '">' +
+        escapeHtml(value) + "</span>";
+    }
+
+    function tipMetric(label, value) {
+      return '<div class="mamamia-tip-metric"><span>' +
+        escapeHtml(label) + '</span><strong class="' +
+        signClass(value) + '">' + escapeHtml(fmtSigned(value)) +
+        "</strong></div>";
+    }
+
+    function assignmentLabel(value) {
+      var key = String(value || "");
+      if (key === "assigned") {
+        return "assigned";
+      }
+      if (key === "cross_group") {
+        return "cross-group candidate";
+      }
+      if (key === "ambiguous") {
+        return "ambiguous";
+      }
+      if (key === "no_recipient_loss") {
+        return "no host";
+      }
+      return key || "group only";
+    }
+
     function describe(chromosome, fraction, calls) {
-      var name = escapeHtml(
-        chromosome.label || chromosome.name || chromosome.component || ""
-      );
-      var mb = fraction * (chromosome.length || 0) / 1e6;
-      var lines = [
-        "<strong>" + name + "</strong>",
-        escapeHtml(chromosome.component || "")
-      ];
-      if (Number(chromosome.copies) > 1) {
-        lines.push("homolog " + chromosome.copy + " of " +
-          chromosome.copies);
-      }
-      if (chromosome.deleted === true) {
-        lines.push("recipient chromosome deleted (no coverage)");
-      }
-      lines.push(chromosome.added === true
-        ? "added donor chromosome"
-        : "recipient chromosome");
       var matched = null;
       (calls || []).forEach(function (call) {
         if (fraction >= call.start && fraction <= call.end) {
           matched = call;
         }
       });
+      var accent = safeColour(
+        matched ? payload.palette[matched.class] : null,
+        "#6c757d"
+      );
+      var className = matched
+        ? (matched.class || "call")
+        : chromosome.deleted
+          ? "deleted recipient"
+          : chromosome.added
+            ? "added donor"
+            : "recipient chromosome";
+      var status = matched
+        ? (matched.class_status || matched.confidence || "call")
+        : "no call";
+      var subParts = [];
+      if (hasValue(payload.sample)) {
+        subParts.push(payload.sample);
+      }
+      if (hasValue(chromosome.group)) {
+        subParts.push("group " + chromosome.group);
+      }
       if (matched) {
-        lines.push(
-          escapeHtml(matched.class) + " · " +
-          escapeHtml(matched.confidence)
+        var callSpan = fmtSpan(
+          matched.donor_start_bp,
+          matched.donor_end_bp
         );
+        var spanLabel = "donor ";
+        if (!callSpan) {
+          callSpan = fmtSpan(matched.start_bp, matched.end_bp);
+          spanLabel = "";
+        }
+        if (callSpan) {
+          subParts.push(spanLabel + callSpan);
+        }
+      } else if (isNumber(chromosome.length)) {
+        subParts.push(fmtBp(fraction * chromosome.length));
+      }
+
+      var html = '<div class="mamamia-tip" style="border-left-color:' +
+        accent + ";--tip-accent:" + accent + '">' +
+        '<div class="mamamia-tip-head">' +
+        '<div class="mamamia-tip-title"><span class="mamamia-tip-class">' +
+        escapeHtml(className) + '</span><span class="mamamia-tip-status ' +
+        statusClass(status) + '">' +
+        escapeHtml(statusLabel(status)) + "</span></div>" +
+        '<div class="mamamia-tip-sub">' +
+        escapeHtml(subParts.join(" · ")) + "</div></div>";
+
+      if (matched) {
+        var recipient = hasValue(matched.recipient_chr_name)
+          ? matched.recipient_chr_name
+          : (matched.recipient_assignment === "no_recipient_loss"
+            ? "no host"
+            : "unassigned");
+        if (hasValue(matched.recipient_group)) {
+          recipient += " · group " + matched.recipient_group;
+        }
+        var recipientSpan = fmtSpan(
+          matched.recipient_start_bp,
+          matched.recipient_end_bp
+        );
+        if (recipientSpan) {
+          recipient += " · " + recipientSpan;
+        }
+        var donor = hasValue(matched.donor_chr_name)
+          ? matched.donor_chr_name
+          : (hasValue(matched.donor_group)
+            ? "group " + matched.donor_group
+            : "unknown");
+        if (hasValue(matched.donor_chr_name) &&
+            hasValue(matched.donor_group)) {
+          donor += " · group " + matched.donor_group;
+        }
+        var donorSpan = fmtSpan(matched.donor_start_bp, matched.donor_end_bp);
+        if (donorSpan) {
+          donor += " · " + donorSpan;
+        }
+        var placement = [
+          tipRow("Recipient", recipient),
+          tipRow("Donor", donor),
+          tipRow(
+            "Relation",
+            matched.recipient_assignment === "no_recipient_loss"
+              ? "not placed"
+              : (matched.cross_group ? "cross-group" : "same group")
+          ),
+          tipRow(
+            "Assignment",
+            assignmentLabel(matched.recipient_assignment) +
+              (isNumber(matched.recipient_margin)
+                ? " · margin " + fmtSigned(matched.recipient_margin)
+                : "")
+          )
+        ];
+        if (hasValue(matched.class_group) &&
+            matched.class_group !== matched.class) {
+          placement.push(tipRow(
+            "Group class",
+            matched.class_group + " → " + matched.class
+          ));
+        }
+        if (matched.recipient_assignment === "ambiguous" &&
+            hasValue(matched.recipient_alternative)) {
+          placement.push(tipRow(
+            "Alternative",
+            matched.recipient_alternative
+          ));
+        }
+        html += tipSection("Placement", tipGrid(placement));
+
+        var metrics = '<div class="mamamia-tip-metrics">' +
+          tipMetric("Score", matched.score) +
+          tipMetric("Donor", matched.donor_mean) +
+          tipMetric("Recipient", matched.recipient_mean) +
+          tipMetric("Total", matched.total_mean) +
+          "</div>";
+        var chips = [];
         if (hasValue(matched.class_confidence)) {
-          lines.push("class confidence " +
-            escapeHtml(matched.class_confidence));
+          chips.push(tipChip(
+            "class " + matched.class_confidence, "confidence"
+          ));
         }
         if (hasValue(matched.class_evidence)) {
-          lines.push("evidence " + escapeHtml(matched.class_evidence));
-        }
-        if (hasValue(matched.class_status)) {
-          lines.push("class status " + escapeHtml(matched.class_status));
+          chips.push(tipChip(matched.class_evidence, "evidence"));
         }
         if (hasValue(matched.copy_state)) {
-          lines.push("copy state " + escapeHtml(matched.copy_state));
+          chips.push(tipChip(matched.copy_state, "copy"));
         }
-        if (hasValue(matched.total_evidence)) {
-          lines.push("total evidence " + escapeHtml(matched.total_evidence));
+        if (hasValue(matched.total_evidence) &&
+            matched.total_evidence !== "neutral") {
+          chips.push(tipChip(
+            "total " + matched.total_evidence, "copy"
+          ));
         }
-        if (hasValue(matched.component_status)) {
-          lines.push("components " + escapeHtml(matched.component_status));
+        if (matched.component_status === "heterogeneous") {
+          chips.push(tipChip("components heterogeneous", "warn"));
         }
-        if (hasValue(matched.mappability_status)) {
-          lines.push("mappability " + escapeHtml(matched.mappability_status));
+        if (matched.mappability_status === "low") {
+          chips.push(tipChip("low mappability", "warn"));
         }
-        if (hasValue(matched.total_mean)) {
-          lines.push("total residual " + Number(matched.total_mean).toFixed(2));
+        if (matched.pass === false) {
+          chips.push(tipChip("not passing", "warn"));
         }
-        if (hasValue(matched.recipient_assignment) &&
-            matched.recipient_assignment !== "assigned") {
-          lines.push("assignment: " +
-            escapeHtml(matched.recipient_assignment));
+        if (chips.length) {
+          metrics += '<div class="mamamia-tip-chips">' +
+            chips.join("") + "</div>";
         }
-        if (isFinite(matched.recipient_weight)) {
-          lines.push("weight " + fmt(matched.recipient_weight));
+        html += tipSection("Evidence", metrics);
+
+        var dosage = [];
+        if (isNumber(matched.affected_copies)) {
+          var copies = matched.affected_copies +
+            (isNumber(matched.recipient_copy_number)
+              ? " of " + matched.recipient_copy_number + " copies"
+              : " copies");
+          dosage.push(tipRow("Copies", copies));
+        } else {
+          dosage.push(tipRow("Copies", "unavailable"));
         }
-        if (hasValue(matched.recipient_chr_name)) {
-          lines.push("assigned to " + escapeHtml(matched.recipient_chr_name));
+        if (isNumber(matched.affected_fraction)) {
+          dosage.push(tipRow(
+            "Fraction", fmtPercent(matched.affected_fraction)
+          ));
         }
-        if (isFinite(matched.affected_copies)) {
-          var total = isFinite(matched.recipient_copy_number)
-            ? " of " + matched.recipient_copy_number
-            : "";
-          lines.push("affected copies " + matched.affected_copies + total);
-        } else if (isFinite(matched.affected_fraction)) {
-          lines.push("recipient loss " +
-            Math.round(100 * matched.affected_fraction) + "%");
+        if (isNumber(matched.donor_copies)) {
+          dosage.push(tipRow("Donor copies", fmt(matched.donor_copies)));
         }
-        if (hasValue(matched.dosage_confidence) &&
-            matched.dosage_confidence !== "unavailable") {
-          lines.push("dosage " + escapeHtml(matched.dosage_confidence));
+        if (hasValue(matched.dosage_confidence)) {
+          dosage.push(tipRow("Confidence", matched.dosage_confidence));
         }
-        if (matched.cross_group === true) {
-          var donor = hasValue(matched.donor_chr_name)
-            ? matched.donor_chr_name
-            : ("group " + matched.donor_group);
-          lines.push("cross-group: donor " + escapeHtml(donor) +
-            " → recipient group " +
-            escapeHtml(matched.recipient_group || ""));
+        html += tipSection("Dosage", tipGrid(dosage));
+
+        var geometry = [];
+        if (isNumber(matched.width_bp)) {
+          geometry.push(tipRow("Donor width", fmtBp(matched.width_bp)));
         }
-        if (hasValue(matched.donor_chr_name)) {
-          lines.push("donor " + escapeHtml(matched.donor_chr_name));
+        if (isNumber(matched.recipient_deletion_width_bp)) {
+          geometry.push(tipRow(
+            "Recipient run", fmtBp(matched.recipient_deletion_width_bp)
+          ));
         }
-        lines.push("score " + fmt(matched.score));
-      } else if (payload.mode === "calls") {
-        lines.push("no assigned donor segment at this position");
+        if (isNumber(matched.recipient_width_overlap)) {
+          geometry.push(tipRow(
+            "Overlap",
+            fmtPercent(matched.recipient_width_overlap)
+          ));
+        }
+        if (isNumber(matched.recipient_fraction_ratio)) {
+          geometry.push(tipRow(
+            "Width ratio", fmt(matched.recipient_fraction_ratio)
+          ));
+        }
+        html += tipSection("Geometry", tipGrid(geometry));
+      } else {
+        var chromosomeRows = [];
+        if (hasValue(chromosome.component)) {
+          chromosomeRows.push(tipRow("Component", chromosome.component));
+        }
+        if (chromosome.deleted === true) {
+          chromosomeRows.push(tipRow(
+            "State", "deleted recipient (no coverage)"
+          ));
+        } else if (chromosome.added === true) {
+          chromosomeRows.push(tipRow("State", "added donor chromosome"));
+        } else {
+          chromosomeRows.push(tipRow("State", "recipient chromosome"));
+        }
+        if (Number(chromosome.copies) > 1) {
+          chromosomeRows.push(tipRow(
+            "Homolog", chromosome.copy + " of " + chromosome.copies
+          ));
+        }
+        if (isNumber(chromosome.length)) {
+          chromosomeRows.push(tipRow("Length", fmtBp(chromosome.length)));
+        }
+        html += tipSection("Chromosome", tipGrid(chromosomeRows));
+        if (payload.mode === "calls") {
+          html += tipSection(
+            "Call",
+            '<div class="mamamia-tip-empty">' +
+              "No assigned donor segment at this position.</div>"
+          );
+        }
       }
-      if (payload.mode === "heatmap" && matched &&
-          matched.cross_group !== true) {
+
+      if (payload.mode === "heatmap") {
         var scores = chromosome.scores || [];
         var index = scores.length
-          ? Math.max(0, Math.min(scores.length - 1,
-            Math.floor(fraction * scores.length)))
+          ? Math.max(0, Math.min(
+            scores.length - 1,
+            Math.floor(fraction * scores.length)
+          ))
           : -1;
-        lines.push(mb.toFixed(1) + " Mb");
-        lines.push("score " + fmt(index >= 0 ? scores[index] : NaN));
+        var position = [
+          tipRow("Position", fmtBp(fraction * (chromosome.length || 0))),
+          tipRow(
+            "Score",
+            index >= 0 ? fmtSigned(scores[index]) : "NA"
+          )
+        ];
+        html += tipSection("Position", tipGrid(position));
       }
-      return lines.join("<br>");
+
+      html += '<div class="mamamia-tip-footer">' +
+        "Click to filter this group</div></div>";
+      return html;
     }
 
     function sendClick(group) {

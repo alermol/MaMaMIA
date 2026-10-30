@@ -119,6 +119,12 @@
   a second tab. The chromosome-group picker is removed from both the BAM
   dashboard and the standalone explorer; group filtering is driven by the
   karyotype click.
+* The karyotype tooltip is now a structured call card. It has a class/status
+  header, a placement block (recipient, donor, relation, assignment and group
+  class), an evidence block (score, donor, recipient and total residuals plus
+  copy/evidence/quality chips), a dosage block, a geometry block and a
+  group-filter hint. When no call is under the pointer it falls back to a
+  chromosome card. The old flat list of lines is gone.
 * The karyotype now performs an all-vs-all assignment of every donor segment
   against every recipient contig. Detection stays group-level, but candidate
   scoring uses a per-contig recipient residual, a standard-error-aware

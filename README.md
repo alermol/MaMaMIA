@@ -279,8 +279,10 @@ before non-passing calls, multiple non-overlapping runs on one contig are
 scheduled by weighted interval scheduling, cross-group choices are reported as
 `cross_group` translocation candidates rather than confirmed hosts, and a
 strong assigned loss reclassifies the call as a substitution. Deleted
-chromosomes and added donor chromosomes are drawn separately. A score profile,
-call table and BEDPE export follow.
+chromosomes and added donor chromosomes are drawn separately. Hovering a call
+opens a structured card: class and status, placement, evidence residuals and
+quality chips, dosage, geometry, and a group-filter hint. A score profile, call
+table and BEDPE export follow.
 
 ## Validation
 

@@ -37,8 +37,15 @@ test_that("karyotype_payload() lays out diploid pairs in config order", {
     if (hosted > 0L) {
         expect_true(all(c(
             "affected_copies", "recipient_copy_number",
-            "affected_fraction", "dosage_confidence"
+            "affected_fraction", "dosage_confidence",
+            "class_group", "donor_mean", "recipient_mean",
+            "donor_start_bp", "donor_end_bp",
+            "recipient_run_start_bp", "recipient_run_end_bp",
+            "recipient_deletion_width_bp", "recipient_margin",
+            "recipient_fraction_ratio"
         ) %in% names(chromosome$calls[[1L]])))
+        expect_true(is.finite(chromosome$calls[[1L]]$donor_start_bp))
+        expect_true(is.finite(chromosome$calls[[1L]]$donor_end_bp))
     }
 })
 
@@ -204,13 +211,14 @@ test_that("mamamia_karyotype() returns a widget with its stylesheet", {
     skip_if_not_installed("htmltools")
     result <- bam_example_result(100)
     widget <- mamamia_karyotype(karyotype_payload(result))
-    expect_s3_class(widget, "mamamiaKaryotype")
+    expect_s3_class(widget, "mamamiaKaryotypeCard")
+    expect_silent(htmltools::resolveDependencies(widget$dependencies))
     expect_s3_class(widget, "htmlwidget")
     expect_true(any(vapply(
         widget$dependencies,
         function(dependency) {
-            identical(dependency$name, "mamamiaKaryotype-css") &&
-                identical(dependency$stylesheet, "mamamiaKaryotype.css")
+            identical(dependency$name, "mamamiaKaryotypeCard-css") &&
+                identical(dependency$stylesheet, "mamamiaKaryotypeCard.css")
         },
         logical(1)
     )))

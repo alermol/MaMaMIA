@@ -307,10 +307,17 @@ karyotype_payload <- function(result, sample = NULL,
             end_bp = as.numeric(end_bp),
             width_bp = as.numeric(call_value("width_bp", i, NA_real_)),
             class = as.character(call_value("class", i, NA_character_)),
+            class_group = as.character(
+                call_value("class_group", i, NA_character_)
+            ),
             confidence = as.character(
                 call_value("confidence", i, NA_character_)
             ),
             score = as.numeric(call_value("score_mean", i, NA_real_)),
+            donor_mean = as.numeric(call_value("donor_mean", i, NA_real_)),
+            recipient_mean = as.numeric(
+                call_value("recipient_mean", i, NA_real_)
+            ),
             pass = isTRUE(as.logical(call_value("pass", i, TRUE))),
             recipient_component = as.character(
                 call_value("recipient_component", i, NA_character_)
@@ -327,11 +334,23 @@ karyotype_payload <- function(result, sample = NULL,
             recipient_end_bp = as.numeric(
                 call_value("recipient_end_bp", i, NA_real_)
             ),
+            recipient_run_start_bp = as.numeric(
+                call_value("recipient_run_start_bp", i, NA_real_)
+            ),
+            recipient_run_end_bp = as.numeric(
+                call_value("recipient_run_end_bp", i, NA_real_)
+            ),
+            recipient_deletion_width_bp = as.numeric(
+                call_value("recipient_deletion_width_bp", i, NA_real_)
+            ),
             recipient_assignment = as.character(
                 call_value("recipient_assignment", i, NA_character_)
             ),
             recipient_weight = as.numeric(
                 call_value("recipient_weight", i, NA_real_)
+            ),
+            recipient_margin = as.numeric(
+                call_value("recipient_margin", i, NA_real_)
             ),
             recipient_group = as.character(
                 call_value("recipient_group", i, NA_character_)
@@ -344,6 +363,12 @@ karyotype_payload <- function(result, sample = NULL,
             ),
             donor_chr_name = as.character(
                 call_value("donor_chr_name", i, NA_character_)
+            ),
+            donor_start_bp = as.numeric(
+                call_value("donor_start_bp", i, NA_real_)
+            ),
+            donor_end_bp = as.numeric(
+                call_value("donor_end_bp", i, NA_real_)
             ),
             donor_group = as.character(
                 call_value("group", i, NA_character_)
@@ -392,6 +417,9 @@ karyotype_payload <- function(result, sample = NULL,
             ),
             recipient_width_overlap = as.numeric(
                 call_value("recipient_width_overlap", i, NA_real_)
+            ),
+            recipient_fraction_ratio = as.numeric(
+                call_value("recipient_fraction_ratio", i, NA_real_)
             ),
             recipient_copy_number = as.numeric(
                 call_value("recipient_copy_number", i, NA_real_)
@@ -551,13 +579,13 @@ karyotype_payload <- function(result, sample = NULL,
 #' @noRd
 mamamia_karyotype <- function(payload, width = NULL, height = NULL) {
     css <- htmltools::htmlDependency(
-        name = "mamamiaKaryotype-css",
-        version = as.character(utils::packageVersion("MaMaMIA")),
+        name = "mamamiaKaryotypeCard-css",
+        version = "0.99.2.1",
         src = c(file = system.file("htmlwidgets", package = "MaMaMIA")),
-        stylesheet = "mamamiaKaryotype.css"
+        stylesheet = "mamamiaKaryotypeCard.css"
     )
     htmlwidgets::createWidget(
-        name = "mamamiaKaryotype",
+        name = "mamamiaKaryotypeCard",
         x = payload,
         width = width,
         height = height,
@@ -576,7 +604,8 @@ mamamia_karyotype <- function(payload, width = NULL, height = NULL) {
 mamamia_karyotype_output <- function(outputId, width = "100%",
                                      height = "480px") {
     htmlwidgets::shinyWidgetOutput(
-        outputId, "mamamiaKaryotype", width, height, package = "MaMaMIA"
+        outputId, "mamamiaKaryotypeCard", width, height,
+        package = "MaMaMIA"
     )
 }
 
