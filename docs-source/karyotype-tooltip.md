@@ -107,14 +107,16 @@ the BAM-derived high-MAPQ fraction is below 0.5.
 | Row | Source | Meaning |
 |---|---|---|
 | `Copies` | `affected_copies`, `recipient_copy_number` | Affected copies, for example `2 of 2 copies`. Shows `unavailable` when no copy count is estimated. |
-| `Fraction` | `affected_fraction` | Affected fraction of recipient copies, as a percentage. |
-| `Donor copies` | `donor_copies` | Relative donor-copy estimate when finite. |
+| `Estimated fraction` | `affected_fraction` | Affected fraction of recipient copies, as a percentage. |
+| `Estimated donor copies` | `donor_copies` | Relative donor-copy estimate when finite. |
 | `Confidence` | `dosage_confidence` | `high`, `moderate`, `low` or `unavailable`. |
 
 Dosage is relative to the registry copy number. It is not an absolute
-copy-number measurement. For an addition, `Copies` comes from the donor-copy
-estimate. For a deletion without donor support, it comes from the recipient
-loss fraction at lower confidence.
+copy-number measurement. The fraction and donor-copy rows are labelled
+`Estimated` because they are continuous estimates; only `Copies` is rounded to
+an integer. For an addition, `Copies` comes from the donor-copy estimate. For a
+deletion without donor support, it comes from the recipient loss fraction at
+lower confidence.
 
 ## Geometry
 
@@ -271,5 +273,5 @@ but can still appear on added donor chromosomes.
 | Payload contract test | `tests/testthat/test-karyotype.R` |
 
 The widget assets use the name `mamamiaKaryotypeCard` and the CSS dependency
-version `0.99.2.1`, so a browser cache cannot keep serving the previous flat
+version `0.99.2.2`, so a browser cache cannot keep serving the previous flat
 tooltip after an update. JavaScript syntax is checked with `node --check`.

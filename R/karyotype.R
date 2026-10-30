@@ -580,9 +580,21 @@ karyotype_payload <- function(result, sample = NULL,
 mamamia_karyotype <- function(payload, width = NULL, height = NULL) {
     css <- htmltools::htmlDependency(
         name = "mamamiaKaryotypeCard-css",
-        version = "0.99.2.1",
+        version = "0.99.2.2",
         src = c(file = system.file("htmlwidgets", package = "MaMaMIA")),
         stylesheet = "mamamiaKaryotypeCard.css"
+    )
+    ## htmlwidgets names its default binding dependency after the widget and
+    ## versions it with the package version. Declaring the same name with a
+    ## higher numeric version replaces that entry, so a widget change cannot
+    ## stay cached under the unchanged package version.
+    js <- htmltools::htmlDependency(
+        name = "mamamiaKaryotypeCard-binding",
+        version = "0.99.2.2",
+        src = "htmlwidgets",
+        package = "MaMaMIA",
+        script = "mamamiaKaryotypeCard.js",
+        all_files = FALSE
     )
     htmlwidgets::createWidget(
         name = "mamamiaKaryotypeCard",
@@ -590,7 +602,7 @@ mamamia_karyotype <- function(payload, width = NULL, height = NULL) {
         width = width,
         height = height,
         package = "MaMaMIA",
-        dependencies = css,
+        dependencies = list(css, js),
         sizingPolicy = htmlwidgets::sizingPolicy(
             viewer.fill = TRUE,
             browser.fill = TRUE,

@@ -212,8 +212,19 @@ test_that("mamamia_karyotype() returns a widget with its stylesheet", {
     result <- bam_example_result(100)
     widget <- mamamia_karyotype(karyotype_payload(result))
     expect_s3_class(widget, "mamamiaKaryotypeCard")
-    expect_silent(htmltools::resolveDependencies(widget$dependencies))
+    dependencies <- htmltools::resolveDependencies(widget$dependencies)
+    expect_silent(dependencies)
     expect_s3_class(widget, "htmlwidget")
+    binding <- Filter(
+        function(dependency) {
+            identical(
+                dependency$name, "mamamiaKaryotypeCard-binding"
+            )
+        },
+        dependencies
+    )
+    expect_length(binding, 1L)
+    expect_identical(binding[[1L]]$version, "0.99.2.2")
     expect_true(any(vapply(
         widget$dependencies,
         function(dependency) {

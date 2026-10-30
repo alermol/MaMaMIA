@@ -542,11 +542,13 @@ HTMLWidgets.widget({
         }
         if (isNumber(matched.affected_fraction)) {
           dosage.push(tipRow(
-            "Fraction", fmtPercent(matched.affected_fraction)
+            "Estimated fraction", fmtPercent(matched.affected_fraction)
           ));
         }
         if (isNumber(matched.donor_copies)) {
-          dosage.push(tipRow("Donor copies", fmt(matched.donor_copies)));
+          dosage.push(tipRow(
+            "Estimated donor copies", fmt(matched.donor_copies)
+          ));
         }
         if (hasValue(matched.dosage_confidence)) {
           dosage.push(tipRow("Confidence", matched.dosage_confidence));
