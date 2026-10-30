@@ -264,8 +264,10 @@ exploreIntrogressions(result)
 ```
 
 The dashboard analyses every component declared for the selected species and
-offers chromosome-group, class, class-status, copy-state, confidence and width
-filters; class choices are substitution, addition, deletion, complex and other.
+offers compact pill dropdowns for class, class status, copy state and
+confidence, plus a passing-only switch and a width filter; class choices are
+substitution, addition, deletion, complex and other. An empty dropdown means
+"all".
 The main tab is
 a vertical karyotype with a score heatmap or call-map mode. Chromosomes are
 shown in assembly-config order without group or component columns, as diploid

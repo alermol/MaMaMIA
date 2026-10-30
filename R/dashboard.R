@@ -2,7 +2,7 @@
 ## export.
 
 dashboard_packages <- c(
-    "bslib", "DT", "htmltools", "htmlwidgets", "shiny"
+    "bslib", "DT", "htmltools", "htmlwidgets", "shiny", "shinyWidgets"
 )
 
 require_dashboard_packages <- function() {
@@ -100,37 +100,52 @@ explorer_score_plot <- function(scores, calls = NULL) {
 
 explorer_view_filters_ui <- function(id) {
     ns <- shiny::NS(id)
-    shiny::tagList(
-        shiny::checkboxGroupInput(
-            ns("class"), "Call class",
-            choices = c(
-                "substitution", "addition", "deletion", "complex", "other"
-            ),
-            selected = c(
-                "substitution", "addition", "deletion", "complex", "other"
-            ), inline = TRUE
+    picker <- function(inputId, label, title, choices) {
+        shinyWidgets::pickerInput(
+            ns(inputId),
+            label = shiny::span(class = "visually-hidden", label),
+            choices = choices,
+            selected = character(0),
+            multiple = TRUE,
+            width = "fit",
+            options = shinyWidgets::pickerOptions(
+                actionsBox = FALSE,
+                title = title,
+                noneSelectedText = title,
+                selectedTextFormat = "count > 1",
+                countSelectedText = "{0} selected",
+                liveSearch = FALSE
+            )
+        )
+    }
+    shiny::div(
+        class = "mamamia-filter-pills",
+        picker(
+            "class", "Call class", "Class",
+            c("substitution", "addition", "deletion", "complex", "other")
         ),
-        shiny::checkboxGroupInput(
-            ns("class_status"), "Class status",
-            choices = c("confident", "ambiguous", "needs_review"),
-            selected = c("confident", "ambiguous", "needs_review"),
-            inline = TRUE
+        picker(
+            "class_status", "Class status", "Status",
+            c(
+                "confident" = "confident",
+                "ambiguous" = "ambiguous",
+                "needs review" = "needs_review"
+            )
         ),
-        shiny::checkboxGroupInput(
-            ns("copy_state"), "Copy state",
-            choices = c(
-                "balanced", "gain", "loss", "compound", "neutral"
-            ),
-            selected = c(
-                "balanced", "gain", "loss", "compound", "neutral"
-            ), inline = TRUE
+        picker(
+            "copy_state", "Copy state", "Copy",
+            c("balanced", "gain", "loss", "compound", "neutral")
         ),
-        shiny::checkboxGroupInput(
-            ns("confidence"), "Confidence",
-            choices = c("high", "moderate", "low"),
-            selected = c("high", "moderate", "low"), inline = TRUE
+        picker(
+            "confidence", "Confidence", "Confidence",
+            c("high", "moderate", "low")
         ),
-        shiny::checkboxInput(ns("pass_only"), "Show calibrated calls only", TRUE)
+        shiny::div(
+            class = "mamamia-filter-switch",
+            bslib::input_switch(
+                ns("pass_only"), "Passing only", value = TRUE
+            )
+        )
     )
 }
 

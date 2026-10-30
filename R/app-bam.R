@@ -1593,45 +1593,110 @@ bam_dashboard_css <- function() {
     }
     .mamamia-filter-bar {
         display: flex;
-        align-items: flex-end;
-        gap: .7rem;
-        padding: .45rem .55rem;
-        border: 1px solid var(--bs-border-color);
-        border-radius: .375rem;
-        background: var(--bs-tertiary-bg);
+        align-items: center;
+        gap: .6rem;
+        padding: .15rem 0 .5rem;
+        border: 0;
+        border-bottom: 1px solid var(--bs-border-color);
+        border-radius: 0;
+        background: transparent;
     }
     .mamamia-sample-picker {
         flex: 0 0 auto;
     }
     .mamamia-sample-picker .shiny-input-container,
     .mamamia-sample-picker .form-group {
-        width: 12rem;
+        width: 11rem;
         margin-bottom: 0;
     }
-    .mamamia-filter-heading {
-        flex: 0 0 auto;
-        padding-bottom: .35rem;
-        font-size: .8rem;
-        font-weight: 600;
+    .mamamia-sample-picker .control-label {
+        margin-bottom: .15rem;
         color: var(--bs-secondary-color);
-        white-space: nowrap;
+        font-size: .68rem;
+        font-weight: 600;
+        letter-spacing: .06em;
+        text-transform: uppercase;
+    }
+    .mamamia-sample-picker .form-select {
+        min-height: 2rem;
+        padding: .2rem .5rem;
+        font-size: .82rem;
     }
     .mamamia-filter-controls {
         display: flex;
         flex: 1 1 auto;
         flex-wrap: wrap;
-        align-items: flex-end;
-        gap: .7rem;
+        align-items: center;
+        gap: .4rem;
         min-width: 0;
     }
-    .mamamia-filter-controls .shiny-input-container {
+    .mamamia-filter-pills {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: .4rem;
+        width: 100%;
+    }
+    .mamamia-filter-pills .shiny-input-container {
         width: auto;
-        min-width: 12rem;
+        min-width: 0;
         margin-bottom: 0;
     }
-    .mamamia-filter-controls .form-check {
-        margin-bottom: .35rem;
+    .mamamia-filter-pills .bootstrap-select {
+        flex: 0 0 auto;
+    }
+    .mamamia-filter-pills .bootstrap-select > .dropdown-toggle {
+        min-height: 2rem;
+        height: 2rem;
+        padding: 0 .7rem;
+        border: 1px solid var(--bs-border-color);
+        border-radius: 999px;
+        background: var(--bs-body-bg);
+        color: var(--bs-body-color);
+        font-size: .8rem;
+        box-shadow: none;
+    }
+    .mamamia-filter-pills .bootstrap-select > .dropdown-toggle:hover,
+    .mamamia-filter-pills .bootstrap-select > .dropdown-toggle:focus {
+        border-color: var(--bs-primary);
+        color: var(--bs-primary);
+    }
+    .mamamia-filter-pills .bootstrap-select.show > .dropdown-toggle {
+        border-color: var(--bs-primary);
+        box-shadow: 0 0 0 .15rem rgba(var(--bs-primary-rgb), .12);
+    }
+    .mamamia-filter-pills .bootstrap-select .filter-option-inner-inner {
+        font-size: .8rem;
+    }
+    .mamamia-filter-pills .bootstrap-select .dropdown-menu {
+        padding: .25rem 0;
+        border-color: var(--bs-border-color);
+        box-shadow: 0 .35rem 1rem rgba(0, 0, 0, .12);
+        font-size: .8rem;
+    }
+    .mamamia-filter-pills .bootstrap-select .dropdown-item {
+        padding: .25rem .75rem;
+    }
+    .mamamia-filter-pills .mamamia-filter-switch {
+        display: flex;
+        align-items: center;
+        min-height: 2rem;
+        margin-left: auto;
+    }
+    .mamamia-filter-pills .form-check.form-switch {
+        display: flex;
+        align-items: center;
+        min-height: 2rem;
+        margin: 0;
+        padding-left: 2.4em;
+        font-size: .8rem;
         white-space: nowrap;
+    }
+    .mamamia-filter-pills .form-check-input {
+        margin-top: 0;
+    }
+    .mamamia-filter-pills .form-check-label {
+        font-size: .8rem;
     }
     .mamamia-segment-controls {
         display: flex;
@@ -1848,7 +1913,6 @@ bam_results_ui <- function() {
             shiny::uiOutput(
                 "sample_selector_ui", class = "mamamia-sample-picker"
             ),
-            shiny::div(class = "mamamia-filter-heading", "Filters"),
             shiny::div(
                 class = "mamamia-filter-controls",
                 explorer_view_filters_ui("explorer")

@@ -119,6 +119,10 @@
   a second tab. The chromosome-group picker is removed from both the BAM
   dashboard and the standalone explorer; group filtering is driven by the
   karyotype click.
+* The result filter bar is now a compact row of pill dropdowns for class,
+  class status, copy state and confidence, plus a **Passing only** switch.
+  Empty selections mean "all", so the bar no longer shows four inline
+  checkbox groups.
 * The karyotype tooltip is now a structured call card. It has a class/status
   header, a placement block (recipient, donor, relation, assignment and group
   class), an evidence block (score, donor, recipient and total residuals plus
