@@ -300,6 +300,22 @@ HTMLWidgets.widget({
       return "mamamia-tip-status-neutral";
     }
 
+    function resolvedStatus(call) {
+      if (hasValue(call.class_status)) {
+        return call.class_status;
+      }
+      if (call.class_confidence === "high") {
+        return "confident";
+      }
+      if (call.class_confidence === "moderate") {
+        return "ambiguous";
+      }
+      if (call.class_confidence === "low") {
+        return "needs_review";
+      }
+      return "call";
+    }
+
     function statusLabel(value) {
       return String(value || "call").replace(/_/g, " ");
     }
@@ -378,9 +394,7 @@ HTMLWidgets.widget({
           : chromosome.added
             ? "added donor"
             : "recipient chromosome";
-      var status = matched
-        ? (matched.class_status || matched.confidence || "call")
-        : "no call";
+      var status = matched ? resolvedStatus(matched) : "no call";
       var subParts = [];
       if (hasValue(payload.sample)) {
         subParts.push(payload.sample);

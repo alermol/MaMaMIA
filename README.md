@@ -282,7 +282,9 @@ strong assigned loss reclassifies the call as a substitution. Deleted
 chromosomes and added donor chromosomes are drawn separately. Hovering a call
 opens a structured card: class and status, placement, evidence residuals and
 quality chips, dosage, geometry, and a group-filter hint. A score profile, call
-table and BEDPE export follow.
+table and BEDPE export follow. See
+[`docs-source/karyotype-tooltip.md`](docs-source/karyotype-tooltip.md) for the
+field-by-field tooltip reference.
 
 ## Validation
 
