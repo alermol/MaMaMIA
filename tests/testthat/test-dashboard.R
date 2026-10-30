@@ -270,6 +270,8 @@ test_that("the explorer has no chromosome group selector", {
     expect_match(filters, "deletion", fixed = TRUE)
     expect_match(filters, "complex", fixed = TRUE)
     expect_match(filters, "Class status", fixed = TRUE)
+    expect_match(filters, "Copy state", fixed = TRUE)
+    expect_match(filters, "balanced", fixed = TRUE)
     expect_match(filters, "Confidence", fixed = TRUE)
 })
 

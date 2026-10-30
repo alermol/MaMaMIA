@@ -641,13 +641,23 @@ analyzeBamInput <- function(bam_paths,
         fdr = cal$fdr,
         floors = cal_floors
     )
-    calls <- classifyCalls(calibrated$calls, controls = cal$controls)
+    class_thresholds <- .call_class_thresholds(
+        calibrated$calls, cal$controls
+    )
+    calls <- classifyCalls(
+        calibrated$calls,
+        controls = cal$controls,
+        thresholds = class_thresholds
+    )
     calls <- assignCallPositions(
         calls,
         metrics = metrics,
         windows = windows,
         scores = scores,
-        assembly = assembly_config
+        assembly = assembly_config,
+        masks = masks,
+        class_thresholds = class_thresholds,
+        controls = cal$controls
     )
     .pipeline_progress(progress, "calibration", list(
         n_calls = sum(calls$pass, na.rm = TRUE),

@@ -36,8 +36,9 @@ passing alignment.}
 }
 \value{
 A list with \code{metrics} (a long data frame with \code{sample}, \code{chr_id},
-\code{iid}, \code{count} and \code{covered}), \code{counts} and \code{covered} matrices (samples x
-windows), \code{read_length} and \code{n_per_chromosome}.
+\code{iid}, \code{count}, \code{covered} and \code{mapq_high}), \code{counts}, \code{covered} and
+\code{mapq_high} matrices (samples x windows), \code{read_length} and
+\code{n_per_chromosome}.
 }
 \description{
 Counts, for every exact-N analysis window, the number of alignments with at

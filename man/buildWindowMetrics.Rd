@@ -24,6 +24,7 @@ A \code{WindowMetrics} data frame with one row per sample and window.
 }
 \description{
 Joins per-sample count/covered measurements with the window metadata and the
-reference GC, then derives breadth, \code{lambda_breadth = -log(1 - breadth)} and
-\code{lambda_count = count * read_length / length}.
+reference GC, then derives breadth, \code{lambda_breadth = -log(1 - breadth)},
+\code{lambda_count = count * read_length / length} and
+\code{mapq_high_fraction = mapq_high / count}.
 }

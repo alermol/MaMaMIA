@@ -28,7 +28,10 @@ event_sam <- function(sample, contig_length = 20000L, read_length = 50L,
         )
     }
     base <- seq(1L, contig_length - read_length + 1L, by = step)
-    donor <- sort(unique(c(base, seq(event_from, event_to, by = event_step))))
+    ## A balanced replacement: donor reads cover the event at the same
+    ## density as the recipient reads outside it, and recipient reads are
+    ## absent there. Total depth stays approximately constant.
+    donor <- seq(event_from, event_to, by = step)
     recipient <- base[base < event_from | base > event_to]
     c(
         "@HD\tVN:1.6\tSO:coordinate",

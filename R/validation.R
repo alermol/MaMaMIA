@@ -28,13 +28,16 @@ validateBamAnalysisResult <- function(x) {
     contracts <- list(
         metrics = c(
             "sample", "chr_id", "chr_name", "group", "role", "component",
-            "iid", "start", "stop", "length", "count", "covered", "breadth",
-            "gc", "lambda_breadth", "lambda_count", "read_length"
+            "iid", "start", "stop", "length", "count", "covered",
+            "mapq_high", "mapq_high_fraction", "breadth", "gc",
+            "lambda_breadth", "lambda_count", "read_length"
         ),
         scores = c(
             "sample", "group", "iid", "start", "stop", "mode", "metric",
             "score", "donor_mean", "recipient_mean", "donor_component",
-            "n_donor", "n_recipient", "donor_copies", "donor_fraction"
+            "n_donor", "n_recipient", "donor_copies", "donor_fraction",
+            "donor_component_spread", "recipient_component_spread",
+            "n_donor_supported", "mapq_fraction", "total_residual"
         ),
         masks = c(
             "group", "iid", "start", "stop", "f", "posterior", "mask",
@@ -46,15 +49,21 @@ validateBamAnalysisResult <- function(x) {
         ),
         calls = c(
             "sample", "group", "start_iid", "end_iid", "start_bp", "end_bp",
-            "width_bp", "score_mean", "donor_mean", "recipient_mean", "class",
-            "class_group", "class_evidence", "class_confidence",
-            "class_status", "confidence", "method", "mode",
+            "width_bp", "score_mean", "donor_mean", "recipient_mean",
+            "total_mean", "class", "copy_state", "copy_state_group",
+            "total_evidence", "component_status", "mappability_status",
+            "mapq_fraction", "class_group",
+            "class_evidence", "class_confidence", "class_status",
+            "confidence", "method", "mode",
             "recipient_component", "recipient_chr_id", "recipient_chr_name",
             "recipient_group", "recipient_start_bp", "recipient_end_bp",
             "recipient_run_start_bp", "recipient_run_end_bp",
             "recipient_deletion_width_bp", "recipient_expected_breadth",
             "recipient_observed_breadth", "recipient_copy_number",
-            "recipient_mean_depletion", "affected_fraction",
+            "recipient_mean_depletion", "recipient_depletion_se",
+            "recipient_depletion_lower", "recipient_depletion_z",
+            "recipient_width_overlap", "recipient_fraction_ratio",
+            "recipient_mapq_fraction", "donor_copies", "affected_fraction",
             "affected_copies", "dosage_confidence", "recipient_weight",
             "recipient_margin", "recipient_assignment",
             "recipient_cross_group", "recipient_reliable",

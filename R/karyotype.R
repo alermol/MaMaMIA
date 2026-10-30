@@ -366,6 +366,33 @@ karyotype_payload <- function(result, sample = NULL,
             class_status = as.character(
                 call_value("class_status", i, NA_character_)
             ),
+            copy_state = as.character(
+                call_value("copy_state", i, NA_character_)
+            ),
+            total_evidence = as.character(
+                call_value("total_evidence", i, NA_character_)
+            ),
+            component_status = as.character(
+                call_value("component_status", i, NA_character_)
+            ),
+            mappability_status = as.character(
+                call_value("mappability_status", i, NA_character_)
+            ),
+            mapq_fraction = as.numeric(
+                call_value("mapq_fraction", i, NA_real_)
+            ),
+            total_mean = as.numeric(
+                call_value("total_mean", i, NA_real_)
+            ),
+            donor_copies = as.numeric(
+                call_value("donor_copies", i, NA_real_)
+            ),
+            recipient_depletion_se = as.numeric(
+                call_value("recipient_depletion_se", i, NA_real_)
+            ),
+            recipient_width_overlap = as.numeric(
+                call_value("recipient_width_overlap", i, NA_real_)
+            ),
             recipient_copy_number = as.numeric(
                 call_value("recipient_copy_number", i, NA_real_)
             ),

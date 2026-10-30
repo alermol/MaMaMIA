@@ -2,23 +2,28 @@
 % Please edit documentation in R/calls.R
 \name{classifyCalls}
 \alias{classifyCalls}
-\title{Classify introgression calls from donor and recipient evidence}
+\title{Classify introgression calls from donor, recipient and total evidence}
 \usage{
 classifyCalls(
   calls,
   controls = NULL,
+  thresholds = NULL,
   substitution_cutoff = -0.5,
   addition_cutoff = 0.5,
   high = 1,
   moderate = 0.5,
-  min_control = 5L
+  min_control = 5L,
+  component_spread_cutoff = 2
 )
 }
 \arguments{
 \item{calls}{A \code{Calls} data frame from \code{\link[=calibrateSegments]{calibrateSegments()}}.}
 
 \item{controls}{Optional control sample names used to calibrate the class
-cutoffs. When \code{NULL}, every sample contributes.}
+cutoffs. When \code{NULL}, or when none of the requested controls are present,
+the fixed floors are used.}
+
+\item{thresholds}{Optional precomputed \code{.call_class_thresholds()} result.}
 
 \item{substitution_cutoff}{Minimum recipient-loss cutoff.}
 
@@ -28,19 +33,30 @@ cutoffs. When \code{NULL}, every sample contributes.}
 
 \item{min_control}{Minimum number of control segments per mode/length bin
 before empirical cutoffs are used.}
+
+\item{component_spread_cutoff}{Log-depth spread above which a group-level
+call is flagged as component-heterogeneous.}
 }
 \value{
-The calls with \code{class}, \code{class_evidence}, \code{class_confidence},
-\code{class_status} and \code{confidence}.
+The calls with \code{class}, \code{copy_state}, \code{total_evidence},
+\code{class_evidence}, \code{class_confidence}, \code{class_status},
+\code{component_status}, \code{mappability_status} and \code{confidence}.
 }
 \description{
-The classifier uses both sides of the paired score. A call is a
-\code{substitution} when donor coverage is gained and recipient coverage is lost,
-an \code{addition} when only the donor side is gained, a \code{deletion} when only the
-recipient side is lost, and \code{other} when neither side has a strong effect.
-\code{class_evidence} records which side(s) supported the call,
-\code{class_confidence} is a class-level confidence, and \code{class_status} is
-\code{confident}, \code{ambiguous} or \code{needs_review}. The older \code{confidence} column
-remains the donor-effect confidence. Donor and recipient cutoffs are
-calibrated from control segments when enough controls are available.
+The classifier uses both sides of the paired score and, when available, a
+relative total-depth residual. A call is a \code{substitution} when donor
+coverage is gained and recipient coverage is lost with a neutral total, an
+\code{addition} when donor is gained with a total gain, a \code{deletion} when
+recipient is lost with a total loss, and \code{other} when no side is strong.
+A donor/recipient event with a total imbalance is \code{complex}; so is a
+donor/recipient width mismatch refined during assignment.
+}
+\details{
+\code{class_evidence} records which side(s) supported the call, \code{class_confidence}
+is a class-level confidence, and \code{class_status} is \code{confident}, \code{ambiguous}
+or \code{needs_review}. \code{copy_state} is a separate axis: \code{balanced}, \code{gain},
+\code{loss}, \code{compound} or \code{neutral}. \code{total_evidence} records
+\code{gain}, \code{loss} or \code{neutral}. The older \code{confidence} column remains the
+donor-effect confidence. Cutoffs are calibrated from control segments when
+enough controls are available.
 }

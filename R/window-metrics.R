@@ -96,8 +96,9 @@
 #' @param count_deletions Treat `D` CIGAR blocks as covered bases.
 #'
 #' @return A list with `metrics` (a long data frame with `sample`, `chr_id`,
-#'   `iid`, `count` and `covered`), `counts` and `covered` matrices (samples x
-#'   windows), `read_length` and `n_per_chromosome`.
+#'   `iid`, `count`, `covered` and `mapq_high`), `counts`, `covered` and
+#'   `mapq_high` matrices (samples x windows), `read_length` and
+#'   `n_per_chromosome`.
 #' @export
 countWindowMetrics <- function(bam_path, windows, samples, read_groups,
                                mapq = 20L, exclude_flags = 1796L,
@@ -182,8 +183,11 @@ countWindowMetrics <- function(bam_path, windows, samples, read_groups,
     )
     counts <- result$counts
     covered <- result$covered
+    mapq_high <- result$mapq_high
     if (!is.matrix(counts) || !is.matrix(covered) ||
+        !is.matrix(mapq_high) ||
         !identical(dim(counts), dim(covered)) ||
+        !identical(dim(counts), dim(mapq_high)) ||
         nrow(counts) != length(samples) ||
         ncol(counts) != nrow(table)) {
         .window_metrics_error(
@@ -192,8 +196,10 @@ countWindowMetrics <- function(bam_path, windows, samples, read_groups,
     }
     dimnames(counts) <- list(samples, NULL)
     dimnames(covered) <- list(samples, NULL)
+    dimnames(mapq_high) <- list(samples, NULL)
     storage.mode(counts) <- "integer"
     storage.mode(covered) <- "integer"
+    storage.mode(mapq_high) <- "integer"
 
     n_windows <- nrow(table)
     ## The label columns are sample-major (one sample's whole window grid,
@@ -208,6 +214,7 @@ countWindowMetrics <- function(bam_path, windows, samples, read_groups,
             times = length(samples)),
         count = as.integer(t(counts)),
         covered = as.integer(t(covered)),
+        mapq_high = as.integer(t(mapq_high)),
         stringsAsFactors = FALSE
     )
 
@@ -215,6 +222,7 @@ countWindowMetrics <- function(bam_path, windows, samples, read_groups,
         metrics = metrics,
         counts = counts,
         covered = covered,
+        mapq_high = mapq_high,
         read_length = as.numeric(result$read_length),
         n_per_chromosome = n_per
     )
@@ -223,8 +231,9 @@ countWindowMetrics <- function(bam_path, windows, samples, read_groups,
 #' Build the WindowMetrics table
 #'
 #' Joins per-sample count/covered measurements with the window metadata and the
-#' reference GC, then derives breadth, `lambda_breadth = -log(1 - breadth)` and
-#' `lambda_count = count * read_length / length`.
+#' reference GC, then derives breadth, `lambda_breadth = -log(1 - breadth)`,
+#' `lambda_count = count * read_length / length` and
+#' `mapq_high_fraction = mapq_high / count`.
 #'
 #' @param measured A result from [countWindowMetrics()], or a data frame with
 #'   `sample`, `chr_id`, `iid`, `count`, `covered` and an optional
@@ -302,6 +311,10 @@ buildWindowMetrics <- function(measured, windows, gc, read_length = NULL) {
     measured$count <- as.numeric(measured$count)
     measured$covered <- as.numeric(measured$covered)
     measured$read_length <- as.numeric(measured$read_length)
+    if (!"mapq_high" %in% names(measured)) {
+        measured$mapq_high <- NA_real_
+    }
+    measured$mapq_high <- as.numeric(measured$mapq_high)
     if (anyNA(measured$sample) || any(!nzchar(measured$sample))) {
         .window_metrics_error("`measured$sample` contains an empty value")
     }
@@ -340,6 +353,7 @@ buildWindowMetrics <- function(measured, windows, gc, read_length = NULL) {
         length = as.numeric(meta$stop) - as.numeric(meta$start),
         count = as.integer(measured$count),
         covered = as.integer(measured$covered),
+        mapq_high = as.numeric(measured$mapq_high),
         gc = as.numeric(meta$gc),
         read_length = measured$read_length,
         stringsAsFactors = FALSE
@@ -347,6 +361,9 @@ buildWindowMetrics <- function(measured, windows, gc, read_length = NULL) {
     out$breadth <- out$covered / out$length
     out$breadth[!is.finite(out$breadth)] <- 0
     out$breadth <- pmin(pmax(out$breadth, 0), 1)
+    out$mapq_high_fraction <- ifelse(
+        out$count > 0, out$mapq_high / out$count, NA_real_
+    )
     epsilon <- 1e-12
     out$lambda_breadth <- -log(pmax(1 - out$breadth, epsilon))
     out$lambda_count <- out$count * out$read_length / out$length
@@ -359,7 +376,8 @@ buildWindowMetrics <- function(measured, windows, gc, read_length = NULL) {
     rownames(out) <- NULL
     out[, c(
         "sample", "chr_id", "chr_name", "group", "role", "component",
-        "copy_number", "iid", "start", "stop", "length", "count", "covered", "breadth",
+        "copy_number", "iid", "start", "stop", "length", "count", "covered",
+        "mapq_high", "mapq_high_fraction", "breadth",
         "gc", "lambda_breadth", "lambda_count", "read_length"
     )]
 }

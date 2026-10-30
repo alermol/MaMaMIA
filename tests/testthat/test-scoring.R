@@ -265,3 +265,47 @@ test_that("donor-only scoring is available as a fallback", {
     expect_gt(mean(event), 0.5)
     expect_identical(unique(scored$score_type), "donor_only")
 })
+
+test_that("the total-depth residual separates balanced and unbalanced events", {
+    set.seed(21)
+    base <- score_metrics(recipient_components = "A")
+    substitution <- base
+    sub_donor <- substitution$role == "donor" & substitution$group == "1" &
+        substitution$iid >= 50 & substitution$iid <= 90
+    sub_recipient <- substitution$role == "recipient" &
+        substitution$group == "1" & substitution$iid >= 50 &
+        substitution$iid <= 90
+    substitution$lambda_breadth[sub_donor] <- 0.2
+    substitution$lambda_breadth[sub_recipient] <- 0
+    substitution$breadth[sub_donor] <- 1 - exp(-0.2)
+    substitution$breadth[sub_recipient] <- 0
+    substitution$covered[sub_donor] <- round(
+        substitution$breadth[sub_donor] * substitution$length[sub_donor]
+    )
+    substitution$covered[sub_recipient] <- 0
+    scored <- scoreIntrogression(substitution, mode = "single")
+    event <- scored$group == "1" & scored$iid >= 50 & scored$iid <= 90
+    expect_lt(abs(mean(scored$total_residual[event])), 0.2)
+
+    addition <- add_donor_event(base, multiplier = 2)
+    scored <- scoreIntrogression(addition, mode = "single")
+    expect_gt(mean(scored$total_residual[event]), 0.2)
+
+    deletion <- add_recipient_event(base, multiplier = 0.5)
+    scored <- scoreIntrogression(deletion, mode = "single")
+    expect_lt(mean(scored$total_residual[event]), -0.2)
+})
+
+test_that("component evidence is centred before measuring spread", {
+    set.seed(22)
+    metrics <- score_metrics(recipient_components = c("A", "B", "D"))
+    scored <- scoreIntrogression(
+        metrics, mode = "single",
+        sample_composition = c(A = 2, B = 2, D = 2)
+    )
+    expect_true(all(is.finite(scored$donor_component_spread)))
+    expect_true(all(is.finite(scored$recipient_component_spread)))
+    expect_true(all(is.finite(scored$n_donor_supported)))
+    ## Component baselines are removed, so normal windows have a small spread.
+    expect_lt(stats::median(scored$recipient_component_spread), 1)
+})

@@ -11,13 +11,31 @@
 * **New result contract.** `BamAnalysisResult` now exposes `metrics`, `scores`,
   `masks`, `calibration` and `calls`. The `counts`, `rca`, `isa` and
   `normalization` fields were removed.
-* **Call classes are two-sided.** A recipient loss without donor support is
-  now `deletion`; donor gain with recipient loss is `substitution`; donor gain
-  alone is `addition`; a width mismatch is `complex`. Donor and recipient
-  cutoffs are calibrated from control segments. Calls add `class_evidence`,
-  `class_confidence` and `class_status` (`confident`, `ambiguous`,
-  `needs_review`). Deletion-only calls previously labelled `substitution`
-  change class.
+* **Call classes are multi-axis.** A recipient loss without donor support is
+  now `deletion`; donor gain with recipient loss and a neutral total is
+  `substitution`; donor gain with a total gain is `addition`; a total imbalance
+  or a width mismatch is `complex`. Donor and recipient cutoffs are calibrated
+  from control segments. Calls add `class_evidence`, `class_confidence`,
+  `class_status` (`confident`, `ambiguous`, `needs_review`), `copy_state`
+  (`balanced`, `gain`, `loss`, `compound`, `neutral`), `total_evidence`,
+  `component_status` and `mappability_status`. Deletion-only calls previously
+  labelled `substitution` change class.
+* **Assignment is calibrated.** Calling positions now use per-contig corrected
+  recipient residuals, standard-error-aware depletion scores, a width-matched
+  permutation null, contig-fraction reciprocal overlap, and weighted interval
+  scheduling for multiple runs on one contig. Masked windows are excluded.
+  Cross-group hosts are reported as `cross_group`.
+* **Relative total depth.** The score table adds `total_residual`; calls add
+  `total_mean`. This separates balanced substitutions from additions,
+  deletions, amplifications and compound events without an external
+  mappability track.
+* **Dosage covers additions and deletions.** Donor-only additions use
+  `donor_copies`; recipient losses without donor support use the loss fraction
+  at lower confidence. `affected_copies` is no longer limited to donor-backed
+  substitutions.
+* **MAPQ proxy.** `bam_metrics_rg_cpp()` also returns per-window high-MAPQ read
+  counts. `mapq_high_fraction` feeds `mappability_status`; low-MAPQ calls are
+  downgraded to `ambiguous`.
 * **Components replace genome-type labels.** Every normalized contig carries
   an arbitrary `component` label. The label is used only to aggregate contigs
   and copies; it carries no ploidy or genome-type assumption, and donor and
@@ -103,26 +121,27 @@
   karyotype click.
 * The karyotype now performs an all-vs-all assignment of every donor segment
   against every recipient contig. Detection stays group-level, but candidate
-  scoring compares the observed breadth inside the call with a cohort baseline
-  (75th percentile of the other samples) or, for a single sample, with the same
-  contig outside the call. Candidates are penalised for a donor/recipient
-  width mismatch and receive a same-group homology bonus. A per-sample
-  assignment chooses at most one call per recipient contig plus a dummy
-  "no host" option, with a second pass for additional non-overlapping
-  segments. Each call records `recipient_group`, `recipient_cross_group`,
-  `recipient_expected_breadth`, `recipient_deletion_width_bp`,
-  `recipient_weight`, `recipient_margin` and an
-  `assigned`/`ambiguous`/`no_recipient_loss` flag. A strong assigned
-  recipient loss reclassifies the call as a substitution, while `class_group`
-  keeps the original group-level class. Cross-group assignments are drawn with
-  a dashed border and reported as translocation candidates. The call table and
-  BEDPE export carry the assignment; calls with no host are exported with
-  `NA` recipient coordinates.
+  scoring uses a per-contig recipient residual, a standard-error-aware
+  depletion score, a width-matched permutation null and a same-group homology
+  bonus. Candidates are compared in contig-fraction space with reciprocal
+  overlap. A per-sample assignment chooses at most one call per recipient
+  contig plus a dummy "no host" option; weighted interval scheduling places
+  additional non-overlapping runs on one contig. Masked windows are excluded
+  from the baseline and the run. Each call records `recipient_group`,
+  `recipient_cross_group`, `recipient_expected_breadth`,
+  `recipient_deletion_width_bp`, `recipient_weight`, `recipient_margin`,
+  `recipient_depletion_se`, `recipient_width_overlap` and an
+  `assigned`/`cross_group`/`ambiguous`/`no_recipient_loss` flag. A strong
+  assigned recipient loss reclassifies the call as a substitution, while
+  `class_group` keeps the original group-level class. Cross-group hosts are
+  reported as `cross_group` translocation candidates, not confirmed hosts.
+  The call table and BEDPE export carry the assignment; calls with no host are
+  exported with `NA` recipient coordinates.
 * Passing calls are matched before non-passing calls, so a non-passing
   segment cannot take the best host and push a passing call onto a worse
-  one. A cross-group host is marked `assigned` only when the call's own group
-  also has a reliable candidate; otherwise it stays `ambiguous` as a
-  translocation candidate. This keeps a copy-neutral event from being
+  one. A cross-group host is never marked `assigned`; without a reliable
+  same-group candidate it is `cross_group`, and with a competing same-group
+  candidate it stays `ambiguous`. This keeps a copy-neutral event from being
   confirmed on an unrelated deletion.
 
 ## Validation
@@ -130,12 +149,13 @@
 * The paired log-ratio recovers **6/6** reference events on the 24
   *Aegilops speltoides* BAMs (Sq74 7S; Sq75 7S/2S/6S/5S; Sq76 7S), with one
   control call >= 20 Mb.
-* Global assignment places those six events on their expected recipient
-  chromosomes: 7D for Sq74, 7D/2B/6D/5B for Sq75 and 7A for Sq76. Across 198
-  synthetic copy-neutral sample/group events (donor present, no loss in the
-  call's own group), none is marked `assigned`: 137 receive no host and 61
-  remain ambiguous translocation candidates when the background sample carries
-  a natural deletion elsewhere. All 198 retain `class = addition`.
+* Global assignment places five of the six reference events on recipient
+  contigs: Sq74 7D and Sq75 2B/5B/6D/7D. The Sq76 7A event is detected as an
+  addition without recipient loss and receives no host. Across synthetic
+  copy-neutral sample/group events (donor present, no loss in the call's own
+  group), none is marked `assigned`: events receive no host or remain
+  ambiguous when the background sample carries a natural deletion elsewhere.
+  Synthetic copy-neutral events retain the group-level class.
 * The donor-only fallback also recovers 6/6, with two control calls >= 20 Mb.
 * Single-sample analysis recovers the same six events, including the distal
   Sq75 5S and Sq76 5S segments.
@@ -143,11 +163,10 @@
   cores; one 28,000-window BAM takes about 19 s on one core.
 * The 24-sample panel mask masks 16.3% of windows, masks terminal artifacts and
   shortens (does not delete) the Sq76 5S event.
-* All-vs-all assignment of the five-sample UI fixture places Sq74 2S on 2D,
-  5S on 5B and 7S on 7D, and reports 4S on 5A as a cross-group translocation
-  candidate. The previous within-group assignment put 4S on 4A, whose terminal
-  windows are low in every sample; 5A is the only recipient with an
-  Sq74-specific terminal loss that matches the 4S segment width.
+* The five-sample UI fixture exercises same-group assignment, a cross-group
+  translocation candidate and a copy-neutral no-host call. Cross-group hosts
+  are reported as `cross_group`, independent of the older within-group
+  placement rule.
 
 # MaMaMIA 0.99.1
 

@@ -212,6 +212,33 @@ segmentScores <- function(scores, mask = NULL, alpha = 0.001, undo_SD = 1,
                     mean(x$recipient_residual[idx], na.rm = TRUE)
                 }, numeric(1)
             )
+            if ("total_residual" %in% names(x)) {
+                segments$total_mean <- vapply(
+                    seq_len(nrow(segments)), function(i) {
+                        idx <- x$iid >= segments$start_iid[[i]] &
+                            x$iid <= segments$end_iid[[i]]
+                        mean(x$total_residual[idx], na.rm = TRUE)
+                    }, numeric(1)
+                )
+            } else {
+                segments$total_mean <- NA_real_
+            }
+            for (column in c(
+                "donor_component_spread", "recipient_component_spread",
+                "n_donor_supported", "mapq_fraction"
+            )) {
+                if (column %in% names(x)) {
+                    segments[[column]] <- vapply(
+                        seq_len(nrow(segments)), function(i) {
+                            idx <- x$iid >= segments$start_iid[[i]] &
+                                x$iid <= segments$end_iid[[i]]
+                            mean(x[[column]][idx], na.rm = TRUE)
+                        }, numeric(1)
+                    )
+                } else {
+                    segments[[column]] <- NA_real_
+                }
+            }
             pieces[[length(pieces) + 1L]] <- segments
         }
     }
@@ -222,6 +249,9 @@ segmentScores <- function(scores, mask = NULL, alpha = 0.001, undo_SD = 1,
             start_bp = numeric(0), end_bp = numeric(0),
             width_bp = numeric(0), score_mean = numeric(0),
             donor_mean = numeric(0), recipient_mean = numeric(0),
+            total_mean = numeric(0), donor_component_spread = numeric(0),
+            recipient_component_spread = numeric(0),
+            n_donor_supported = numeric(0), mapq_fraction = numeric(0),
             n_windows = integer(0), method = character(0),
             mode = character(0), metric = character(0),
             stringsAsFactors = FALSE
@@ -232,7 +262,9 @@ segmentScores <- function(scores, mask = NULL, alpha = 0.001, undo_SD = 1,
     out <- out[, c(
         "sample", "group", "start_iid", "end_iid", "start_bp", "end_bp",
         "width_bp", "score_mean", "donor_mean", "recipient_mean",
-        "n_windows", "method", "mode", "metric"
+        "total_mean", "donor_component_spread",
+        "recipient_component_spread", "n_donor_supported",
+        "mapq_fraction", "n_windows", "method", "mode", "metric"
     )]
     rownames(out) <- NULL
     out

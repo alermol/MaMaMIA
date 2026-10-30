@@ -270,6 +270,21 @@ HTMLWidgets.widget({
         if (hasValue(matched.class_status)) {
           lines.push("class status " + escapeHtml(matched.class_status));
         }
+        if (hasValue(matched.copy_state)) {
+          lines.push("copy state " + escapeHtml(matched.copy_state));
+        }
+        if (hasValue(matched.total_evidence)) {
+          lines.push("total evidence " + escapeHtml(matched.total_evidence));
+        }
+        if (hasValue(matched.component_status)) {
+          lines.push("components " + escapeHtml(matched.component_status));
+        }
+        if (hasValue(matched.mappability_status)) {
+          lines.push("mappability " + escapeHtml(matched.mappability_status));
+        }
+        if (hasValue(matched.total_mean)) {
+          lines.push("total residual " + Number(matched.total_mean).toFixed(2));
+        }
         if (hasValue(matched.recipient_assignment) &&
             matched.recipient_assignment !== "assigned") {
           lines.push("assignment: " +

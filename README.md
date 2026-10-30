@@ -217,36 +217,42 @@ Calls are calibrated by segment length. The threshold is the empirical
 single sample is its own control; a cohort uses all samples (or `controls`).
 
 When a call is assigned to a recipient contig, MaMaMIA also estimates a
-provisional substitution dosage. Breadth is converted to a per-copy depth
-scale with `-log(1 - breadth)`, so losing `k` of `n` copies gives
+provisional dosage. Breadth is converted to a per-copy depth scale with
+`-log(1 - breadth)`, so losing `k` of `n` copies gives
 `lambda_observed / lambda_expected = (n - k) / n`. The call reports
 `recipient_copy_number`, `recipient_observed_breadth`, `affected_fraction`,
-`affected_copies` and `dosage_confidence`. The estimate requires donor support;
-copy-neutral additions, unassigned calls and deletion-only signals are
-reported as `unavailable`.
+`affected_copies` and `dosage_confidence`. A donor-only addition uses the
+donor-copy estimate, and a deletion without donor support uses the recipient
+loss fraction at lower confidence. Unassigned and copy-neutral calls remain
+`unavailable`.
 
-Classification uses both sides of the score. Donor and recipient cutoffs are
-calibrated from control segments when enough controls are available;
-`class_evidence` records whether the call was supported by donor gain,
-recipient loss, both or neither. `class_confidence` is a class-level confidence
-separate from the donor-effect `confidence`, and `class_status` is `confident`,
-`ambiguous` or `needs_review`. A recipient loss without donor support is
-classified as `deletion`; a donor/recipient width mismatch is `complex`.
+Classification uses three axes: donor gain, recipient loss and a relative
+total-depth residual. A balanced replacement is `substitution`, donor gain with
+a total gain is `addition`, recipient loss with a total loss is `deletion`, and
+a total imbalance is `complex`. Donor and recipient cutoffs are calibrated from
+control segments when controls are supplied; without controls the fixed
+floors are used. `copy_state` is `balanced`, `gain`, `loss`, `compound` or
+`neutral`; `class_evidence` records which side(s) supported the call,
+`class_confidence` is a class-level confidence, and `class_status` is
+`confident`, `ambiguous` or `needs_review`. `component_status` flags
+component-heterogeneous calls and `mappability_status` flags low-MAPQ windows.
+A recipient loss without donor support is `deletion`; a width mismatch is
+`complex`.
 
 ## Result contract
 
-`BamAnalysisResult` has eleven fields:
+`BamAnalysisResult` has twelve fields:
 
 | Field | Contents |
 |---|---|
 | `assembly`, `config` | resolved assembly and validated registry |
 | `bams`, `samples` | input metadata and per-sample call counts |
 | `windows`, `gc` | exact-N windows and reference GC |
-| `metrics` | sample × window: count, covered, breadth, GC, lambdas |
-| `scores` | sample × group × window: score and side residuals |
+| `metrics` | sample × window: count, covered, high-MAPQ fraction, breadth, GC, lambdas |
+| `scores` | sample × group × window: score, side residuals and total-depth residual |
 | `masks` | window-level mask with `source` and `version` |
 | `calibration` | thresholds by mode and segment-length bin |
-| `calls` | segments with class, confidence, method, assignment, dosage and `pass` |
+| `calls` | segments with class, copy state, total evidence, confidence, method, assignment, dosage and `pass` |
 | `provenance` | versions, parameters, mask/calibration hashes |
 
 ## Dashboard
@@ -258,20 +264,23 @@ exploreIntrogressions(result)
 ```
 
 The dashboard analyses every component declared for the selected species and
-offers chromosome-group, class, class-status, confidence and width filters;
-class choices are substitution, addition, deletion, complex and other. The main tab is
+offers chromosome-group, class, class-status, copy-state, confidence and width
+filters; class choices are substitution, addition, deletion, complex and other.
+The main tab is
 a vertical karyotype with a score heatmap or call-map mode. Chromosomes are
 shown in assembly-config order without group or component columns, as diploid
 homolog pairs: a small gap inside each pair, a larger gap between chromosomes,
 the same `1A`/`1B` label on both copies, and every bar scaled by its configured
-length. Every donor segment is compared with every recipient contig; a cohort
-breadth baseline, a donor/recipient width match and a same-group homology
-prior feed a per-sample global assignment with a "no host" option. Passing
-calls are matched before non-passing calls, cross-group choices are reported
-as translocation candidates rather than confirmed hosts, and a strong assigned
-loss reclassifies the call as a substitution. Deleted chromosomes and added donor
-chromosomes are drawn separately. A score profile, call table and BEDPE export
-follow.
+length. Every donor segment is compared with every recipient contig; a
+per-contig corrected recipient residual, a standard-error-aware candidate
+score, a calibrated width-matched null and a same-group homology prior feed a
+per-sample global assignment with a "no host" option. Passing calls are matched
+before non-passing calls, multiple non-overlapping runs on one contig are
+scheduled by weighted interval scheduling, cross-group choices are reported as
+`cross_group` translocation candidates rather than confirmed hosts, and a
+strong assigned loss reclassifies the call as a substitution. Deleted
+chromosomes and added donor chromosomes are drawn separately. A score profile,
+call table and BEDPE export follow.
 
 ## Validation
 
@@ -280,8 +289,10 @@ The paired log-ratio recovers **6/6** reference events on the 24
 control call >= 20 Mb. The donor-only fallback also recovers 6/6. A
 28,000-window BAM takes about 19 s on one core; the 24-BAM cohort, including
 global assignment, takes about 450 s with 30 cores. Global assignment places
-all six events on 7D/7D/2B/6D/5B/7A, and synthetic copy-neutral events are
-never marked `assigned`. The reproducible check is:
+five of the six reference events on recipient contigs (Sq74 7D; Sq75
+2B/5B/6D/7D). The Sq76 7A event is detected as an addition without recipient
+loss and receives no host. Synthetic copy-neutral events are never marked
+`assigned`. The reproducible check is:
 
 ```sh
 Rscript tools/validate-24.R --out test_data/introgression-study/results/validation_24bam.rds

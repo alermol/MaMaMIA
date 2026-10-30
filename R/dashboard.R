@@ -117,6 +117,15 @@ explorer_view_filters_ui <- function(id) {
             inline = TRUE
         ),
         shiny::checkboxGroupInput(
+            ns("copy_state"), "Copy state",
+            choices = c(
+                "balanced", "gain", "loss", "compound", "neutral"
+            ),
+            selected = c(
+                "balanced", "gain", "loss", "compound", "neutral"
+            ), inline = TRUE
+        ),
+        shiny::checkboxGroupInput(
             ns("confidence"), "Confidence",
             choices = c("high", "moderate", "low"),
             selected = c("high", "moderate", "low"), inline = TRUE
@@ -296,6 +305,10 @@ explorer_server <- function(id, result, sample = NULL) {
             if (length(input$class_status) > 0L) {
                 keep <- keep & x$class_status %in% input$class_status
             }
+            if (length(input$copy_state) > 0L &&
+                "copy_state" %in% names(x)) {
+                keep <- keep & x$copy_state %in% input$copy_state
+            }
             if (length(input$confidence) > 0L) {
                 keep <- keep & x$confidence %in% input$confidence
             }
@@ -389,8 +402,9 @@ explorer_server <- function(id, result, sample = NULL) {
             )
             x <- visible_calls()
             columns <- c(
-                "sample", "group", "class", "class_group",
+                "sample", "group", "class", "copy_state", "class_group",
                 "class_evidence", "class_confidence", "class_status",
+                "total_evidence", "component_status", "mappability_status",
                 "confidence", "recipient_group", "recipient_cross_group",
                 "recipient_component", "recipient_chr_name",
                 "recipient_start_bp", "recipient_end_bp",
@@ -399,7 +413,9 @@ explorer_server <- function(id, result, sample = NULL) {
                 "recipient_expected_breadth", "recipient_observed_breadth",
                 "recipient_copy_number", "affected_fraction",
                 "affected_copies", "dosage_confidence",
-                "recipient_mean_depletion",
+                "recipient_mean_depletion", "recipient_depletion_se",
+                "recipient_depletion_lower", "recipient_width_overlap",
+                "recipient_fraction_ratio", "recipient_mapq_fraction",
                 "recipient_alternative", "recipient_alternative_score",
                 "donor_component", "donor_chr_name",
                 "start_bp", "end_bp", "width_bp",

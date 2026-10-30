@@ -227,6 +227,55 @@
         mean(recipient$gc[recipient$iid == i], na.rm = TRUE)
     }, numeric(1))
 
+    donor_log <- log(donor_matrix + eps)
+    recipient_log <- log(recipient_matrix + eps)
+    ## Component baselines differ by copy set and mappability. Remove each
+    ## component's median before measuring spread, so only a component-specific
+    ## event looks heterogeneous.
+    donor_center <- apply(donor_log, 2L, stats::median, na.rm = TRUE)
+    recipient_center <- apply(
+        recipient_log, 2L, stats::median, na.rm = TRUE
+    )
+    donor_centered <- sweep(donor_log, 2L, donor_center, "-")
+    recipient_centered <- sweep(
+        recipient_log, 2L, recipient_center, "-"
+    )
+    donor_component_spread <- apply(donor_centered, 1L, function(values) {
+        values <- values[is.finite(values)]
+        if (length(values) < 2L) 0 else diff(range(values))
+    })
+    recipient_component_spread <- apply(
+        recipient_centered, 1L, function(values) {
+            values <- values[is.finite(values)]
+            if (length(values) < 2L) 0 else diff(range(values))
+        }
+    )
+    n_donor_supported <- rowSums(
+        sweep(donor_log, 1L, log(recipient_mean + eps), "-") > 0.5,
+        na.rm = TRUE
+    )
+    mapq_donor <- if ("mapq_high_fraction" %in% names(donor)) {
+        vapply(iid, function(i) {
+            values <- donor$mapq_high_fraction[donor$iid == i]
+            values <- values[is.finite(values)]
+            if (length(values) == 0L) NA_real_ else mean(values)
+        }, numeric(1))
+    } else {
+        rep(NA_real_, length(iid))
+    }
+    mapq_recipient <- if ("mapq_high_fraction" %in% names(recipient)) {
+        vapply(iid, function(i) {
+            values <- recipient$mapq_high_fraction[recipient$iid == i]
+            values <- values[is.finite(values)]
+            if (length(values) == 0L) NA_real_ else mean(values)
+        }, numeric(1))
+    } else {
+        rep(NA_real_, length(iid))
+    }
+    mapq_fraction <- rowMeans(
+        cbind(mapq_donor, mapq_recipient), na.rm = TRUE
+    )
+    mapq_fraction[!is.finite(mapq_fraction)] <- NA_real_
     group_length <- max(recipient$stop, na.rm = TRUE)
     n_per <- length(iid)
     list(
@@ -243,6 +292,11 @@
         gc_recipient = gc_recipient,
         log_donor = log(donor_mean + eps),
         log_recipient = log(recipient_mean + eps),
+        log_total = log(donor_mean + recipient_mean + eps),
+        donor_component_spread = as.numeric(donor_component_spread),
+        recipient_component_spread = as.numeric(recipient_component_spread),
+        n_donor_supported = as.integer(n_donor_supported),
+        mapq_fraction = as.numeric(mapq_fraction),
         length = group_length,
         chr_name = recipient$chr_name[[1L]],
         n_per = n_per
@@ -336,6 +390,10 @@ scoreIntrogression <- function(
                 donor_component = scored$donor_component,
                 n_donor = scored$n_donor,
                 n_recipient = scored$n_recipient,
+                donor_component_spread = scored$donor_component_spread,
+                recipient_component_spread = scored$recipient_component_spread,
+                n_donor_supported = scored$n_donor_supported,
+                mapq_fraction = scored$mapq_fraction,
                 chr_name = scored$chr_name,
                 length = scored$length,
                 n_per_chromosome = scored$n_per,
@@ -343,6 +401,7 @@ scoreIntrogression <- function(
                 gc_recipient = scored$gc_recipient,
                 log_donor = scored$log_donor,
                 log_recipient = scored$log_recipient,
+                log_total = scored$log_total,
                 stringsAsFactors = FALSE
             )
         }
@@ -384,6 +443,9 @@ scoreIntrogression <- function(
         out$score <- score
         out$donor_residual <- donor_residual
         out$recipient_residual <- recipient_residual
+        out$total_residual <- .score_correct_single_pair(
+            out$log_total, out$gc_donor, out$gc_recipient
+        )
     } else {
         out$score <- .side_correction_multi(
             out$score, out$sample, out$group, out$iid
@@ -393,6 +455,9 @@ scoreIntrogression <- function(
         )
         out$recipient_residual <- .side_correction_multi(
             out$log_recipient, out$sample, out$group, out$iid
+        )
+        out$total_residual <- .side_correction_multi(
+            out$log_total, out$sample, out$group, out$iid
         )
     }
 
@@ -417,10 +482,11 @@ scoreIntrogression <- function(
         "sample", "group", "iid", "start", "stop", "mode", "metric",
         "score_type", "score", "donor_mean",
         "recipient_mean", "donor_component", "n_donor", "n_recipient",
-        "donor_copies", "donor_fraction", "chr_name", "length",
-        "n_per_chromosome", "gc_donor", "gc_recipient", "log_donor",
-        "log_recipient", "donor_residual", "recipient_residual", "lambda_copy",
-        "score_raw"
+        "donor_copies", "donor_fraction", "donor_component_spread",
+        "recipient_component_spread", "n_donor_supported", "mapq_fraction",
+        "chr_name", "length", "n_per_chromosome", "gc_donor", "gc_recipient",
+        "log_donor", "log_recipient", "log_total", "donor_residual",
+        "recipient_residual", "total_residual", "lambda_copy", "score_raw"
     )]
 }
 

@@ -24,7 +24,8 @@ test_that("buildWindowMetrics() implements the WindowMetrics contract", {
     expect_named(metrics, c(
         "sample", "chr_id", "chr_name", "group", "role", "component",
         "copy_number", "iid", "start", "stop", "length", "count", "covered",
-        "breadth", "gc", "lambda_breadth", "lambda_count", "read_length"
+        "mapq_high", "mapq_high_fraction", "breadth", "gc",
+        "lambda_breadth", "lambda_count", "read_length"
     ))
     expect_identical(nrow(metrics), nrow(fixture$windows$table))
     expect_true(all(metrics$breadth >= 0 & metrics$breadth <= 1))
@@ -42,6 +43,11 @@ test_that("buildWindowMetrics() implements the WindowMetrics contract", {
         metrics$count * metrics$read_length / metrics$length
     )
     expect_identical(unique(metrics$read_length), 50)
+    expect_true(all(
+        is.na(metrics$mapq_high_fraction) |
+            (metrics$mapq_high_fraction >= 0 &
+                metrics$mapq_high_fraction <= 1)
+    ))
     expect_identical(unique(metrics$group), "1")
     expect_identical(sort(unique(metrics$role)), c("donor", "recipient"))
 })

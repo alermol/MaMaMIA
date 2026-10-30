@@ -267,8 +267,10 @@ Rcpp::List bam_metrics_rg_cpp(
   }
   Rcpp::IntegerMatrix counts(n_samples, static_cast<int>(n_windows));
   Rcpp::IntegerMatrix covered(n_samples, static_cast<int>(n_windows));
+  Rcpp::IntegerMatrix mapq_high(n_samples, static_cast<int>(n_windows));
   std::fill(counts.begin(), counts.end(), 0);
   std::fill(covered.begin(), covered.end(), 0);
+  std::fill(mapq_high.begin(), mapq_high.end(), 0);
 
   BamPtr record(bam_init1());
   if (!record) {
@@ -420,6 +422,16 @@ Rcpp::List bam_metrics_rg_cpp(
                      Rcpp::as<std::string>(sample_names[sample]));
         }
         ++value;
+        if (b->core.qual >= 30) {
+          int& high = mapq_high(sample, static_cast<int>(column));
+          if (high == INT32_MAX) {
+            Rcpp::stop(
+                "High-MAPQ read counts exceed R's integer range for sample "
+                "'%s'",
+                Rcpp::as<std::string>(sample_names[sample]));
+          }
+          ++high;
+        }
       }
       if (ret < -1) {
         Rcpp::stop("Could not read alignments from contig '%s' in BAM '%s'",
@@ -447,6 +459,7 @@ Rcpp::List bam_metrics_rg_cpp(
   return Rcpp::List::create(
       Rcpp::Named("counts") = counts,
       Rcpp::Named("covered") = covered,
+      Rcpp::Named("mapq_high") = mapq_high,
       Rcpp::Named("read_length") = inferred_read_length > 0
                                        ? static_cast<double>(inferred_read_length)
                                        : NA_REAL);

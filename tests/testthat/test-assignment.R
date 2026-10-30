@@ -141,10 +141,10 @@ test_that("a cross-group deletion is reported as a translocation candidate", {
     expect_identical(call$recipient_chr_name, "2A")
     expect_identical(call$recipient_group, "2")
     expect_true(call$recipient_cross_group)
-    ## Without a reliable candidate in the call's own group this is a
-    ## translocation candidate, not a confirmed host. This stops a
+    ## Without a reliable candidate in the call's own group this is an
+    ## explicit translocation candidate, not a confirmed host. This stops a
     ## copy-neutral event from being assigned to an unrelated deletion.
-    expect_identical(call$recipient_assignment, "ambiguous")
+    expect_identical(call$recipient_assignment, "cross_group")
     expect_identical(call$class, "addition")
     expect_identical(call$class_group, "addition")
     expect_true(is.finite(call$recipient_margin))
@@ -167,7 +167,7 @@ test_that("a copy-neutral call is not assigned to an unrelated deletion", {
     call <- calls[calls$group == "1", , drop = FALSE]
     expect_identical(call$recipient_chr_name, "2A")
     expect_true(call$recipient_cross_group)
-    expect_identical(call$recipient_assignment, "ambiguous")
+    expect_identical(call$recipient_assignment, "cross_group")
     expect_identical(call$class, "addition")
     expect_identical(call$class_group, "addition")
 })
@@ -275,7 +275,7 @@ test_that("dosage distinguishes one and two affected copies", {
     )
     expect_identical(
         .assignment_dosage("assigned", 0.1, 0.02, 0.0001, 2)$confidence,
-        "unavailable"
+        "moderate"
     )
     expect_identical(
         .assignment_dosage("assigned", 1, 0.02, 0.02, 2)$confidence,
@@ -304,7 +304,8 @@ test_that("a deletion-only call is not classified as a substitution", {
     expect_identical(call$class, "deletion")
     expect_identical(call$class_evidence, "recipient")
     expect_identical(call$class_group, "addition")
-    expect_true(is.na(call$affected_copies))
+    expect_identical(call$affected_copies, 2L)
+    expect_identical(call$dosage_confidence, "moderate")
 })
 
 test_that("assignment records donor and recipient evidence", {
@@ -327,4 +328,109 @@ test_that("a width-mismatched substitution is complex and needs review", {
     expect_identical(call$class, "complex")
     expect_identical(call$class_evidence, "donor+recipient; width mismatch")
     expect_identical(call$class_status, "needs_review")
+})
+
+test_that("masked windows are excluded from assignment", {
+    fixture <- one_call(assignment_fixture())
+    fixture <- delete_interval(fixture, "S1", "r1a", value = 0.0001)
+    masks <- data.frame(
+        group = "1", iid = 0:19, mask = FALSE, stringsAsFactors = FALSE
+    )
+    masks$mask[masks$iid >= 5L & masks$iid <= 9L] <- TRUE
+    calls <- assignCallPositions(
+        fixture$calls, fixture$metrics, fixture$windows,
+        fixture$scores, fixture$assembly, masks = masks
+    )
+    call <- calls[calls$group == "1", , drop = FALSE]
+    expect_false(identical(call$recipient_chr_name, "1A"))
+    expect_identical(call$recipient_assignment, "no_recipient_loss")
+})
+
+test_that("assignment uses a per-contig corrected recipient residual", {
+    fixture <- one_call(assignment_fixture())
+    fixture <- delete_interval(fixture, "S1", "r1a", value = 0.0001)
+    recipient <- fixture$metrics[fixture$metrics$role == "recipient", ]
+    residual <- .assignment_recipient_residuals(recipient, "multi")
+    event <- residual[
+        residual$sample == "S1" & residual$chr_id == "r1a" &
+            residual$iid >= 5L & residual$iid <= 9L,
+        ,
+        drop = FALSE
+    ]
+    expect_true(all(event$depletion > 2))
+    expect_lt(abs(mean(event$expected_breadth) - 0.02), 0.001)
+})
+
+test_that("an addition gets dosage from donor copies", {
+    dosage <- .assignment_dosage(
+        "assigned", donor_mean = 1.2, expected_breadth = 0.02,
+        observed_breadth = 0.02, copy_number = 2, donor_copies = 1.1
+    )
+    expect_identical(dosage$affected_copies, 1L)
+    expect_identical(dosage$confidence, "high")
+    expect_equal(dosage$affected_fraction, 0.55, tolerance = 0.01)
+})
+
+test_that("non-overlapping interval scheduling maximises score", {
+    expect_identical(
+        .assignment_interval_schedule(
+            start = c(1, 5, 3), end = c(4, 8, 6), score = c(1, 1, 3)
+        ),
+        3L
+    )
+    expect_identical(
+        .assignment_interval_schedule(
+            start = c(1, 5), end = c(4, 8), score = c(2, 3)
+        ),
+        c(1L, 2L)
+    )
+})
+
+test_that("assignment records width overlap and fraction ratio", {
+    fixture <- one_call(assignment_fixture())
+    fixture <- delete_interval(fixture, "S1", "r1a", value = 0.0001)
+    calls <- assign_fixture(fixture)
+    call <- calls[calls$group == "1", , drop = FALSE]
+    expect_equal(call$recipient_width_overlap, 1, tolerance = 0.01)
+    expect_equal(call$recipient_fraction_ratio, 1, tolerance = 0.01)
+})
+
+test_that("low recipient mappability is recorded and downgrades the class", {
+    fixture <- one_call(assignment_fixture())
+    fixture <- delete_interval(fixture, "S1", "r1a", value = 0.0001)
+    fixture$metrics$mapq_high_fraction <- 0.9
+    idx <- fixture$metrics$sample == "S1" &
+        fixture$metrics$chr_id == "r1a" &
+        fixture$metrics$iid >= 5L & fixture$metrics$iid <= 9L
+    fixture$metrics$mapq_high_fraction[idx] <- 0.1
+    fixture$metrics$mapq_high <- fixture$metrics$count *
+        fixture$metrics$mapq_high_fraction
+    calls <- assign_fixture(fixture)
+    call <- calls[calls$group == "1", , drop = FALSE]
+    expect_lt(call$recipient_mapq_fraction, 0.5)
+    expect_identical(call$mappability_status, "low")
+    expect_identical(call$class_status, "ambiguous")
+})
+
+test_that("assignment thresholds come from a width-matched null", {
+    fixture <- assignment_fixture()
+    calls <- do.call(rbind, replicate(3L, fixture$calls, simplify = FALSE))
+    recipient <- fixture$metrics[fixture$metrics$role == "recipient", ]
+    residual <- .assignment_recipient_residuals(recipient, "multi")
+    contigs <- data.frame(
+        chr_id = fixture$assembly$contigs$recipient$id,
+        chr_name = fixture$assembly$contigs$recipient$name,
+        component = fixture$assembly$contigs$recipient$component,
+        group = fixture$assembly$contigs$recipient$group,
+        copy_number = 2,
+        stringsAsFactors = FALSE
+    )
+    null <- .assignment_null_thresholds(
+        calls, residual, contigs, permutations = 32L, min_calls = 5L
+    )
+    expect_true(length(null) > 0L)
+    threshold <- null[["multi|all"]]
+    expect_true(is.finite(threshold$min_depletion))
+    expect_gte(threshold$strong_depletion, threshold$min_depletion)
+    expect_gte(threshold$assignment_margin, 0)
 })
