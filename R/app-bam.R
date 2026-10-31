@@ -2470,6 +2470,94 @@ bam_dashboard_css <- function() {
         min-height: 0;
         height: 100% !important;
     }
+    .mamamia-tooltip-modal.show {
+        display: flex !important;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        height: 100dvh;
+        padding: 1rem;
+        overflow: hidden;
+    }
+    .mamamia-tooltip-modal .modal-dialog {
+        width: min(800px, calc(100vw - 2rem));
+        max-width: calc(100vw - 2rem);
+        max-height: calc(100vh - 2rem);
+        margin: 0;
+    }
+    .mamamia-tooltip-modal .modal-content {
+        display: flex;
+        flex-direction: column;
+        max-height: calc(100vh - 2rem);
+    }
+    .mamamia-tooltip-modal .modal-header,
+    .mamamia-tooltip-modal .modal-footer {
+        flex: 0 0 auto;
+    }
+    .mamamia-tooltip-modal .modal-body {
+        min-height: 0;
+        overflow-y: auto;
+        overscroll-behavior: contain;
+    }
+    .mamamia-tooltip-help {
+        padding-right: .35rem;
+    }
+    .mamamia-help-lead {
+        margin: 0 0 .55rem;
+        color: var(--mm-ink);
+        font-size: .82rem;
+        line-height: 1.5;
+    }
+    .mamamia-help-callout {
+        margin: 0 0 1rem;
+        padding: .55rem .7rem;
+        border-left: 3px solid var(--mm-accent);
+        border-radius: .35rem;
+        background: var(--mm-accent-soft);
+        color: var(--mm-ink);
+        font-size: .78rem;
+        line-height: 1.45;
+    }
+    .mamamia-help-section + .mamamia-help-section {
+        margin-top: 1rem;
+    }
+    .mamamia-help-intro {
+        margin: 0 0 .4rem;
+        color: var(--mm-muted);
+        font-size: .78rem;
+        line-height: 1.45;
+    }
+    .mamamia-help-section h6 {
+        margin: 0 0 .3rem;
+        color: var(--mm-muted);
+        font-size: .66rem;
+        font-weight: 700;
+        letter-spacing: .07em;
+        text-transform: uppercase;
+    }
+    .mamamia-help-list {
+        display: grid;
+        grid-template-columns: 10rem minmax(0, 1fr);
+        align-items: start;
+        gap: .28rem .9rem;
+        margin: 0;
+        text-align: left;
+    }
+    .mamamia-help-list dt {
+        color: var(--mm-ink);
+        font-size: .78rem;
+        font-weight: 650;
+    }
+    .mamamia-help-list dd {
+        margin: 0;
+        color: var(--mm-muted);
+        font-size: .78rem;
+        line-height: 1.4;
+    }
+    .mamamia-help-list dd strong {
+        color: var(--mm-ink);
+        font-weight: 650;
+    }
     .mamamia-sidebar .form-check {
         margin-bottom: .25rem;
         min-height: 1.25rem;

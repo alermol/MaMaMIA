@@ -10,7 +10,9 @@ questions in a fixed order:
 
 The card is shown when the pointer is over a chromosome bar in the
 **Karyotype** tab. The content follows the current dashboard filters; a call
-that is hidden from the call table does not appear in the tooltip.
+that is hidden from the call table does not appear in the tooltip. The
+**Tooltip help** button beside the Heatmap/Calls switch opens an in-app
+field guide covering the same fields, interpretation patterns and caveats.
 
 ## Card anatomy
 

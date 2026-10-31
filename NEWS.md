@@ -126,6 +126,10 @@
   removed. The chromosome-group picker is removed from both the BAM dashboard
   and the standalone explorer; group filtering is driven by the karyotype
   click.
+* The **Karyotype** tab adds a **Tooltip help** button beside the
+  Heatmap/Calls switch. It opens a viewport-fixed, scrollable reference with
+  quick interpretation patterns, placement and evidence guidance, chip
+  definitions, dosage caveats, geometry checks, no-call behavior and caveats.
 * The dashboard has a new visual system: bundled Inter type, warm paper
   surfaces, a deep-teal accent and a single white result card with underline
   tabs. Result panes are inset to align with the tab labels. The header adds

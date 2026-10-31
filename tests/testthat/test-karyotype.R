@@ -264,6 +264,22 @@ test_that("the explorer exposes the karyotype tab and mode switch", {
     expect_match(html, "Karyotype", fixed = TRUE)
     expect_match(html, "explorer-karyotype_mode", fixed = TRUE)
     expect_match(html, "explorer-karyotype", fixed = TRUE)
+    expect_match(html, "explorer-tooltip_help", fixed = TRUE)
+    expect_match(html, "Tooltip help", fixed = TRUE)
+})
+
+test_that("the tooltip help explains the call card fields", {
+    html <- as.character(explorer_tooltip_help_ui())
+    expect_match(html, "Quick interpretation", fixed = TRUE)
+    expect_match(html, "Placement", fixed = TRUE)
+    expect_match(html, "Recipient", fixed = TRUE)
+    expect_match(html, "Score", fixed = TRUE)
+    expect_match(html, "Status chips", fixed = TRUE)
+    expect_match(html, "Copy state", fixed = TRUE)
+    expect_match(html, "Width ratio", fixed = TRUE)
+    expect_match(html, "No-call card", fixed = TRUE)
+    expect_match(html, "Caveats", fixed = TRUE)
+    expect_match(html, "total depth rises", fixed = TRUE)
 })
 
 test_that("a full substitution splits into a lost recipient and added donor", {

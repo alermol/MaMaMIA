@@ -233,6 +233,563 @@ explorer_export_ui <- function(id) {
     )
 }
 
+explorer_tooltip_help_ui <- function() {
+    row <- function(term, description) {
+        if (inherits(description, "shiny.tag.list")) {
+            parts <- vapply(
+                description,
+                function(part) as.character(part),
+                character(1)
+            )
+            rendered <- parts[[1L]]
+            if (length(parts) > 1L) {
+                for (i in seq.int(2L, length(parts))) {
+                    previous <- gsub("<[^>]*>", "", parts[[i - 1L]])
+                    following <- gsub("<[^>]*>", "", parts[[i]])
+                    previous_end <- substr(
+                        previous[[1L]],
+                        nchar(previous[[1L]]),
+                        nchar(previous[[1L]])
+                    )
+                    following_start <- substr(following[[1L]], 1L, 1L)
+                    add_space <- nzchar(previous_end) &&
+                        nzchar(following_start) &&
+                        !grepl("[[:space:]]", previous_end) &&
+                        !grepl("[[:space:]]", following_start) &&
+                        !following_start %in% c(
+                            ".", ",", ";", ":", "!", "?", "%", ")", "]", "}"
+                        )
+                    rendered <- paste0(
+                        rendered,
+                        if (add_space) " " else "",
+                        parts[[i]]
+                    )
+                }
+            }
+            description <- shiny::HTML(rendered)
+        }
+        shiny::tagList(
+            shiny::tags$dt(term),
+            shiny::tags$dd(description)
+        )
+    }
+    section <- function(title, intro = NULL, ...) {
+        shiny::div(
+            class = "mamamia-help-section",
+            shiny::tags$h6(title),
+            if (!is.null(intro)) {
+                shiny::p(class = "mamamia-help-intro", intro)
+            },
+            shiny::tags$dl(class = "mamamia-help-list", ...)
+        )
+    }
+    shiny::div(
+        class = "mamamia-tooltip-help",
+        shiny::p(
+            class = "mamamia-help-lead",
+            paste(
+                "Hover a chromosome bar to inspect the nearest introgression",
+                "call. The card is a call-level summary, not a per-window",
+                "trace. It follows the current class, class-status, copy-state,",
+                "confidence and width filters, so a filtered-out call cannot",
+                "appear."
+            )
+        ),
+        shiny::div(
+            class = "mamamia-help-callout",
+            paste(
+                "Read top to bottom: the header identifies the call and its",
+                "class confidence; Placement says where it was matched;",
+                "Evidence says why; Dosage and Geometry describe what changed;",
+                "Position (heatmap only) adds local context."
+            )
+        ),
+        section(
+            "Quick interpretation",
+            paste(
+                "Use these patterns as a starting point, then check placement",
+                "and geometry before treating a call as a confirmed event."
+            ),
+            row(
+                "Balanced substitution",
+                shiny::tagList(
+                    "Donor excess, matching recipient loss, and a ",
+                    shiny::tags$strong("near-neutral total"),
+                    ". Usually class ",
+                    shiny::tags$strong("substitution"),
+                    " with copy state ",
+                    shiny::tags$strong("balanced"), "."
+                )
+            ),
+            row(
+                "Addition (gain)",
+                shiny::tagList(
+                    "Donor excess without reciprocal recipient loss, so total",
+                    "depth rises. Usually copy state ",
+                    shiny::tags$strong("gain"), "."
+                )
+            ),
+            row(
+                "Deletion (loss)",
+                shiny::tagList(
+                    "Recipient loss without donor support, so total depth",
+                    "falls. Usually copy state ",
+                    shiny::tags$strong("loss"), "."
+                )
+            ),
+            row(
+                "Complex",
+                shiny::tagList(
+                    "Donor and recipient evidence disagree, or the donor and",
+                    "recipient spans are geometrically incompatible. Check",
+                    "Evidence and Geometry together."
+                )
+            ),
+            row(
+                "Other",
+                shiny::tagList(
+                    "A scored segment with enough signal to report but not",
+                    "enough support for a more specific class. Treat it as a",
+                    "review lead, not a confirmed event."
+                )
+            ),
+            row(
+                "No host",
+                shiny::tagList(
+                    "The donor segment is assigned by chromosome group but",
+                    "there is no recipient deletion to anchor it. The class",
+                    "can still be confident; the host is not."
+                )
+            )
+        ),
+        section(
+            "Header",
+            paste(
+                "The header always answers three questions: what is the",
+                "call, how confident is the class, and which group and donor",
+                "span does it describe?"
+            ),
+            row(
+                "Class",
+                shiny::tagList(
+                    shiny::tags$strong("substitution"),
+                    ", ",
+                    shiny::tags$strong("addition"),
+                    ", ",
+                    shiny::tags$strong("deletion"),
+                    ", ",
+                    shiny::tags$strong("complex"),
+                    " or ",
+                    shiny::tags$strong("other"),
+                    ". The left border and class title use the same colour as",
+                    "the legend."
+                )
+            ),
+            row(
+                "Status",
+                shiny::tagList(
+                    "Class confidence: ",
+                    shiny::tags$strong("confident"),
+                    ", ",
+                    shiny::tags$strong("ambiguous"),
+                    " or ",
+                    shiny::tags$strong("needs_review"),
+                    ". This describes the class, not the recipient placement."
+                )
+            ),
+            row(
+                "Context",
+                paste(
+                    "Sample name, chromosome group and donor span. Compare",
+                    "the donor span with the recipient span under Placement."
+                )
+            ),
+            row(
+                "Accent colour",
+                paste(
+                    "The card border and class title inherit the call colour",
+                    "from the legend; the status pill uses the class-status",
+                    "palette."
+                )
+            )
+        ),
+        section(
+            "Placement",
+            paste(
+                "Placement answers where the donor segment was matched.",
+                "Placement confidence and class confidence are separate: a",
+                "confident substitution can still have an ambiguous host."
+            ),
+            row(
+                "Recipient",
+                paste(
+                    "Assigned recipient chromosome and interval. The interval",
+                    "is the deletion run used for placement, not necessarily",
+                    "the full donor span."
+                )
+            ),
+            row(
+                "Donor",
+                "Donor chromosome, group and interval."
+            ),
+            row(
+                "Relation",
+                shiny::tagList(
+                    shiny::tags$strong("same group"),
+                    ", ",
+                    shiny::tags$strong("cross-group candidate"),
+                    " or ",
+                    shiny::tags$strong("not placed"),
+                    ". A cross-group call is a translocation candidate, not a",
+                    "confirmed host."
+                )
+            ),
+            row(
+                "Assignment",
+                shiny::tagList(
+                    shiny::tags$strong("assigned"),
+                    ", ",
+                    shiny::tags$strong("cross-group candidate"),
+                    ", ",
+                    shiny::tags$strong("ambiguous"),
+                    ", ",
+                    shiny::tags$strong("no host"),
+                    " or ",
+                    shiny::tags$strong("group only"),
+                    ". This is the placement state used in the Calls table."
+                )
+            ),
+            row(
+                "Margin",
+                paste(
+                    "Lead of the chosen host over the next candidate. A small",
+                    "margin is a reason to inspect the alternative placement."
+                )
+            ),
+            row(
+                "Group class",
+                paste(
+                    "Shown only when recipient placement changes the call",
+                    "class, for example addition to substitution."
+                )
+            ),
+            row(
+                "Alternative",
+                paste(
+                    "Another possible host shown when the assignment is",
+                    "ambiguous. Compare its group, interval and margin before",
+                    "choosing a host."
+                )
+            ),
+            row(
+                "Reading placement",
+                paste(
+                    "Strongest: same group and assigned. Cross-group is a",
+                    "candidate only. No host means there is no recipient loss",
+                    "to anchor the call. Group only is a fallback when no",
+                    "contig-level host is available."
+                )
+            )
+        ),
+        section(
+            "Evidence",
+            paste(
+                "Evidence compares donor and recipient breadth in the same",
+                "windows. This is the core reason for the call; the numbers",
+                "are signed residuals, not raw read counts."
+            ),
+            row(
+                "Score",
+                paste(
+                    "Paired donor/recipient statistic for the segment. Larger",
+                    "positive values mean stronger donor excess. Thresholds are",
+                    "calibrated for the window count and segment width."
+                )
+            ),
+            row(
+                "Donor",
+                "Mean donor-side residual. Positive means donor gain; negative means donor loss."
+            ),
+            row(
+                "Recipient",
+                "Mean recipient-side residual. Positive means recipient gain; negative means recipient loss."
+            ),
+            row(
+                "Total",
+                paste(
+                    "Relative total-depth residual. Near zero means balanced;",
+                    "positive means total gain; negative means total loss. This",
+                    "is what separates a replacement from an addition or",
+                    "deletion."
+                )
+            ),
+            row(
+                "Colour",
+                paste(
+                    "Metrics use two decimals: green is positive, red is",
+                    "negative and muted is missing. The sign matters more than",
+                    "the absolute size for interpretation."
+                )
+            ),
+            row(
+                "Copy state",
+                shiny::tagList(
+                    shiny::tags$strong("balanced"),
+                    ", ",
+                    shiny::tags$strong("gain"),
+                    ", ",
+                    shiny::tags$strong("loss"),
+                    ", ",
+                    shiny::tags$strong("compound"),
+                    " or ",
+                    shiny::tags$strong("neutral"),
+                    ". This is a hypothesis about the copy configuration, not",
+                    "an absolute copy number."
+                )
+            ),
+            row(
+                "Evidence source",
+                shiny::tagList(
+                    shiny::tags$strong("donor"),
+                    ", ",
+                    shiny::tags$strong("recipient"),
+                    ", ",
+                    shiny::tags$strong("donor+recipient"),
+                    " or ",
+                    shiny::tags$strong("none"),
+                    ". It says which side drove the class."
+                )
+            ),
+            row(
+                "Typical pattern",
+                paste(
+                    "Substitution: donor positive, recipient negative, total",
+                    "near zero. Addition: donor positive, recipient near zero,",
+                    "total positive. Deletion: donor near zero, recipient",
+                    "negative, total negative. Complex: conflicting signs or a",
+                    "width mismatch."
+                )
+            )
+        ),
+        section(
+            "Status chips",
+            paste(
+                "Chips appear only when their condition holds. They are",
+                "shortcuts into the call table and the full result columns."
+            ),
+            row(
+                "class high / moderate / low",
+                "Class confidence reported by the classifier."
+            ),
+            row(
+                "donor / recipient / donor+recipient / none",
+                "Which evidence sides supported the class."
+            ),
+            row(
+                "balanced / gain / loss / compound / neutral",
+                "The copy-state hypothesis for the segment."
+            ),
+            row(
+                "total gain / total loss",
+                "Total-depth evidence is not neutral."
+            ),
+            row(
+                "components heterogeneous",
+                paste(
+                    "Component spread or donor-component support is uneven;",
+                    "the group-level score may hide a component-specific event."
+                )
+            ),
+            row(
+                "low mappability",
+                paste(
+                    "BAM-derived high-MAPQ fraction is below 0.5; placement",
+                    "and dosage are less reliable."
+                )
+            ),
+            row(
+                "not passing",
+                "The call is shown for review but did not pass the configured filters."
+            )
+        ),
+        section(
+            "Dosage",
+            paste(
+                "Dosage is relative to the registry copy number. It is not an",
+                "absolute copy-number measurement and should be read as an",
+                "estimate alongside Evidence and Geometry."
+            ),
+            row(
+                "Copies",
+                paste(
+                    "Estimated affected copies out of the configured copy",
+                    "number, for example 2 of 2 copies. Shows unavailable when",
+                    "no copy count is estimated."
+                )
+            ),
+            row(
+                "Estimated fraction",
+                "Affected fraction of recipient copies, shown as a percentage."
+            ),
+            row(
+                "Estimated donor copies",
+                "Relative donor-copy estimate when the signal supports one."
+            ),
+            row(
+                "Confidence",
+                shiny::tagList(
+                    "Dosage confidence: ",
+                    shiny::tags$strong("high"),
+                    ", ",
+                    shiny::tags$strong("moderate"),
+                    ", ",
+                    shiny::tags$strong("low"),
+                    " or ",
+                    shiny::tags$strong("unavailable"),
+                    "."
+                )
+            ),
+            row(
+                "Caveat",
+                paste(
+                    "Only Copies is rounded to an integer. The fraction and",
+                    "donor-copy values are continuous estimates. An addition",
+                    "derives Copies from donor copies; a deletion without donor",
+                    "support derives it from the recipient loss fraction at",
+                    "lower confidence."
+                )
+            )
+        ),
+        section(
+            "Geometry",
+            paste(
+                "Geometry checks whether the donor and recipient spans are",
+                "compatible. It can turn a substitution into a complex call",
+                "even when the depth evidence looks clean."
+            ),
+            row("Donor width", "Width of the donor segment."),
+            row(
+                "Recipient run",
+                "Width of the recipient deletion run used for placement."
+            ),
+            row(
+                "Overlap",
+                paste(
+                    "Reciprocal overlap of donor and recipient intervals in",
+                    "contig-fraction space. Low overlap weakens the pairing."
+                )
+            ),
+            row(
+                "Width ratio",
+                paste(
+                    "Donor fraction divided by recipient-run fraction. A value",
+                    "near 1 supports a balanced replacement; values far from 1",
+                    "suggest an addition, deletion or complex event."
+                )
+            ),
+            row(
+                "Interpretation",
+                paste(
+                    "Overlap below 0.5 or a width ratio far from 1 is a reason",
+                    "to prefer complex or review the recipient assignment."
+                )
+            )
+        ),
+        section(
+            "Position and footer",
+            paste(
+                "Position is available in Heatmap mode; Calls mode ends with",
+                "the footer instead."
+            ),
+            row(
+                "Position",
+                "Hovered position along the chromosome, in bp, kb or Mb."
+            ),
+            row("Score", "Heatmap score at that relative position."),
+            row(
+                "Mode",
+                "Heatmap shows the score profile; Calls shows coloured call segments."
+            ),
+            row(
+                "Click",
+                paste(
+                    "Click a chromosome to filter its group; click the",
+                    "background to clear the filter."
+                )
+            )
+        ),
+        section(
+            "No-call card",
+            paste(
+                "When the pointer is not over a call, the tooltip describes",
+                "the chromosome instead of a call."
+            ),
+            row(
+                "Header",
+                "Chromosome state: recipient chromosome, deleted recipient or added donor."
+            ),
+            row(
+                "Chromosome block",
+                paste(
+                    "Component, state, homolog number (when more than one",
+                    "copy is configured) and configured length."
+                )
+            ),
+            row(
+                "Call block",
+                paste(
+                    "Calls mode only: says that no assigned donor segment is",
+                    "present at the hovered position."
+                )
+            ),
+            row(
+                "Position block",
+                "Heatmap mode only: the hovered position and score."
+            )
+        ),
+        section(
+            "Caveats",
+            NULL,
+            row(
+                "Relative, not absolute",
+                paste(
+                    "Copy state and dosage describe relative read-depth",
+                    "changes. They are not absolute copy numbers."
+                )
+            ),
+            row(
+                "Class vs placement",
+                paste(
+                    "Class status describes confidence in the label; the",
+                    "Assignment row describes confidence in the host."
+                )
+            ),
+            row(
+                "Cross-group",
+                paste(
+                    "A cross-group result is a translocation candidate, not a",
+                    "confirmed donor-recipient pair."
+                )
+            ),
+            row(
+                "Filters",
+                paste(
+                    "The card follows the visible calls. Clear a filter to",
+                    "inspect calls that are currently hidden."
+                )
+            ),
+            row(
+                "Heatmap score",
+                paste(
+                    "A heatmap value is local context, not call-level evidence.",
+                    "Use the Score, Donor, Recipient and Total metrics for",
+                    "the call itself."
+                )
+            )
+        )
+    )
+}
+
 explorer_karyotype_ui <- function(id, height = "calc(100vh - 360px)") {
     ns <- shiny::NS(id)
     shiny::div(
@@ -246,6 +803,14 @@ explorer_karyotype_ui <- function(id, height = "calc(100vh - 360px)") {
                 ns("karyotype_mode"), "Plot",
                 choices = c("Heatmap" = "heatmap", "Calls" = "calls"),
                 selected = "heatmap", inline = TRUE
+            ),
+            shiny::div(
+                class = "ms-auto",
+                shiny::actionButton(
+                    ns("tooltip_help"), "Tooltip help",
+                    icon = shiny::icon("circle-question"),
+                    class = "btn-sm btn-outline-secondary"
+                )
             )
         ),
         mamamia_karyotype_output(ns("karyotype"), height = height)
@@ -411,6 +976,21 @@ explorer_server <- function(id, result, sample = NULL) {
         })
         shiny::observeEvent(input$clear_selection, {
             DT::selectRows(proxy, NULL)
+        })
+
+        shiny::observeEvent(input$tooltip_help, {
+            dialog <- shiny::modalDialog(
+                title = "Tooltip guide",
+                explorer_tooltip_help_ui(),
+                size = "l",
+                easyClose = TRUE,
+                footer = shiny::modalButton("Close")
+            )
+            dialog <- htmltools::tagAppendAttributes(
+                dialog,
+                class = "mamamia-tooltip-modal modal-dialog-centered"
+            )
+            shiny::showModal(dialog)
         })
 
         output$karyotype <- render_mamamia_karyotype({

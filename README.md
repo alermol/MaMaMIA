@@ -291,7 +291,8 @@ substitution, addition, deletion, complex and other segments, a full
 substitution, a whole added donor chromosome and a whole deleted recipient
 chromosome. A sortable call table and BEDPE export follow. See
 [`docs-source/karyotype-tooltip.md`](docs-source/karyotype-tooltip.md) for the
-field-by-field tooltip reference.
+field-by-field tooltip reference. The **Tooltip help** button in the
+Karyotype tab opens the same field guide in the app.
 
 ## Validation
 
