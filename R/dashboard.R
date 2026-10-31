@@ -166,23 +166,35 @@ explorer_view_filters_ui <- function(id) {
         class = "mamamia-filter-pills",
         picker(
             "class", "Call class", "Class",
-            c("substitution", "addition", "deletion", "complex", "other")
+            c(
+                "Substitution" = "substitution",
+                "Addition" = "addition",
+                "Deletion" = "deletion",
+                "Complex" = "complex",
+                "Other" = "other"
+            )
         ),
         picker(
             "class_status", "Class status", "Status",
             c(
-                "confident" = "confident",
-                "ambiguous" = "ambiguous",
-                "needs review" = "needs_review"
+                "Confident" = "confident",
+                "Ambiguous" = "ambiguous",
+                "Needs review" = "needs_review"
             )
         ),
         picker(
             "copy_state", "Copy state", "Copy",
-            c("balanced", "gain", "loss", "compound", "neutral")
+            c(
+                "Balanced" = "balanced",
+                "Gain" = "gain",
+                "Loss" = "loss",
+                "Compound" = "compound",
+                "Neutral" = "neutral"
+            )
         ),
         picker(
             "confidence", "Confidence", "Confidence",
-            c("high", "moderate", "low")
+            c("High" = "high", "Moderate" = "moderate", "Low" = "low")
         ),
         shiny::div(
             class = "mamamia-filter-switch",
