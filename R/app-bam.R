@@ -4462,19 +4462,12 @@ bam_launcher_server <- function(state) {
                 ))
             }
             samples <- bam_sample_choices(res)
-            warnings <- bam_coverage_warnings(res)
             multiple_samples <- length(samples) > 1L
             shiny::tagList(
                 shiny::div(
                     class = "table-responsive",
                     shiny::tableOutput("cohort_table")
                 ),
-                if (length(warnings) > 0L) {
-                    shiny::div(
-                        class = "alert alert-warning small",
-                        shiny::tags$ul(lapply(warnings, shiny::tags$li))
-                    )
-                },
                 shiny::div(
                     class = "d-flex flex-column gap-1",
                     shiny::downloadButton(
