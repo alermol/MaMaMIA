@@ -136,7 +136,8 @@
 * The dashboard has a new visual system: bundled Inter type, warm paper
   surfaces, a deep-teal accent and a single white result card with underline
   tabs. Result panes are inset to align with the tab labels. The header adds
-  a chromosome-pair mark and the package version, the BAM chooser is a
+  a chromosome-crossover mark — the two homolog strokes meet at a central
+  chiasma — and the package version, the BAM chooser is a
   click-or-drop zone, **Run analysis** is the only filled action, and an
   empty result shows a centred illustrated state with a short hint instead
   of a bare message. Karyotype labels use larger Inter type, title-case
@@ -186,8 +187,8 @@
 
 ## Packaging
 
-* The chromosome-pair mark now ships as `inst/www/mamamia-logo.svg` and is
-  served as the browser favicon. The package, pipeline and widget-asset
+* The chromosome-crossover mark now ships as `inst/www/mamamia-logo.svg` and
+  is served as the browser favicon. The package, pipeline and widget-asset
   versions are reset to 0.1.0. The version is pinned from here and changes
   only on an explicit request.
 

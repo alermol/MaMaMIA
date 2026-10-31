@@ -717,10 +717,10 @@ HTMLWidgets.widget({
         mark.innerHTML =
           '<svg viewBox="0 0 32 32" fill="none" ' +
           'xmlns="http://www.w3.org/2000/svg">' +
-          '<path d="M11 6c4 3.5 4 8.5 0 12-3 2.6-3 5.4 0 8" ' +
+          '<path d="M11 6 C 11 9, 11 12, 16 16 C 21 20, 21 23, 21 26" ' +
           'stroke="currentColor" stroke-width="2.2" ' +
           'stroke-linecap="round"/>' +
-          '<path d="M21 6c-4 3.5-4 8.5 0 12 3 2.6 3 5.4 0 8" ' +
+          '<path d="M21 6 C 21 9, 21 12, 16 16 C 11 20, 11 23, 11 26" ' +
           'stroke="#b7791f" stroke-width="2.2" ' +
           'stroke-linecap="round"/></svg>';
         empty.appendChild(mark);

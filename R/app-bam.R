@@ -3204,14 +3204,14 @@ bam_launcher_ui <- function(state) {
                             class = "mamamia-mark",
                             `aria-hidden` = "true",
                             shiny::HTML(paste0(
-                                '<svg viewBox="0 0 24 24" fill="none" ',
+                                '<svg viewBox="0 0 32 32" fill="none" ',
                                 'xmlns="http://www.w3.org/2000/svg">',
-                                '<path d="M8.2 4.7c3.1 2.6 3.1 6.7 0 9.3',
-                                '-2.4 2-2.4 4.2 0 5.3" stroke="currentColor" ',
-                                'stroke-width="1.8" stroke-linecap="round"/>',
-                                '<path d="M15.8 4.7c-3.1 2.6-3.1 6.7 0 9.3',
-                                '2.4 2 2.4 4.2 0 5.3" stroke="#d9a441" ',
-                                'stroke-width="1.8" stroke-linecap="round"/>',
+                                '<path d="M11 6 C 11 9, 11 12, 16 16',
+                                ' C 21 20, 21 23, 21 26" stroke="currentColor" ',
+                                'stroke-width="2.2" stroke-linecap="round"/>',
+                                '<path d="M21 6 C 21 9, 21 12, 16 16',
+                                ' C 11 20, 11 23, 11 26" stroke="#d9a441" ',
+                                'stroke-width="2.2" stroke-linecap="round"/>',
                                 '</svg>'
                             ))
                         ),
