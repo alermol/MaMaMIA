@@ -284,10 +284,10 @@ strong assigned loss reclassifies the call as a substitution. Deleted
 chromosomes and added donor chromosomes are drawn separately. Hovering a call
 opens a structured card: class and status, placement, evidence residuals and
 quality chips, dosage, geometry, and a group-filter hint. The bundled
-**Example data** button loads four 160–260 kb chromosome pairs with one
-calibrated event each (3–7 kb): substitution, addition, deletion and complex.
-Neutral `other` gaps remain in the Calls table. A sortable call table and
-BEDPE export follow. See
+**Example data** button loads eight 160–260 kb chromosome pairs with
+substitution, addition, deletion, complex and other segments, a full
+substitution, a whole added donor chromosome and a whole deleted recipient
+chromosome. A sortable call table and BEDPE export follow. See
 [`docs-source/karyotype-tooltip.md`](docs-source/karyotype-tooltip.md) for the
 field-by-field tooltip reference.
 

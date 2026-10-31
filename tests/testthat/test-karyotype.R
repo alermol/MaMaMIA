@@ -6,23 +6,30 @@ test_that("karyotype_payload() lays out diploid pairs in config order", {
     expect_identical(payload$mode, "heatmap")
     expect_identical(payload$sample, "example-sample")
     expect_true(is.finite(payload$score_limit))
-    expect_length(payload$chromosomes, 8L)
+    recipient_names <- rep(paste0(1:8, "A"), each = 2L)
+    expect_length(payload$chromosomes, 18L)
     expect_identical(
         vapply(payload$chromosomes, function(x) x$name, character(1)),
-        c("1A", "1A", "2A", "2A", "3A", "3A", "4A", "4A")
+        c(recipient_names, "5R", "5R")
     )
     expect_identical(
         vapply(payload$chromosomes, function(x) x$label, character(1)),
-        c("1A", "1A", "2A", "2A", "3A", "3A", "4A", "4A")
+        c(recipient_names, "5R", "5R")
     )
     expect_identical(
         vapply(payload$chromosomes, function(x) x$copy, integer(1)),
-        c(1L, 2L, 1L, 2L, 1L, 2L, 1L, 2L)
+        c(rep(c(1L, 2L), 8L), 1L, 2L)
     )
     expect_identical(
         vapply(payload$chromosomes, function(x) x$copies, integer(1)),
-        rep(2L, 8L)
+        rep(2L, 18L)
     )
+    expect_true(any(vapply(
+        payload$chromosomes, function(x) isTRUE(x$added), logical(1)
+    )))
+    expect_true(any(vapply(
+        payload$chromosomes, function(x) isTRUE(x$deleted), logical(1)
+    )))
     chromosome <- payload$chromosomes[[1L]]
     expect_identical(chromosome$component, "A")
     expect_false(chromosome$deleted)
@@ -71,27 +78,26 @@ test_that("a full donor chromosome is added with its diploid copies", {
     result$calls <- rbind(result$calls, addition)
 
     payload <- karyotype_payload(result, "example-sample", "calls")
+    recipient_names <- rep(paste0(1:8, "A"), each = 2L)
     expect_identical(
         vapply(payload$chromosomes, function(x) x$name, character(1)),
-        c("1A", "1A", "2A", "2A", "3A", "3A", "4A", "4A",
-            "1R", "1R")
+        c(recipient_names, "1R", "1R", "5R", "5R")
     )
     expect_identical(
         vapply(payload$chromosomes, function(x) x$label, character(1)),
-        c("1A", "1A", "2A", "2A", "3A", "3A", "4A", "4A",
-            "1R", "1R")
+        c(recipient_names, "1R", "1R", "5R", "5R")
     )
     expect_identical(
         vapply(payload$chromosomes, function(x) x$added, logical(1)),
-        c(rep(FALSE, 8L), TRUE, TRUE)
+        c(rep(FALSE, 16L), TRUE, TRUE, TRUE, TRUE)
     )
     expect_identical(
         vapply(payload$chromosomes, function(x) x$copy, integer(1)),
-        c(1L, 2L, 1L, 2L, 1L, 2L, 1L, 2L, 1L, 2L)
+        rep(c(1L, 2L), 10L)
     )
     expect_identical(
         vapply(payload$chromosomes, function(x) x$copies, integer(1)),
-        rep(2L, 10L)
+        rep(2L, 20L)
     )
 })
 
@@ -116,14 +122,14 @@ test_that("a partial donor call is not a whole-chromosome addition", {
     payload <- karyotype_payload(result, "example-sample", "calls")
     expect_identical(
         vapply(payload$chromosomes, function(x) x$name, character(1)),
-        c("1A", "1A", "2A", "2A", "3A", "3A", "4A", "4A")
+        c(rep(paste0(1:8, "A"), each = 2L), "5R", "5R")
     )
 })
 
 test_that("a deleted recipient chromosome stays in the karyotype", {
     result <- bam_example_result(1000)
     extra <- result$assembly$contigs$recipient[1, , drop = FALSE]
-    extra$id <- "r5"
+    extra$id <- "r9"
     extra$name <- "1B"
     extra$component <- "B"
     result$assembly$contigs$recipient <- rbind(
@@ -132,7 +138,7 @@ test_that("a deleted recipient chromosome stays in the karyotype", {
     metric <- result$metrics[result$metrics$role == "recipient", ,
         drop = FALSE
     ][1, , drop = FALSE]
-    metric$chr_id <- "r5"
+    metric$chr_id <- "r9"
     metric$chr_name <- "1B"
     metric$component <- "B"
     metric$breadth <- 0.02
@@ -142,14 +148,12 @@ test_that("a deleted recipient chromosome stays in the karyotype", {
     payload <- karyotype_payload(result, "example-sample", "heatmap")
     expect_identical(
         vapply(payload$chromosomes, function(x) x$name, character(1)),
-        c("1A", "1A", "2A", "2A", "3A", "3A", "4A", "4A", "1B", "1B")
+        c(rep(paste0(1:8, "A"), each = 2L), "1B", "1B", "5R", "5R")
     )
-    expect_true(payload$chromosomes[[1L]]$deleted)
-    expect_true(payload$chromosomes[[2L]]$deleted)
-    expect_false(payload$chromosomes[[3L]]$deleted)
-    expect_false(payload$chromosomes[[4L]]$deleted)
-    expect_false(payload$chromosomes[[9L]]$deleted)
-    expect_false(payload$chromosomes[[10L]]$deleted)
+    deleted <- vapply(
+        payload$chromosomes, function(x) isTRUE(x$deleted), logical(1)
+    )
+    expect_identical(which(deleted), c(1L, 2L, 11L, 12L))
 })
 
 test_that("a cross-group assignment is painted on the recipient chromosome", {
@@ -168,7 +172,7 @@ test_that("a cross-group assignment is painted on the recipient chromosome", {
     chromosomes <- payload$chromosomes
     expect_identical(
         vapply(chromosomes, function(x) x$name, character(1)),
-        c("1A", "1A", "2A", "2A", "3A", "3A", "4A", "4A")
+        rep(paste0(1:8, "A"), each = 2L)
     )
     expect_length(chromosomes[[1L]]$calls, 0L)
     expect_length(chromosomes[[2L]]$calls, 0L)
@@ -243,6 +247,24 @@ test_that("the explorer exposes the karyotype tab and mode switch", {
     expect_match(html, "Karyotype", fixed = TRUE)
     expect_match(html, "explorer-karyotype_mode", fixed = TRUE)
     expect_match(html, "explorer-karyotype", fixed = TRUE)
+})
+
+test_that("a full substitution replaces the recipient chromosome", {
+    result <- bam_example_result(1000)
+    payload <- karyotype_payload(result, "example-sample", "calls")
+    eight <- Filter(function(x) identical(x$name, "8A"), payload$chromosomes)
+    expect_length(eight, 2L)
+    expect_false(any(vapply(
+        eight, function(x) isTRUE(x$deleted), logical(1)
+    )))
+    expect_true(all(vapply(eight, function(x) {
+        any(vapply(x$calls, function(call) {
+            identical(call$class, "substitution")
+        }, logical(1)))
+    }, logical(1))))
+    expect_false(any(vapply(payload$chromosomes, function(x) {
+        isTRUE(x$added) && identical(x$name, "8R")
+    }, logical(1))))
 })
 
 test_that("added donor chromosomes preserve registry order", {

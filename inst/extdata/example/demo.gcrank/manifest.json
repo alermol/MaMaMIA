@@ -3,24 +3,24 @@
   "created": "2023-11-14T22:13:20Z",
   "files": {
     "contigs.tsv": {
-      "crc32": "3eb360cb",
-      "size": 133
+      "crc32": "0ff8eaa4",
+      "size": 278
     },
     "genome.bv": {
-      "crc32": "5e503e73",
-      "size": 205312
+      "crc32": "fdb7a6b6",
+      "size": 410112
     },
     "genome.rb": {
-      "crc32": "f4e375a2",
-      "size": 9626
+      "crc32": "ee4e6cf1",
+      "size": 19232
     },
     "valid.bv": {
-      "crc32": "0f4ef095",
-      "size": 205312
+      "crc32": "1816052a",
+      "size": 410112
     },
     "valid.rb": {
-      "crc32": "de8e4107",
-      "size": 9626
+      "crc32": "dab89bc6",
+      "size": 19232
     }
   },
   "format_version": "0.1.0",
@@ -30,8 +30,8 @@
     "endianness": "little",
     "remove_ambiguous_supported": true,
     "superblock_bits": 4096,
-    "total_gc": 983844,
-    "total_valid": 1640000
+    "total_gc": 1967700,
+    "total_valid": 3280000
   },
   "semantics": {
     "ambiguous_bases": "N, R, Y, S, W, K, M, B, D, H, V: never GC and never valid; removed from the denominator by gc_fraction(remove_ambiguous = true)",
@@ -43,10 +43,10 @@
     "window": "half-open [start, end), 0-based, over the concatenated contigs"
   },
   "source": {
-    "file_bytes": 1640040,
-    "num_contigs": 8,
-    "path": "/tmp/RtmpNkaidn/mamamia-example-2294b818d2ab67/example.fa",
-    "sha256": "d0570dbca4c4826df7281ea86b83d0718610810fa32eea7d263dfb7eff3de317",
-    "total_bases": 1640000
+    "file_bytes": 3280080,
+    "num_contigs": 16,
+    "path": "/tmp/RtmpmyPKuL/mamamia-example-22d4d01125d771/example.fa",
+    "sha256": "007a51cbb55b262496074b584810ab54b5cbf25e26ac0a909666f012a21a1291",
+    "total_bases": 3280000
   }
 }

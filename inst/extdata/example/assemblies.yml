@@ -26,6 +26,14 @@ species:
       name: 3A
     - id: r4
       name: 4A
+    - id: r5
+      name: 5A
+    - id: r6
+      name: 6A
+    - id: r7
+      name: 7A
+    - id: r8
+      name: 8A
   secale_like:
     label: Secale-like (R)
     description: Synthetic 160-260 kb chromosomes with variable GC
@@ -41,3 +49,11 @@ species:
       name: 3R
     - id: d4
       name: 4R
+    - id: d5
+      name: 5R
+    - id: d6
+      name: 6R
+    - id: d7
+      name: 7R
+    - id: d8
+      name: 8R

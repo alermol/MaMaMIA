@@ -211,7 +211,7 @@ bam_example_note <- function() {
         donor$label
     }
     sprintf(
-        "Example dataset: %s recipient and %s donor; four events on four chromosomes.",
+        "Example dataset: %s recipient and %s donor; events on eight chromosomes.",
         recipient_label, donor_label
     )
 }

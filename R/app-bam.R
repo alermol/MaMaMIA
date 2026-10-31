@@ -3142,7 +3142,7 @@ bam_launcher_server <- function(state) {
             if (isTRUE(example_mode())) {
                 return(shiny::p(
                     class = "text-muted small mb-2",
-                    "Example data: four events on four chromosomes."
+                    "Example data: events on eight chromosomes."
                 ))
             }
             pf <- preflight_state()

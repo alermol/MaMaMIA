@@ -22,14 +22,24 @@ test_that("the bundled example replays a result and progress", {
     passing <- result$calls[result$calls$pass %in% TRUE, , drop = FALSE]
     expect_setequal(
         unique(as.character(passing$class)),
-        c("addition", "complex", "deletion", "substitution")
+        c("addition", "complex", "deletion", "other", "substitution")
     )
     expect_setequal(
         unique(as.character(passing$group)),
-        c("1", "2", "3", "4")
+        as.character(1:8)
     )
-    expect_length(unique(result$assembly$contigs$recipient$length), 4L)
-    expect_length(unique(round(passing$width_bp)), 4L)
+    expect_gte(length(unique(result$assembly$contigs$recipient$length)), 6L)
+    expect_length(unique(round(passing$width_bp)), 7L)
+    expect_true(any(passing$class == "other"))
+    expect_true(any(
+        passing$class == "substitution" & passing$width_bp == 200000
+    ))
+    expect_true(any(
+        passing$class == "addition" & passing$width_bp == 200000
+    ))
+    expect_true(any(
+        passing$class == "deletion" & passing$width_bp == 240000
+    ))
     expect_setequal(
         unique(as.character(result$calls$copy_state)),
         c("balanced", "gain", "loss", "compound", "neutral")

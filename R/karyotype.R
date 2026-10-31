@@ -184,11 +184,6 @@ karyotype_payload <- function(result, sample = NULL,
     n_per <- as.integer(result$windows$n_per_chromosome)[[1L]]
     scores <- result$scores
     scores <- scores[as.character(scores$sample) == sample, , drop = FALSE]
-    deleted <- karyotype_deleted(
-        result, sample,
-        deletion_breadth = deletion_breadth,
-        deletion_relative = deletion_relative
-    )
     full <- karyotype_full_calls(result, sample, n_per)
     if (is.null(full) || nrow(full) == 0L) {
         full <- data.frame(
@@ -196,6 +191,26 @@ karyotype_payload <- function(result, sample = NULL,
             donor_mean = numeric(),
             stringsAsFactors = FALSE
         )
+    }
+    deleted <- karyotype_deleted(
+        result, sample,
+        deletion_breadth = deletion_breadth,
+        deletion_relative = deletion_relative
+    )
+    ## A full balanced substitution replaces a recipient chromosome rather
+    ## than deleting it: the donor signal is present across the whole group.
+    full_substitution <- if ("class" %in% names(full)) {
+        unique(as.character(full$group[
+            as.character(full$class) == "substitution"
+        ]))
+    } else {
+        character()
+    }
+    if (length(full_substitution) > 0L) {
+        substituted_ids <- as.character(recipient$id[
+            as.character(recipient$group) %in% full_substitution
+        ])
+        deleted <- setdiff(deleted, substituted_ids)
     }
     overlay <- if (is.null(calls)) {
         result$calls
@@ -468,6 +483,9 @@ karyotype_payload <- function(result, sample = NULL,
 
     added_groups <- if (nrow(full) > 0L) {
         keep <- !is.na(full$donor_mean) & full$donor_mean > 0.5
+        if ("class" %in% names(full)) {
+            keep <- keep & as.character(full$class) == "addition"
+        }
         unique(as.character(full$group[keep]))
     } else {
         character()

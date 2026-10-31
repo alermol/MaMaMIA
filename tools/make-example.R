@@ -2,13 +2,17 @@
 ## Regenerate inst/extdata/example/example.rds and its GC index.
 ##
 ## The bundled example is a pre-computed BamAnalysisResult replayed by the
-## Shiny app. Four chromosome pairs of different lengths each carry one event
-## of a different width:
+## Shiny app. Seven chromosome pairs of different lengths demonstrate every
+## plotted event category:
 ##
-##   1A 160 kb  40-43 kb   balanced substitution
-##   2A 220 kb 110-115 kb  addition
-##   3A 180 kb  90-94 kb   deletion
-##   4A 260 kb 200-207 kb  complex
+##   1A 160 kb  40-43 kb   balanced substitution (segment)
+##   2A 220 kb 110-115 kb  addition (segment)
+##   3A 180 kb  90-94 kb   deletion (segment)
+##   4A 260 kb 200-207 kb  complex (segment)
+##   5A 200 kb  full       added donor chromosome
+##   6A 240 kb  full       deleted recipient chromosome
+##   7A 180 kb  40-80 kb   other (weak segment)
+##   8A 200 kb  full       balanced substitution
 ##
 ## The low-signal gaps segment as non-passing `other` rows, so the Calls table
 ## also exposes neutral calls and the `needs_review` status. The four events
@@ -44,12 +48,15 @@ suppressPackageStartupMessages(library(MaMaMIA))
 root <- normalizePath(file.path(getwd()), winslash = "/")
 example_dir <- file.path(root, "inst", "extdata", "example")
 
-chromosome_lengths <- c(160000L, 220000L, 180000L, 260000L)
+chromosome_lengths <- c(
+    160000L, 220000L, 180000L, 260000L, 200000L, 240000L, 180000L,
+    200000L
+)
 read_length <- 50L
 windows_per_chromosome <- 1000L
 sequence <- strrep("A", read_length)
 quality <- strrep("I", read_length)
-chromosomes <- 1:4
+chromosomes <- 1:8
 
 ## A 20 bp block pattern gives the GC spline enough variation in every
 ## component. Homologs use the same landscape so the correction is not driven
@@ -121,6 +128,22 @@ events <- list(
     list(
         chromosome = 4L, from = 200000L, to = 207000L,
         donor_extra = 20L, recipient = "absent"
+    ),
+    list(
+        chromosome = 5L, from = 1L, to = 200000L,
+        donor_extra = 20L, recipient = "base"
+    ),
+    list(
+        chromosome = 6L, from = 1L, to = 240000L,
+        donor_extra = NULL, recipient = "absent"
+    ),
+    list(
+        chromosome = 7L, from = 40000L, to = 80000L,
+        donor_extra = 220L, recipient = "base"
+    ),
+    list(
+        chromosome = 8L, from = 1L, to = 200000L,
+        donor_extra = 200L, recipient = "absent"
     )
 )
 
@@ -183,14 +206,54 @@ result <- analyzeBamInput(
     calibration = list(
         min_mb = 0.001,
         length_bins_mb = c(0.001, 0.01, Inf),
-        floors = c(0.3, 0.3),
-        fdr = 0.2
+        floors = c(0.2, 0.2),
+        fdr = 0.5
     ),
+    mask = list(physical_fallback_mb = 0),
     cores = 1L
 )
 
+## The weak `other` segment has no recipient depletion, so assignment leaves
+## it without a host. Pin it to 7A for the demo so the Other legend colour is
+## visible; its class, copy state and needs_review status are unchanged. The
+## segment addition on 2A is pinned the same way: a donor-only addition has no
+## recipient deletion to anchor a host, but the demo should show a segment
+## addition as well as the whole-chromosome addition on 5R.
+pin_to_group <- function(row, chr_id, chr_name, group) {
+    result$calls$recipient_component[[row]] <<- "A"
+    result$calls$recipient_chr_id[[row]] <<- chr_id
+    result$calls$recipient_chr_name[[row]] <<- chr_name
+    result$calls$recipient_group[[row]] <<- as.character(group)
+    result$calls$recipient_start_bp[[row]] <<- result$calls$start_bp[[row]]
+    result$calls$recipient_end_bp[[row]] <<- result$calls$end_bp[[row]]
+    result$calls$recipient_assignment[[row]] <<- "ambiguous"
+}
+other <- which(
+    as.character(result$calls$class) == "other" &
+        result$calls$pass %in% TRUE
+)
+if (length(other) == 1L) {
+    pin_to_group(other, "r7", "7A", 7L)
+}
+segment_addition <- which(
+    as.character(result$calls$class) == "addition" &
+        as.character(result$calls$group) == "2" &
+        result$calls$pass %in% TRUE
+)
+if (length(segment_addition) == 1L) {
+    pin_to_group(segment_addition, "r2", "2A", 2L)
+}
+full_substitution <- which(
+    as.character(result$calls$class) == "substitution" &
+        as.character(result$calls$group) == "8" &
+        result$calls$pass %in% TRUE
+)
+if (length(full_substitution) == 1L) {
+    pin_to_group(full_substitution, "r8", "8A", 8L)
+}
+
 passing <- result$calls[result$calls$pass %in% TRUE, , drop = FALSE]
-expected <- c("substitution", "addition", "deletion", "complex")
+expected <- c("substitution", "addition", "deletion", "complex", "other")
 missing <- setdiff(expected, unique(as.character(passing$class)))
 if (length(missing) > 0L) {
     stop(

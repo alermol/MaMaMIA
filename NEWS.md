@@ -132,11 +132,12 @@
   class status, copy state and confidence, plus a **Passing only** switch.
   Empty selections mean "all", so the bar no longer shows four inline
   checkbox groups.
-* The bundled example now uses four chromosome pairs of 160–260 kb with one
-  calibrated event of 3–7 kb each: a balanced substitution, an addition, a
-  deletion and a compound complex event. Neutral `other` gaps keep all five
-  copy states and all three class statuses visible. The example resolves at
-  1,000 windows per chromosome.
+* The bundled example now uses eight chromosome pairs of 160–260 kb. It
+  demonstrates every legend category: segment substitution, addition,
+  deletion, complex and other calls, a full-chromosome substitution, a whole
+  added donor chromosome and a whole deleted recipient chromosome. All five
+  copy states and all three class statuses remain visible. The example
+  resolves at 1,000 windows per chromosome.
 * The karyotype tooltip is now a structured call card. It has a class/status
   header, a placement block (recipient, donor, relation, assignment and group
   class), an evidence block (score, donor, recipient and total residuals plus
