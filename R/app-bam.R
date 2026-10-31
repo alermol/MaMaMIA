@@ -1626,6 +1626,82 @@ bam_dashboard_css <- function() {
     .mamamia-sidebar .mamamia-sidebar-intro p {
         margin: 0;
     }
+    .mamamia-sidebar .mamamia-recovery {
+        margin: .1rem 0 .8rem;
+        padding: .72rem .78rem .78rem;
+        border: 1px solid rgba(183, 121, 31, .26);
+        border-left: 3px solid var(--mm-warm);
+        border-radius: .55rem;
+        background: linear-gradient(
+            180deg,
+            rgba(183, 121, 31, .095),
+            rgba(183, 121, 31, .035)
+        );
+        box-shadow: 0 1px 2px rgba(27, 30, 26, .03);
+    }
+    .mamamia-recovery-head {
+        display: flex;
+        align-items: center;
+        gap: .42rem;
+        margin-bottom: .35rem;
+    }
+    .mamamia-recovery-icon {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 1.25rem;
+        height: 1.25rem;
+        border-radius: 50%;
+        background: rgba(183, 121, 31, .16);
+        color: var(--mm-warm);
+        font-size: .62rem;
+    }
+    .mamamia-recovery-title {
+        color: var(--mm-ink);
+        font-size: .74rem;
+        font-weight: 700;
+        line-height: 1.25;
+    }
+    .mamamia-recovery-message {
+        margin: 0 0 .4rem;
+        color: #675027;
+        font-size: .67rem;
+        line-height: 1.42;
+        overflow-wrap: anywhere;
+    }
+    .mamamia-recovery-note {
+        margin: 0 0 .45rem;
+        color: var(--mm-muted);
+        font-size: .64rem;
+        line-height: 1.4;
+    }
+    .mamamia-recovery-suggestion {
+        margin: 0 0 .55rem;
+        color: var(--mm-muted);
+        font-size: .65rem;
+        line-height: 1.4;
+    }
+    .mamamia-recovery-suggestion strong {
+        color: #675027;
+        font-weight: 700;
+    }
+    .mamamia-recovery-action {
+        width: 100%;
+        padding: .32rem .5rem;
+        border: 1px solid rgba(183, 121, 31, .38);
+        border-radius: .4rem;
+        background: #fffaf0;
+        color: #6b4f18;
+        font-size: .68rem;
+        font-weight: 650;
+        line-height: 1.25;
+        transition: background-color .15s ease, border-color .15s ease;
+    }
+    .mamamia-recovery-action:hover {
+        border-color: rgba(183, 121, 31, .6);
+        background: #fdf2dc;
+        color: #563d10;
+    }
 
     .mamamia-main {
         display: flex;
@@ -3011,6 +3087,113 @@ bam_fixed_control_ui <- function(label, value) {
 }
 
 #' @noRd
+bam_sidebar_recovery_ui <- function(info, show_action = TRUE) {
+    if (!is.list(info)) {
+        return(NULL)
+    }
+    text_value <- function(x) {
+        if (is.null(x) || length(x) != 1L || is.na(x)) {
+            ""
+        } else {
+            as.character(x)
+        }
+    }
+    stage <- text_value(info$stage)
+    assembly <- identical(stage, "assembly")
+    message <- text_value(info$message)
+    suggestion <- text_value(info$suggestion)
+    recovery_copy <- if (assembly) {
+        if (grepl("missing target", message, ignore.case = TRUE)) {
+            list(
+                body = paste(
+                    "This BAM does not contain the contigs required by",
+                    "the selected assembly."
+                ),
+                note = "The calculation log lists the missing targets."
+            )
+        } else if (grepl(
+            "does not match any configured assembly", message,
+            ignore.case = TRUE
+        )) {
+            list(
+                body = paste(
+                    "This BAM's header does not match any assembly",
+                    "in the registry."
+                ),
+                note = paste(
+                    "Choose a matching species pair or add the assembly",
+                    "to the registry."
+                )
+            )
+        } else if (grepl("Unknown assembly", message, ignore.case = TRUE)) {
+            list(
+                body = paste(
+                    "The BAM header names an assembly that is not in",
+                    "the registry."
+                ),
+                note = paste(
+                    "Add the assembly to the registry or choose a matching",
+                    "species pair."
+                )
+            )
+        } else {
+            list(
+                body = "This BAM does not match a configured assembly.",
+                note = "Check the BAM header and the assembly setup."
+            )
+        }
+    } else {
+        list(
+            body = if (nchar(message) > 220) {
+                paste0(substr(message, 1, 217), "...")
+            } else {
+                message
+            },
+            note = NULL
+        )
+    }
+    shiny::div(
+        class = "mamamia-recovery",
+        shiny::div(
+            class = "mamamia-recovery-head",
+            shiny::span(
+                class = "mamamia-recovery-icon",
+                shiny::icon(if (assembly) "dna" else "sliders")
+            ),
+            shiny::span(
+                class = "mamamia-recovery-title",
+                if (assembly) {
+                    "No matching assembly"
+                } else {
+                    "Setup needs attention"
+                }
+            )
+        ),
+        if (nzchar(recovery_copy$body)) {
+            shiny::p(class = "mamamia-recovery-message", recovery_copy$body)
+        },
+        if (!is.null(recovery_copy$note) && nzchar(recovery_copy$note)) {
+            shiny::p(class = "mamamia-recovery-note", recovery_copy$note)
+        },
+        if (nzchar(suggestion)) {
+            shiny::p(
+                class = "mamamia-recovery-suggestion",
+                shiny::strong("Next step: "),
+                suggestion
+            )
+        },
+        if (isTRUE(show_action)) {
+            shiny::actionButton(
+                "unlock_setup",
+                if (assembly) "Choose assembly" else "Review setup",
+                icon = shiny::icon("arrow-right"),
+                class = "mamamia-recovery-action"
+            )
+        }
+    )
+}
+
+#' @noRd
 bam_sidebar_species_ui <- function(config, selection = NULL, locked = FALSE) {
     species_choices <- bam_species_choices(config)
     species_keys <- names(config$species)
@@ -3605,10 +3788,7 @@ bam_launcher_server <- function(state) {
                 ))
             }
             if (!isTRUE(pf$ok) || is.null(pf$table)) {
-                return(shiny::p(
-                    class = "text-danger small mb-2",
-                    "Preflight failed; see the calculation log."
-                ))
+                return(NULL)
             }
             shiny::p(
                 class = "text-muted small mb-2",
@@ -3661,7 +3841,22 @@ bam_launcher_server <- function(state) {
         }, ignoreInit = FALSE)
 
         shiny::observeEvent(input$unlock_setup, {
+            pf <- preflight_state()
+            panel <- if (!is.null(pf$error) &&
+                identical(as.character(pf$error$stage), "assembly")) {
+                "Assembly"
+            } else {
+                "Analysis"
+            }
             sidebar_unlocked(TRUE)
+            session$onFlushed(function() {
+                try(
+                    bslib::accordion_panel_open(
+                        "bam_sidebar_accordion", panel
+                    ),
+                    silent = TRUE
+                )
+            }, once = TRUE)
             log_line("Setup panels opened after a preflight failure.")
         }, ignoreInit = TRUE)
 
@@ -4147,29 +4342,13 @@ bam_launcher_server <- function(state) {
         })
 
         output$sidebar_recovery <- shiny::renderUI({
-            if (isTRUE(sidebar_unlocked())) {
-                return(NULL)
-            }
             pf <- preflight_state()
-            if (isTRUE(pf$empty) || isTRUE(pf$ok)) {
+            if (isTRUE(pf$empty) || isTRUE(pf$ok) || is.null(pf$error)) {
                 return(NULL)
             }
-            info <- pf$error
-            if (is.null(info)) {
-                return(NULL)
-            }
-            shiny::tagList(
-                shiny::p(
-                    class = "text-danger small mb-1",
-                    sprintf(
-                        "Preflight failed (stage: %s): %s",
-                        info$stage, info$message
-                    )
-                ),
-                shiny::actionButton(
-                    "unlock_setup", "Show setup",
-                    class = "btn-sm btn-outline-secondary"
-                )
+            bam_sidebar_recovery_ui(
+                pf$error,
+                show_action = !isTRUE(sidebar_unlocked())
             )
         })
 
@@ -4190,10 +4369,22 @@ bam_launcher_server <- function(state) {
                 badge <- "text-bg-secondary"
                 detail <- "Upload a BAM or use the example data."
             } else {
-                label <- "Preflight failed"
-                badge <- "text-bg-danger"
+                stage <- if (is.null(pf$error)) NULL else pf$error$stage
+                assembly_error <- identical(as.character(stage), "assembly")
+                label <- if (assembly_error) {
+                    "Needs assembly"
+                } else {
+                    "Preflight failed"
+                }
+                badge <- if (assembly_error) {
+                    "text-bg-warning"
+                } else {
+                    "text-bg-danger"
+                }
                 detail <- if (is.null(pf$error)) {
                     "See the calculation log."
+                } else if (assembly_error) {
+                    "Choose a matching assembly in the sidebar."
                 } else {
                     sprintf(
                         "Stage '%s': %s",

@@ -163,6 +163,8 @@
   is available.
 * While an analysis runs, the main plot area shows an animated chromosome
   loader with the current stage instead of a progress toast.
+* A BAM whose header does not match a configured assembly now shows a calm
+  amber recovery card in the sidebar instead of a red error line.
 * The call table drops the inert per-column "All" filter row that server-side
   DT renders disabled. The global search and the pill filters remain.
 * The result filter bar is now a compact row of pill dropdowns for class,

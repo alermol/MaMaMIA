@@ -247,6 +247,38 @@ test_that("the Assembly panel keeps its title", {
     expect_false(grepl('id="assembly_panel_title"', html, fixed = TRUE))
 })
 
+test_that("the preflight recovery card is calm and actionable", {
+    assembly <- list(
+        stage = "assembly",
+        message = paste(
+            "BAM '/tmp/session/001-0.bam' is missing target(s) required",
+            "by assembly 'wheat__rye': CP155614.1, CP155613.1"
+        ),
+        suggestion = "Choose a matching species pair."
+    )
+    html <- as.character(bam_sidebar_recovery_ui(assembly))
+    expect_match(html, "mamamia-recovery", fixed = TRUE)
+    expect_match(html, "No matching assembly", fixed = TRUE)
+    expect_match(html, "does not contain the contigs", fixed = TRUE)
+    expect_match(html, "calculation log lists the missing targets", fixed = TRUE)
+    expect_match(html, "Choose assembly", fixed = TRUE)
+    expect_match(html, "Choose a matching species pair.", fixed = TRUE)
+    expect_false(grepl("text-danger", html, fixed = TRUE))
+    expect_false(grepl("/tmp/session", html, fixed = TRUE))
+    expect_false(grepl("CP155614.1", html, fixed = TRUE))
+    locked <- as.character(
+        bam_sidebar_recovery_ui(assembly, show_action = FALSE)
+    )
+    expect_false(grepl("unlock_setup", locked, fixed = TRUE))
+    generic <- as.character(bam_sidebar_recovery_ui(list(
+        stage = "index",
+        message = "The index could not be written.",
+        suggestion = "Check the temporary directory."
+    )))
+    expect_match(generic, "Setup needs attention", fixed = TRUE)
+    expect_match(generic, "Review setup", fixed = TRUE)
+})
+
 test_that("the sidebar no longer offers component selectors", {
     config <- readMaMaMIAConfig(
         system.file("extdata", "bam-demo", "assemblies.yml",
