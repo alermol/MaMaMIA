@@ -269,7 +269,8 @@ confidence, plus a passing-only switch and a width filter; class choices are
 substitution, addition, deletion, complex and other. An empty dropdown means
 "all". A multi-sample BAM adds a **Sample** selector beside the filters as
 soon as preflight reads its `@RG SM` samples; it drives the karyotype, call
-table and exports and stays available after the run.
+table and exports and stays available after the run. The resolution slider
+also has an **Exact** field for typing a value in the same range and step.
 
 The main tab is a vertical karyotype with a score heatmap or call-map mode. Chromosomes are
 shown in assembly-config order without group or component columns, as diploid

@@ -379,7 +379,8 @@ bam_resolution_range <- function(defaults = .config_defaults(),
 }
 
 #' @noRd
-bam_resolution_slider_ui <- function(defaults = .config_defaults()) {
+bam_resolution_slider_ui <- function(defaults = .config_defaults(),
+                                     locked = FALSE) {
     range <- bam_resolution_range(defaults)
     positions <- if (range$max > range$min) {
         100 * (range$ticks - range$min) / (range$max - range$min)
@@ -399,10 +400,37 @@ bam_resolution_slider_ui <- function(defaults = .config_defaults()) {
             format(range$ticks[[i]], big.mark = ",", scientific = FALSE)
         )
     })
+    exact <- shiny::numericInput(
+        "resolution_number", NULL,
+        value = bam_default_resolution(defaults),
+        min = range$min,
+        max = range$max,
+        step = range$step,
+        width = "6rem"
+    )
+    exact_query <- htmltools::tagQuery(exact)$find("input")
+    if (isTRUE(locked)) {
+        exact_query <- exact_query$addAttrs(
+            disabled = "disabled", `aria-disabled` = "true"
+        )
+    }
+    exact <- exact_query$
+        addAttrs(
+            `aria-label` = "Exact resolution in windows per chromosome",
+            title = "Exact resolution in windows per chromosome"
+        )$
+        allTags()
     shiny::div(
         class = "mamamia-resolution-slider",
+        shiny::div(
+            class = "mamamia-resolution-head",
+            shiny::tags$label(
+                class = "control-label", `for` = "resolution", "Resolution"
+            ),
+            exact
+        ),
         shiny::sliderInput(
-            "resolution", "Resolution",
+            "resolution", NULL,
             min = range$min,
             max = range$max,
             value = bam_default_resolution(defaults),
@@ -425,7 +453,7 @@ bam_example_resolution_slider_ui <- function(defaults = .config_defaults()) {
     shiny::tagList(
         shiny::div(
             class = "mamamia-resolution-locked",
-            bam_resolution_slider_ui(display),
+            bam_resolution_slider_ui(display, locked = TRUE),
             shiny::actionButton(
                 "resolution_locked", "",
                 class = "mamamia-resolution-lock",
@@ -989,15 +1017,19 @@ bam_assembly_summary_ui <- function(assembly, resolutions = NULL) {
 #' @param input The Shiny input list (or a list with the same fields).
 #' @param config A validated configuration.
 #' @param samples Sample names from preflight.
+#' @param resolution Optional resolved resolution; overrides `input$resolution`.
 #'
 #' @return A list with the resolved `analyzeBamInput()` arguments.
 #' @noRd
-bam_run_parameters <- function(input, config, samples) {
+bam_run_parameters <- function(input, config, samples, resolution = NULL) {
     if (!is.character(samples) || length(samples) == 0L) {
         .mamamia_error("MaMaMIAAnalysisError", "At least one sample is required")
     }
     defaults <- config$defaults
-    resolution <- bam_resolution_value(input$resolution, defaults)
+    if (is.null(resolution)) {
+        resolution <- input$resolution
+    }
+    resolution <- bam_resolution_value(resolution, defaults)
     mapq <- bam_integer(defaults$mapq, "MAPQ", 0L, 255L)
     exclude_flags <- bam_integer(
         defaults$exclude_flags, "Exclude flags", 0L, 4095L
@@ -2584,6 +2616,38 @@ bam_dashboard_css <- function() {
     .mamamia-resolution-ticks span.last {
         transform: translateX(-100%);
     }
+    .mamamia-resolution-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: .45rem;
+        margin-bottom: .1rem;
+    }
+    .mamamia-resolution-head > .control-label {
+        flex: 0 0 auto;
+        margin: 0;
+        color: var(--mm-muted);
+        font-size: .61rem;
+        font-weight: 700;
+        letter-spacing: .1em;
+        text-transform: uppercase;
+    }
+    .mamamia-resolution-head .form-group {
+        flex: 0 0 6rem;
+        width: 6rem !important;
+        margin-bottom: 0;
+    }
+    .mamamia-resolution-head .form-control {
+        min-height: 1.7rem;
+        padding: .15rem .45rem;
+        border-color: var(--mm-line);
+        border-radius: .45rem;
+        background-color: var(--mm-surface);
+        font-size: .72rem;
+    }
+    .mamamia-resolution-slider .shiny-label-null {
+        display: none;
+    }
     .mamamia-resolution-locked {
         position: relative;
     }
@@ -3752,6 +3816,29 @@ bam_launcher_server <- function(state) {
             bam_resolution_slider_ui(config$defaults)
         })
 
+        ## The slider stays the canonical control, but a valid typed value
+        ## wins immediately so a run click cannot use a stale slider position.
+        resolution_value <- shiny::reactive({
+            if (isTRUE(example_mode())) {
+                return(as.integer(bam_example_default_resolution()))
+            }
+            defaults <- config$defaults
+            value <- suppressWarnings(as.integer(input$resolution_number))
+            if (length(value) == 1L && !is.na(value)) {
+                typed <- tryCatch(
+                    bam_resolution_value(value, defaults),
+                    error = function(e) NULL
+                )
+                if (!is.null(typed)) {
+                    return(typed)
+                }
+            }
+            tryCatch(
+                bam_resolution_value(input$resolution, defaults),
+                error = function(e) bam_default_resolution(defaults)
+            )
+        })
+
         notify_example_resolution <- function() {
             resolution <- bam_example_default_resolution()
             shiny::showNotification(
@@ -3789,6 +3876,66 @@ bam_launcher_server <- function(state) {
                     session, "resolution", value = expected
                 )
                 notify_example_resolution()
+            }
+        }, ignoreInit = TRUE)
+
+        shiny::observeEvent(input$resolution, {
+            value <- suppressWarnings(as.integer(input$resolution))
+            if (length(value) == 1L && !is.na(value)) {
+                shiny::updateNumericInput(
+                    session, "resolution_number", value = value
+                )
+            }
+        }, ignoreInit = TRUE)
+
+        shiny::observeEvent(input$resolution_number, {
+            value <- suppressWarnings(as.integer(input$resolution_number))
+            if (length(value) != 1L || is.na(value)) {
+                current <- suppressWarnings(as.integer(input$resolution))
+                if (length(current) == 1L && !is.na(current)) {
+                    shiny::updateNumericInput(
+                        session, "resolution_number", value = current
+                    )
+                }
+                return()
+            }
+            if (isTRUE(example_mode())) {
+                expected <- suppressWarnings(
+                    as.integer(bam_example_default_resolution())
+                )
+                if (length(expected) == 1L && !is.na(expected) &&
+                    !identical(value, expected)) {
+                    shiny::updateNumericInput(
+                        session, "resolution_number", value = expected
+                    )
+                    notify_example_resolution()
+                }
+                return()
+            }
+            valid <- tryCatch(
+                bam_resolution_value(value, config$defaults),
+                error = function(e) e
+            )
+            if (inherits(valid, "condition")) {
+                current <- suppressWarnings(as.integer(input$resolution))
+                if (length(current) == 1L && !is.na(current)) {
+                    shiny::updateNumericInput(
+                        session, "resolution_number", value = current
+                    )
+                }
+                shiny::showNotification(
+                    conditionMessage(valid),
+                    type = "warning", duration = 7
+                )
+                return()
+            }
+            if (!identical(
+                valid,
+                suppressWarnings(as.integer(input$resolution))
+            )) {
+                shiny::updateSliderInput(
+                    session, "resolution", value = valid
+                )
             }
         }, ignoreInit = TRUE)
 
@@ -4047,7 +4194,7 @@ bam_launcher_server <- function(state) {
             ready <- isTRUE(pf$ok)
             problem <- NULL
             if (ready) {
-                resolution <- suppressWarnings(as.integer(input$resolution))
+                resolution <- resolution_value()
                 problem <- bam_resolution_problem(
                     pf$assembly_config, resolution
                 )
@@ -4080,7 +4227,7 @@ bam_launcher_server <- function(state) {
         analysis_key <- shiny::reactive({
             bam_analysis_key(
                 preflight_state(),
-                input$resolution,
+                resolution_value(),
                 input$donor_aggregation,
                 input$control_samples
             )
@@ -4179,7 +4326,10 @@ bam_launcher_server <- function(state) {
             }
             samples <- unique(pf$table$sample)
             params <- tryCatch(
-                bam_run_parameters(input, pf$config, samples),
+                bam_run_parameters(
+                    input, pf$config, samples,
+                    resolution = resolution_value()
+                ),
                 error = function(e) e
             )
             if (inherits(params, "condition")) {

@@ -9,6 +9,11 @@ test_that("bam_run_parameters() resolves the run controls", {
         list(resolution = 100), config, samples = "demo-sample"
     )
     expect_identical(params$resolution, 100L)
+    typed <- bam_run_parameters(
+        list(resolution = 100), config,
+        samples = "demo-sample", resolution = 1010L
+    )
+    expect_identical(typed$resolution, 1010L)
     expect_identical(params$metric, config$defaults$metric)
     expect_identical(params$score, config$defaults$score)
     expect_identical(
@@ -42,6 +47,11 @@ test_that("the resolution picker is a ten-window slider with three ticks", {
     expect_match(slider, 'data-max="5000"', fixed = TRUE)
     expect_match(slider, 'data-step="10"', fixed = TRUE)
     expect_match(slider, 'mamamia-resolution-ticks', fixed = TRUE)
+    expect_match(slider, 'id="resolution_number"', fixed = TRUE)
+    expect_match(slider, 'type="number"', fixed = TRUE)
+    expect_match(slider, 'min="100"', fixed = TRUE)
+    expect_match(slider, 'max="5000"', fixed = TRUE)
+    expect_match(slider, 'step="10"', fixed = TRUE)
     expect_match(slider, "1,000", fixed = TRUE)
     expect_match(slider, "5,000", fixed = TRUE)
 })
@@ -57,6 +67,8 @@ test_that("the example resolution slider is locked at its precomputed value", {
     expect_match(slider, 'data-max="5000"', fixed = TRUE)
     expect_match(slider, 'data-from="1000"', fixed = TRUE)
     expect_match(slider, 'resolution_locked', fixed = TRUE)
+    expect_match(slider, 'id="resolution_number"', fixed = TRUE)
+    expect_match(slider, 'disabled="disabled"', fixed = TRUE)
     expect_match(
         slider,
         "Fixed at 1,000 windows per chromosome.",
