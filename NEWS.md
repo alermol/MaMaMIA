@@ -156,6 +156,9 @@
   recipient**; the caption above the chromosome remains **Deleted**.
 * The **Karyotype** toolbar downloads the current filtered view or a full
   view with every call for the sample as an SVG.
+* The sidebar species dropdowns show the registry labels without the
+  internal species keys.
+* The Assembly panel no longer repeats the component description.
 * The call table drops the inert per-column "All" filter row that server-side
   DT renders disabled. The global search and the pill filters remain.
 * The result filter bar is now a compact row of pill dropdowns for class,

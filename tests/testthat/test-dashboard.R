@@ -221,6 +221,32 @@ test_that("the species pair resolves every declared component", {
     )
 })
 
+test_that("the species dropdowns use registry labels", {
+    config <- bam_example_config()
+    choices <- bam_species_choices(config)
+    expect_identical(
+        names(choices),
+        c("Triticum-like (A)", "Secale-like (R)")
+    )
+    expect_identical(
+        unname(choices[c("Triticum-like (A)", "Secale-like (R)")]),
+        c("triticum_like", "secale_like")
+    )
+    expect_false(any(grepl(
+        "triticum_like|secale_like", names(choices)
+    )))
+    html <- as.character(bam_sidebar_species_ui(config))
+    expect_match(html, ">Triticum-like (A)</option>", fixed = TRUE)
+    expect_match(html, ">Secale-like (R)</option>", fixed = TRUE)
+})
+
+test_that("the Assembly panel keeps its title", {
+    config <- bam_example_config()
+    html <- as.character(bam_sidebar_details_ui(config))
+    expect_match(html, "Assembly", fixed = TRUE)
+    expect_false(grepl('id="assembly_panel_title"', html, fixed = TRUE))
+})
+
 test_that("the sidebar no longer offers component selectors", {
     config <- readMaMaMIAConfig(
         system.file("extdata", "bam-demo", "assemblies.yml",
@@ -232,7 +258,7 @@ test_that("the sidebar no longer offers component selectors", {
     expect_match(html, 'id="recipient_species"', fixed = TRUE)
     expect_match(html, 'id="donor_species"', fixed = TRUE)
     expect_match(html, 'id="swap_species"', fixed = TRUE)
-    expect_match(html, 'id="component_summary_ui"', fixed = TRUE)
+    expect_false(grepl('id="component_summary_ui"', html, fixed = TRUE))
 })
 
 test_that("example analysis controls render as read-only fields", {
@@ -248,7 +274,7 @@ test_that("example analysis controls render as read-only fields", {
     expect_match(html, "Recipient species", fixed = TRUE)
     expect_match(html, "Donor species", fixed = TRUE)
     expect_match(html, "Fixed for the bundled example", fixed = TRUE)
-    expect_match(html, 'id="component_summary_ui"', fixed = TRUE)
+    expect_false(grepl('id="component_summary_ui"', html, fixed = TRUE))
 })
 
 test_that("example analysis keys ignore stale run controls", {

@@ -304,12 +304,20 @@ bam_species_choices <- function(config) {
         return(NULL)
     }
     keys <- names(species)
-    stats::setNames(
-        keys,
-        vapply(keys, function(key) {
-            sprintf("%s (%s)", species[[key]]$label, key)
-        }, character(1))
-    )
+    labels <- vapply(keys, function(key) {
+        label <- species[[key]]$label
+        if (is.null(label) || length(label) != 1L || is.na(label) ||
+            !nzchar(label)) {
+            key
+        } else {
+            label
+        }
+    }, character(1))
+    if (anyDuplicated(labels)) {
+        repeated <- duplicated(labels) | duplicated(labels, fromLast = TRUE)
+        labels[repeated] <- sprintf("%s (%s)", labels[repeated], keys[repeated])
+    }
+    stats::setNames(keys, labels)
 }
 
 #' Every component declared for a species
@@ -2913,7 +2921,6 @@ bam_sidebar_species_ui <- function(config, selection = NULL, locked = FALSE) {
             bam_fixed_control_ui(
                 "Donor species", species_label(donor)
             ),
-            shiny::uiOutput("component_summary_ui"),
             shiny::p(
                 class = "mamamia-fixed-note",
                 paste(
@@ -2935,7 +2942,6 @@ bam_sidebar_species_ui <- function(config, selection = NULL, locked = FALSE) {
             choices = species_choices,
             selected = donor
         ),
-        shiny::uiOutput("component_summary_ui"),
         shiny::actionButton(
             "swap_species", "Swap donor and recipient",
             class = "btn-sm btn-outline-secondary",
@@ -3537,37 +3543,6 @@ bam_launcher_server <- function(state) {
             )
             shiny::updateSelectInput(
                 session, "donor_species", selected = recipient_key
-            )
-        })
-
-        output$component_summary_ui <- shiny::renderUI({
-            species_config <- if (isTRUE(example_mode())) {
-                bam_example_config()
-            } else {
-                config
-            }
-            if (isTRUE(example_mode())) {
-                selection <- bam_example_species_selection()
-                recipient_key <- selection$recipient
-                donor_key <- selection$donor
-            } else {
-                recipient_key <- recipient_species()
-                donor_key <- donor_species()
-            }
-            recipient <- species_config$species[[recipient_key]]
-            donor <- species_config$species[[donor_key]]
-            if (is.null(recipient) || is.null(donor)) {
-                return(NULL)
-            }
-            recipient_components <- bam_species_components(recipient)
-            donor_components <- bam_species_components(donor)
-            shiny::p(
-                class = "text-muted small mb-2",
-                sprintf(
-                    "All components: recipient %s; donor %s.",
-                    paste(recipient_components, collapse = "+"),
-                    paste(donor_components, collapse = "+")
-                )
             )
         })
 
