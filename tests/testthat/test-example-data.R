@@ -5,13 +5,13 @@ test_that("the bundled example is available", {
     config <- bam_example_config()
     expect_identical(config$version, 2L)
     expect_true("triticum_like" %in% names(config$species))
-    expect_identical(bam_example_resolutions(), 100L)
-    expect_identical(bam_example_default_resolution(), "100")
+    expect_identical(bam_example_resolutions(), 1000L)
+    expect_identical(bam_example_default_resolution(), "1000")
 })
 
 test_that("the bundled example replays a result and progress", {
     skip_if_not(bam_example_available(), "bundled example is not installed")
-    result <- bam_example_result(100)
+    result <- bam_example_result(1000)
     expect_s3_class(result, "BamAnalysisResult")
     expect_named(result, c(
         "assembly", "config", "bams", "samples", "windows", "gc", "metrics",
@@ -19,7 +19,25 @@ test_that("the bundled example replays a result and progress", {
     ))
     expect_gte(sum(result$calls$pass), 1L)
     expect_true(any(result$calls$recipient_assignment == "assigned"))
-    expect_true(any(result$calls$class == "substitution"))
+    passing <- result$calls[result$calls$pass %in% TRUE, , drop = FALSE]
+    expect_setequal(
+        unique(as.character(passing$class)),
+        c("addition", "complex", "deletion", "substitution")
+    )
+    expect_setequal(
+        unique(as.character(passing$group)),
+        c("1", "2", "3", "4")
+    )
+    expect_length(unique(result$assembly$contigs$recipient$length), 4L)
+    expect_length(unique(round(passing$width_bp)), 4L)
+    expect_setequal(
+        unique(as.character(result$calls$copy_state)),
+        c("balanced", "gain", "loss", "compound", "neutral")
+    )
+    expect_true(all(
+        c("confident", "ambiguous", "needs_review") %in%
+            result$calls$class_status
+    ))
     stages <- character()
     bam_example_progress(
         result,
@@ -44,7 +62,7 @@ test_that("the example preflight state resolves the assembly", {
 
 test_that("the bundled example satisfies the result contract", {
     skip_if_not(bam_example_available(), "bundled example is not installed")
-    result <- bam_example_result(100)
+    result <- bam_example_result(1000)
     expect_silent(validateBamAnalysisResult(result))
     expect_true(all(c("start", "stop") %in% names(result$scores)))
     expect_true(all(result$scores$stop > result$scores$start))

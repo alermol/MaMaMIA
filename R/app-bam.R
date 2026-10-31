@@ -3119,7 +3119,7 @@ bam_launcher_server <- function(state) {
         sidebar_unlocked <- shiny::reactiveVal(FALSE)
         upload_epoch <- shiny::reactiveVal(0L)
 
-        ## The bundled example has 20 kb contigs, so its 2-8 kb calls would
+        ## The bundled example has 200 kb contigs, so its 2 kb calls would
         ## disappear under the 5 Mb production filter. Use a toy-scale filter
         ## while example mode is active and restore the default afterwards.
         shiny::observeEvent(example_mode(), {
@@ -3152,7 +3152,7 @@ bam_launcher_server <- function(state) {
             if (isTRUE(example_mode())) {
                 return(shiny::p(
                     class = "text-muted small mb-2",
-                    "Example data: one sample."
+                    "Example data: one sample, four events on four chromosomes."
                 ))
             }
             pf <- preflight_state()

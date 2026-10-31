@@ -292,7 +292,7 @@ test_that("exploreIntrogressions() requires a BamAnalysisResult", {
 
 test_that("the explorer score profile renders to a device", {
     skip_if_not(bam_example_available(), "bundled example is not installed")
-    result <- bam_example_result(100)
+    result <- bam_example_result(1000)
     calls <- result$calls[result$calls$pass, , drop = FALSE]
     plot <- explorer_score_plot(result$scores, calls)
     expect_s3_class(plot, "ggplot")

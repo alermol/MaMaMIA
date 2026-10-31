@@ -1,26 +1,26 @@
 {
-  "builder_version": "0.1.0",
+  "builder_version": "0.3.1",
   "created": "2023-11-14T22:13:20Z",
   "files": {
     "contigs.tsv": {
-      "crc32": "a32ff98e",
-      "size": 26
+      "crc32": "3eb360cb",
+      "size": 133
     },
     "genome.bv": {
-      "crc32": "cd202153",
-      "size": 5120
+      "crc32": "5e503e73",
+      "size": 205312
     },
     "genome.rb": {
-      "crc32": "3db7b338",
-      "size": 248
+      "crc32": "f4e375a2",
+      "size": 9626
     },
     "valid.bv": {
-      "crc32": "6cd7a384",
-      "size": 5120
+      "crc32": "0f4ef095",
+      "size": 205312
     },
     "valid.rb": {
-      "crc32": "bff3a790",
-      "size": 248
+      "crc32": "de8e4107",
+      "size": 9626
     }
   },
   "format_version": "0.1.0",
@@ -30,8 +30,8 @@
     "endianness": "little",
     "remove_ambiguous_supported": true,
     "superblock_bits": 4096,
-    "total_gc": 23996,
-    "total_valid": 40000
+    "total_gc": 983844,
+    "total_valid": 1640000
   },
   "semantics": {
     "ambiguous_bases": "N, R, Y, S, W, K, M, B, D, H, V: never GC and never valid; removed from the denominator by gc_fraction(remove_ambiguous = true)",
@@ -43,10 +43,10 @@
     "window": "half-open [start, end), 0-based, over the concatenated contigs"
   },
   "source": {
-    "file_bytes": 40676,
-    "num_contigs": 2,
-    "path": "inst/extdata/bam-demo/demo.fa",
-    "sha256": "03f15113e60e4e0a0c4faaf220ea651c73ca7329dd02ab77dba0203812d50280",
-    "total_bases": 40000
+    "file_bytes": 1640040,
+    "num_contigs": 8,
+    "path": "/tmp/RtmpNkaidn/mamamia-example-2294b818d2ab67/example.fa",
+    "sha256": "d0570dbca4c4826df7281ea86b83d0718610810fa32eea7d263dfb7eff3de317",
+    "total_bases": 1640000
   }
 }

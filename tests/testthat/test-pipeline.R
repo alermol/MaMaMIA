@@ -147,7 +147,7 @@ test_that("a cohort analysis keeps the event in the positive sample", {
 
 test_that("writeCallsToBedpe() writes donor and recipient intervals", {
     skip_if_not(bam_example_available(), "bundled example is not installed")
-    result <- bam_example_result(100)
+    result <- bam_example_result(1000)
     output <- tempfile(fileext = ".bedpe")
     on.exit(unlink(output), add = TRUE)
     writeCallsToBedpe(result, output)

@@ -1,8 +1,7 @@
 version: 2
 defaults:
-  windows_per_chromosome: 100
+  windows_per_chromosome: 1000
   allowed_windows:
-  - 100
   - 1000
   mapq: 20
   exclude_flags: 1796
@@ -14,19 +13,31 @@ server:
 species:
   triticum_like:
     label: Triticum-like (A)
-    description: Synthetic 20 kb contig with variable GC
+    description: Synthetic 160-260 kb chromosomes with variable GC
     default_component: A
     gc_indexes:
     - demo.gcrank
     contigs:
     - id: r1
       name: 1A
+    - id: r2
+      name: 2A
+    - id: r3
+      name: 3A
+    - id: r4
+      name: 4A
   secale_like:
     label: Secale-like (R)
-    description: Synthetic 20 kb contig with variable GC
+    description: Synthetic 160-260 kb chromosomes with variable GC
     default_component: R
     gc_indexes:
     - demo.gcrank
     contigs:
     - id: d1
       name: 1R
+    - id: d2
+      name: 2R
+    - id: d3
+      name: 3R
+    - id: d4
+      name: 4R
