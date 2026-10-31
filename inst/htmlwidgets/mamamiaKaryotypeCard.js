@@ -831,7 +831,7 @@ HTMLWidgets.widget({
         if (deleted && copy === 1) {
           chromGroup.appendChild(textEl("deleted", {
             x: pairCenter,
-            y: margin.top + 10,
+            y: margin.top - 6,
             "text-anchor": "middle",
             "font-size": 7,
             "font-weight": 600,
@@ -841,7 +841,7 @@ HTMLWidgets.widget({
         if (added && copy === 1) {
           chromGroup.appendChild(textEl("added", {
             x: pairCenter,
-            y: margin.top + 10,
+            y: margin.top - 6,
             "text-anchor": "middle",
             "font-size": 7,
             "font-weight": 600,
