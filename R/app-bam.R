@@ -2359,27 +2359,35 @@ bam_dashboard_css <- function() {
     }
     .mamamia-karyotype .shiny-options-group {
         display: inline-flex;
+        gap: 2px;
         padding: 2px;
         border: 1px solid var(--mm-line);
         border-radius: 999px;
         background: var(--mm-paper);
+        font-size: 0;
     }
     .mamamia-karyotype .radio-inline {
         margin: 0;
+        padding: 0;
+        font-size: 0;
     }
     .mamamia-karyotype .radio-inline input {
         position: absolute;
+        width: 1px;
+        height: 1px;
+        margin: 0;
         opacity: 0;
         pointer-events: none;
     }
     .mamamia-karyotype .radio-inline span {
         display: block;
-        padding: .22rem .7rem;
+        padding: .3rem .8rem;
         border-radius: 999px;
         color: var(--mm-muted);
-        font-size: .71rem;
+        font-size: .7rem;
         font-weight: 600;
-        line-height: 1.3;
+        line-height: 1.25;
+        text-align: center;
         cursor: pointer;
         transition: background-color .15s ease, color .15s ease;
     }
