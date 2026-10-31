@@ -311,6 +311,7 @@ test_that("the explorer has no chromosome group selector", {
     for (html in list(bam, standalone, filters)) {
         expect_false(grepl("Chromosome groups", html, fixed = TRUE))
     }
+    expect_match(bam, "mamamia-sample-picker", fixed = TRUE)
     expect_match(filters, "Call class", fixed = TRUE)
     expect_match(filters, "deletion", fixed = TRUE)
     expect_match(filters, "complex", fixed = TRUE)
@@ -318,6 +319,22 @@ test_that("the explorer has no chromosome group selector", {
     expect_match(filters, "Copy state", fixed = TRUE)
     expect_match(filters, "balanced", fixed = TRUE)
     expect_match(filters, "Confidence", fixed = TRUE)
+})
+
+test_that("the empty sample picker is not hidden from Shiny", {
+    ## Shiny suspends outputs whose wrapper has display:none, so hiding the
+    ## empty picker would prevent it from ever rendering a multi-sample
+    ## selector. The wrapper must stay visible and collapse its spacing.
+    css <- bam_dashboard_css()
+    expect_false(grepl(
+        ".mamamia-sample-picker:empty", css, fixed = TRUE
+    ))
+    expect_match(
+        css, ".mamamia-sample-picker .shiny-input-container", fixed = TRUE
+    )
+    expect_match(
+        css, "margin-right: .55rem", fixed = TRUE
+    )
 })
 
 test_that("the launcher builds with the demo registry", {

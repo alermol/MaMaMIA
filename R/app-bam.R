@@ -2128,7 +2128,7 @@ bam_dashboard_css <- function() {
     .mamamia-filter-bar {
         display: flex;
         align-items: flex-end;
-        gap: .55rem;
+        gap: 0;
         padding: .1rem 0 .55rem;
         border: 0;
         border-bottom: 1px solid var(--mm-line);
@@ -2138,13 +2138,14 @@ bam_dashboard_css <- function() {
     .mamamia-sample-picker {
         flex: 0 0 auto;
     }
-    .mamamia-sample-picker:empty {
-        display: none;
-    }
+    /* Never hide the empty wrapper: Shiny suspends display:none outputs, so
+       the picker could not render once a multi-sample BAM arrives. The
+       populated input carries its own spacing so the empty state is flush. */
     .mamamia-sample-picker .shiny-input-container,
     .mamamia-sample-picker .form-group {
         width: 10.5rem;
         margin-bottom: 0;
+        margin-right: .55rem;
     }
     .mamamia-sample-picker .control-label {
         margin-bottom: .15rem;

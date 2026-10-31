@@ -267,7 +267,9 @@ The dashboard analyses every component declared for the selected species and
 offers compact pill dropdowns for class, class status, copy state and
 confidence, plus a passing-only switch and a width filter; class choices are
 substitution, addition, deletion, complex and other. An empty dropdown means
-"all".
+"all". A multi-sample BAM adds a **Sample** selector beside the filters as
+soon as preflight reads its `@RG SM` samples; it drives the karyotype, call
+table and exports and stays available after the run.
 
 The main tab is a vertical karyotype with a score heatmap or call-map mode. Chromosomes are
 shown in assembly-config order without group or component columns, as diploid

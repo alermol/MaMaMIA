@@ -97,7 +97,10 @@
 * The sidebar accepts exactly one BAM per run, single- or multi-sample. The
   file picker has no `multiple` attribute, a drag-and-drop guard keeps only
   the first dropped file, and the server rejects a multi-file payload with a
-  message instead of silently ignoring the extra files.
+  message instead of silently ignoring the extra files. A multi-sample BAM
+  shows the **Sample** selector in the result filter bar as soon as its
+  `@RG SM` samples pass preflight, before the analysis runs, and keeps it
+  available afterwards to drive the karyotype, call table and exports.
 * Component selectors are gone. The app resolves every component declared for
   the selected species — for example A+B+D versus S — and analyses them in one
   assembly, with a read-only summary under **Assembly**.
