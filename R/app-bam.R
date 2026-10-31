@@ -2119,12 +2119,12 @@ bam_dashboard_css <- function() {
         text-transform: uppercase;
     }
     .mamamia-sample-picker .form-select {
-        min-height: 2rem;
-        padding: .2rem .55rem;
+        min-height: 1.9rem;
+        padding: .2rem .6rem;
         border-color: var(--mm-line);
         border-radius: 999px;
         background-color: var(--mm-surface);
-        font-size: .78rem;
+        font-size: .72rem;
     }
     .mamamia-filter-controls {
         display: flex;
@@ -2138,7 +2138,7 @@ bam_dashboard_css <- function() {
         display: flex;
         flex-wrap: wrap;
         align-items: center;
-        gap: .38rem;
+        gap: .45rem;
         width: 100%;
     }
     .mamamia-filter-pills .shiny-input-container {
@@ -2150,24 +2150,43 @@ bam_dashboard_css <- function() {
         flex: 0 0 auto;
     }
     .mamamia-filter-pills .bootstrap-select > .dropdown-toggle {
-        min-height: 2rem;
-        height: 2rem;
-        padding: 0 .72rem;
+        min-height: 1.9rem;
+        height: 1.9rem;
+        padding: 0 .78rem;
         border: 1px solid var(--mm-line);
         border-radius: 999px;
         background: var(--mm-surface);
         color: var(--mm-muted);
-        font-size: .76rem;
-        font-weight: 550;
+        font-size: .72rem;
+        font-weight: 600;
         box-shadow: none;
         transition: border-color .15s ease, color .15s ease,
             background-color .15s ease;
     }
-    .mamamia-filter-pills .bootstrap-select > .dropdown-toggle:hover,
-    .mamamia-filter-pills .bootstrap-select > .dropdown-toggle:focus {
+    .mamamia-filter-pills .bootstrap-select > .dropdown-toggle::after {
+        width: 5px;
+        height: 5px;
+        margin: 0 0 0 .42rem;
+        border: 0;
+        border-right: 1.5px solid currentColor;
+        border-bottom: 1.5px solid currentColor;
+        transform: rotate(45deg) translateY(-1px);
+        transition: transform .15s ease;
+    }
+    .mamamia-filter-pills .bootstrap-select.show > .dropdown-toggle::after {
+        transform: rotate(225deg) translateY(-1px);
+    }
+    .mamamia-filter-pills .bootstrap-select > .dropdown-toggle:hover {
         border-color: var(--mm-accent);
         background: var(--mm-accent-soft);
         color: var(--mm-accent);
+    }
+    .mamamia-filter-pills .bootstrap-select > .dropdown-toggle:focus {
+        outline: none !important;
+    }
+    .mamamia-filter-pills .bootstrap-select > .dropdown-toggle:focus-visible {
+        outline: 2px solid var(--mm-accent) !important;
+        outline-offset: 2px !important;
     }
     .mamamia-filter-pills .bootstrap-select > .dropdown-toggle:not(.bs-placeholder) {
         border-color: var(--mm-accent);
@@ -2179,7 +2198,7 @@ bam_dashboard_css <- function() {
         box-shadow: 0 0 0 .15rem var(--mm-accent-soft);
     }
     .mamamia-filter-pills .bootstrap-select .filter-option-inner-inner {
-        font-size: .76rem;
+        font-size: .72rem;
     }
     .mamamia-filter-pills .bootstrap-select .dropdown-menu {
         padding: .28rem 0;
@@ -2199,16 +2218,17 @@ bam_dashboard_css <- function() {
     .mamamia-filter-pills .mamamia-filter-switch {
         display: flex;
         align-items: center;
-        min-height: 2rem;
+        min-height: 1.9rem;
         margin-left: auto;
     }
     .mamamia-filter-pills .form-check.form-switch {
         display: flex;
         align-items: center;
-        min-height: 2rem;
+        gap: .42rem;
+        min-height: 1.9rem;
         margin: 0;
         padding-left: 2.4em;
-        font-size: .76rem;
+        font-size: .72rem;
         white-space: nowrap;
     }
     .mamamia-filter-pills .form-check-input {
@@ -2226,8 +2246,8 @@ bam_dashboard_css <- function() {
     }
     .mamamia-filter-pills .form-check-label {
         color: var(--mm-muted);
-        font-size: .74rem;
-        font-weight: 550;
+        font-size: .72rem;
+        font-weight: 600;
     }
     .mamamia-segment-controls {
         display: flex;
