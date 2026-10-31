@@ -3088,7 +3088,37 @@ bam_launcher_ui <- function(state) {
                     "    var el = document.getElementById('calculation_log');",
                     "    if (el) { el.scrollTop = el.scrollHeight; }",
                     "  }, 0);",
-                    "});"
+                    "});",
+                    "function mamamiaResultTabs(enabled) {",
+                    "  var links = document.querySelectorAll(",
+                    "    '#explorer-tabs .nav-link');",
+                    "  Array.prototype.forEach.call(links, function(link) {",
+                    "    var label = (link.textContent || '').trim();",
+                    "    if (label !== 'Calls' && label !== 'Export') return;",
+                    "    if (enabled) {",
+                    "      link.classList.remove('disabled');",
+                    "      link.removeAttribute('aria-disabled');",
+                    "      link.removeAttribute('tabindex');",
+                    "    } else {",
+                    "      link.classList.add('disabled');",
+                    "      link.setAttribute('aria-disabled', 'true');",
+                    "      link.setAttribute('tabindex', '-1');",
+                    "    }",
+                    "  });",
+                    "  if (!enabled) {",
+                    "    var active = document.querySelector(",
+                    "      '#explorer-tabs .nav-link.active');",
+                    "    if (active &&",
+                    "        (active.textContent || '').trim() !== 'Karyotype') {",
+                    "      var first = document.querySelector(",
+                    "        '#explorer-tabs .nav-link');",
+                    "      if (first) first.click();",
+                    "    }",
+                    "  }",
+                    "}",
+                    "$(function() { mamamiaResultTabs(false); });",
+                    "Shiny.addCustomMessageHandler('mamamia-result-tabs',",
+                    "function(x) { mamamiaResultTabs(!!x.enabled); });"
                 )
             )),
             shiny::tags$script(shiny::HTML(
@@ -3336,6 +3366,12 @@ bam_launcher_server <- function(state) {
         }, ignoreInit = TRUE)
 
         result <- shiny::reactiveVal(NULL)
+        shiny::observeEvent(result(), {
+            session$sendCustomMessage(
+                "mamamia-result-tabs",
+                list(enabled = !is.null(result()))
+            )
+        }, ignoreInit = FALSE, ignoreNULL = FALSE)
         last_error <- shiny::reactiveVal(NULL)
         result_cache <- bam_result_cache()
         active_key <- shiny::reactiveVal(NULL)
