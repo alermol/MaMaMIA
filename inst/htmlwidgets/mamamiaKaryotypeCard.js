@@ -39,7 +39,7 @@ HTMLWidgets.widget({
         ["deletion", "Deletion"],
         ["complex", "Complex"],
         ["other", "Other"],
-        ["deleted", "Deleted"],
+        ["deleted", "Deleted recipient"],
         ["added", "Added donor"]
       ];
     }

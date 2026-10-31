@@ -152,6 +152,8 @@
   **Calibrating calls**, without counts or sample names.
 * The **Export** tab no longer repeats the near-zero coverage warnings; they
   remain in the calculation log.
+* The karyotype legend labels the dashed deleted-chromosome state **Deleted
+  recipient**; the caption above the chromosome remains **Deleted**.
 * The call table drops the inert per-column "All" filter row that server-side
   DT renders disabled. The global search and the pill filters remain.
 * The result filter bar is now a compact row of pill dropdowns for class,
