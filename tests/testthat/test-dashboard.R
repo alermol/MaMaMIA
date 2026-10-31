@@ -274,18 +274,30 @@ test_that("progress labels cover the pipeline stages", {
         "segmentation", "calibration"
     ) %in% stages))
     expect_identical(sum(stages == "metrics"), 2L)
-    expect_match(bam_progress_label("metrics", list(total = 1000)), "reads")
-    expect_match(
-        bam_progress_label("score", list(mode = "single", metric = "breadth")),
-        "single"
+})
+
+test_that("progress labels stay short and ignore detail fields", {
+    expect_identical(
+        bam_progress_label("metrics", list(sample = "A", total = 1000)),
+        "Counting reads"
     )
-    expect_match(
+    expect_identical(
+        bam_progress_label(
+            "score", list(mode = "single", metric = "breadth")
+        ),
+        "Scoring windows"
+    )
+    expect_identical(
         bam_progress_label("mask", list(masked_fraction = 0.1)),
-        "10%"
+        "Masking windows"
     )
-    expect_match(
+    expect_identical(
         bam_progress_label("calibration", list(n_calls = 3)),
-        "3 calibrated"
+        "Calibrating calls"
+    )
+    expect_identical(
+        bam_progress_label("segmentation", list(n_segments = 18)),
+        "Segmenting profiles"
     )
 })
 

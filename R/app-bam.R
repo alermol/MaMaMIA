@@ -1093,129 +1093,28 @@ bam_progress_stages <- function(n_samples, ...) {
 }
 
 .bam_progress_labels <- c(
-    preflight = "Checking BAM headers",
-    index = "Ensuring CSI indexes",
-    windows = "Generating analysis windows",
+    preflight = "Checking BAM",
+    index = "Indexing BAM",
+    windows = "Building windows",
     gc = "Reading GC content",
-    metrics = "Measuring breadth and counts",
-    score = "Scoring donor/recipient windows",
-    mask = "Masking recurrent windows",
-    segmentation = "Segmenting score profiles",
-    calibration = "Calibrating call thresholds"
+    metrics = "Counting reads",
+    score = "Scoring windows",
+    mask = "Masking windows",
+    segmentation = "Segmenting profiles",
+    calibration = "Calibrating calls"
 )
 
 #' @noRd
 bam_progress_label <- function(stage, detail = list()) {
-    if (!is.list(detail)) {
-        detail <- list()
-    }
-    ## `[[` on a named character vector throws "subscript out of bounds" for
-    ## an unknown name. Progress stages are an open set (a pipeline stage, a
-    ## sample count, a future event), so an unknown one must not abort the
-    ## analysis.
+    ## Progress text stays short: the counts, sample names and other detail
+    ## fields remain available to the pipeline but are not shown in the toast.
+    ## `[` on a named character vector returns NA for an unknown name, so a
+    ## future stage cannot abort the analysis.
     label <- unname(.bam_progress_labels[stage])
     if (length(label) != 1L || is.na(label)) {
         label <- as.character(stage)[[1L]]
     }
-
-    count <- function(x) {
-        if (length(x) != 1L || !is.numeric(x) || is.na(x) || !is.finite(x)) {
-            return(NULL)
-        }
-        format(x, big.mark = ",", scientific = FALSE)
-    }
-    sample <- detail$sample
-    sample_suffix <- if (!is.null(sample) && length(sample) == 1L &&
-        !is.na(sample) && nzchar(sample)) {
-        paste0(" for ", sample)
-    } else {
-        ""
-    }
-
-    switch(stage,
-        preflight = {
-            n <- count(detail$n_bams)
-            if (is.null(n)) {
-                return(label)
-            }
-            sprintf(
-                "%s (%s BAM file%s)",
-                label, n,
-                if (isTRUE(detail$n_bams == 1)) "" else "s"
-            )
-        },
-        index = {
-            n <- count(detail$n_bams)
-            staged <- count(detail$staged)
-            if (is.null(n) || is.null(staged)) {
-                return(label)
-            }
-            sprintf("%s (%s of %s staged)", label, staged, n)
-        },
-        windows = {
-            n <- count(detail$n_windows)
-            per <- count(detail$n_per_chromosome)
-            if (is.null(n)) {
-                return(label)
-            }
-            sprintf(
-                "%s (%s window%s%s)",
-                label, n,
-                if (isTRUE(detail$n_windows == 1)) "" else "s",
-                if (!is.null(per)) sprintf(", %s per chromosome", per) else ""
-            )
-        },
-        gc = {
-            n <- count(detail$n_windows)
-            if (is.null(n)) {
-                return(label)
-            }
-            sprintf("%s for %s windows", label, n)
-        },
-        metrics = {
-            total <- count(detail$total)
-            if (is.null(total)) {
-                return(paste0(label, sample_suffix))
-            }
-            sprintf("%s%s (%s reads)", label, sample_suffix, total)
-        },
-        score = {
-            mode <- detail$mode
-            metric <- detail$metric
-            if (is.null(mode) || is.null(metric) || length(mode) != 1L ||
-                is.na(mode) || !nzchar(mode)) {
-                return(label)
-            }
-            sprintf("%s (%s, %s)", label, mode, metric)
-        },
-        mask = {
-            fraction <- detail$masked_fraction
-            if (is.null(fraction) || length(fraction) != 1L ||
-                !is.finite(fraction)) {
-                return(label)
-            }
-            sprintf("%s (%s%% of windows)", label, round(100 * fraction, 1))
-        },
-        calibration = {
-            n <- count(detail$n_calls)
-            if (is.null(n)) {
-                return(label)
-            }
-            sprintf("%s (%s calibrated call%s)", label, n,
-                if (isTRUE(detail$n_calls == 1)) "" else "s"
-            )
-        },
-        segmentation = {
-            n <- count(detail$n_segments)
-            if (is.null(n)) {
-                return(paste0(label, sample_suffix))
-            }
-            sprintf("%s%s (%s segment%s)", label, sample_suffix, n,
-                if (isTRUE(detail$n_segments == 1)) "" else "s"
-            )
-        },
-        paste0(label, sample_suffix)
-    )
+    label
 }
 
 #' @noRd
@@ -4482,7 +4381,7 @@ bam_launcher_server <- function(state) {
 
             new_result <- tryCatch(
                 shiny::withProgress(
-                    message = "MaMaMIA analysis", value = 0,
+                    message = "Analysis", value = 0,
                     {
                         primary <- run_analysis(
                             pf$config, pf$assembly, progress_for()
