@@ -790,6 +790,45 @@ explorer_tooltip_help_ui <- function() {
     )
 }
 
+#' @noRd
+mamamia_analysis_loader_ui <- function() {
+    shiny::div(
+        class = "mamamia-analysis-loading",
+        style = "display: none;",
+        role = "status",
+        `aria-live` = "polite",
+        `aria-hidden` = "true",
+        shiny::div(
+            class = "mamamia-analysis-loader",
+            `aria-hidden` = "true",
+            shiny::HTML(paste0(
+                '<svg viewBox="0 0 80 80" ',
+                'xmlns="http://www.w3.org/2000/svg">',
+                '<circle class="mamamia-analysis-orbit" ',
+                'cx="40" cy="40" r="31"></circle>',
+                '<path class="mamamia-analysis-strand" ',
+                'd="M28 16 C 28 28, 34 34, 40 40 ',
+                'C 46 46, 52 52, 52 64"></path>',
+                '<path class="mamamia-analysis-strand ',
+                'mamamia-analysis-strand-warm" ',
+                'd="M52 16 C 52 28, 46 34, 40 40 ',
+                'C 34 46, 28 52, 28 64"></path>',
+                '<circle class="mamamia-analysis-chiasma" ',
+                'cx="40" cy="40" r="3.2"></circle>',
+                "</svg>"
+            ))
+        ),
+        shiny::div(class = "mamamia-analysis-eyebrow", "Analysis"),
+        shiny::div(
+            class = "mamamia-analysis-stage", "Preparing analysis"
+        ),
+        shiny::div(
+            class = "mamamia-analysis-track",
+            shiny::tags$span(class = "mamamia-analysis-fill")
+        )
+    )
+}
+
 explorer_karyotype_ui <- function(id, height = "calc(100vh - 360px)") {
     ns <- shiny::NS(id)
     shiny::div(
@@ -839,7 +878,11 @@ explorer_karyotype_ui <- function(id, height = "calc(100vh - 360px)") {
                 )
             )
         ),
-        mamamia_karyotype_output(ns("karyotype"), height = height),
+        shiny::div(
+            class = "mamamia-karyotype-plot",
+            mamamia_karyotype_output(ns("karyotype"), height = height),
+            mamamia_analysis_loader_ui()
+        ),
         shiny::tags$script(shiny::HTML(
             "$(document).off('click.mamamiaKaryotypeCurrent').on(",
             "'click.mamamiaKaryotypeCurrent', ",

@@ -1126,7 +1126,8 @@ bam_progress_label <- function(stage, detail = list()) {
 }
 
 #' @noRd
-bam_progress_callback <- function(n_samples, total_steps = NULL) {
+bam_progress_callback <- function(n_samples, total_steps = NULL,
+                                  handler = NULL) {
     stages <- length(bam_progress_stages(n_samples))
     total <- suppressWarnings(as.integer(total_steps))
     if (length(total) != 1L || is.na(total) || total < 1L) {
@@ -1136,10 +1137,14 @@ bam_progress_callback <- function(n_samples, total_steps = NULL) {
     state$done <- 0L
     function(stage, detail = list()) {
         state$done <- state$done + 1L
-        shiny::incProgress(
-            1 / total,
-            detail = bam_progress_label(stage, detail)
-        )
+        if (is.function(handler)) {
+            handler(stage, detail, min(1, state$done / total))
+        } else {
+            shiny::incProgress(
+                1 / total,
+                detail = bam_progress_label(stage, detail)
+            )
+        }
         invisible(NULL)
     }
 }
@@ -2347,6 +2352,137 @@ bam_dashboard_css <- function() {
         gap: .5rem !important;
         padding: 0 0 .5rem !important;
     }
+    .mamamia-karyotype-plot {
+        position: relative;
+        display: flex;
+        flex: 1 1 auto;
+        flex-direction: column;
+        min-height: 0;
+    }
+    .mamamia-karyotype-plot > .html-widget {
+        flex: 1 1 auto;
+        min-height: 0;
+        height: 100% !important;
+    }
+    .mamamia-analysis-loading {
+        position: absolute;
+        inset: 0;
+        z-index: 4;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: .85rem;
+        padding: 1.5rem;
+        text-align: center;
+        background: var(--mm-surface);
+        opacity: 0;
+        visibility: hidden;
+        transition: opacity .25s ease, visibility .25s ease;
+        pointer-events: none;
+    }
+    .mamamia-analysis-loading.is-running {
+        opacity: 1;
+        visibility: visible;
+    }
+    .mamamia-analysis-loader {
+        position: relative;
+        width: 92px;
+        height: 92px;
+    }
+    .mamamia-analysis-loader::before {
+        content: '';
+        position: absolute;
+        inset: 12%;
+        border-radius: 50%;
+        background: var(--mm-accent-soft);
+        animation: mamamia-loader-halo 2.4s ease-in-out infinite;
+    }
+    .mamamia-analysis-loader svg {
+        position: relative;
+        display: block;
+        width: 100%;
+        height: 100%;
+        overflow: visible;
+    }
+    .mamamia-analysis-orbit {
+        fill: none;
+        stroke: var(--mm-line-strong);
+        stroke-width: 1.4;
+        stroke-dasharray: 4 7;
+        transform-box: view-box;
+        transform-origin: 40px 40px;
+        animation: mamamia-loader-orbit 10s linear infinite;
+    }
+    .mamamia-analysis-strand {
+        fill: none;
+        stroke: var(--mm-accent);
+        stroke-width: 2.6;
+        stroke-linecap: round;
+        animation: mamamia-loader-strand 2.4s ease-in-out infinite;
+    }
+    .mamamia-analysis-strand-warm {
+        stroke: var(--mm-warm);
+        animation-delay: .3s;
+    }
+    .mamamia-analysis-chiasma {
+        fill: var(--mm-accent);
+        transform-box: view-box;
+        transform-origin: 40px 40px;
+        animation: mamamia-loader-chiasma 1.6s ease-in-out infinite;
+    }
+    .mamamia-analysis-eyebrow {
+        color: var(--mm-muted);
+        font-size: .62rem;
+        font-weight: 700;
+        letter-spacing: .14em;
+        text-transform: uppercase;
+    }
+    .mamamia-analysis-stage {
+        color: var(--mm-ink);
+        font-size: 1rem;
+        font-weight: 650;
+        line-height: 1.3;
+    }
+    .mamamia-analysis-track {
+        width: min(240px, 72%);
+        height: 3px;
+        overflow: hidden;
+        border-radius: 999px;
+        background: var(--mm-line);
+    }
+    .mamamia-analysis-fill {
+        display: block;
+        width: 0;
+        height: 100%;
+        border-radius: inherit;
+        background: linear-gradient(90deg, var(--mm-accent), var(--mm-warm));
+        transition: width .25s ease;
+    }
+    @keyframes mamamia-loader-orbit {
+        to { transform: rotate(360deg); }
+    }
+    @keyframes mamamia-loader-strand {
+        0%, 100% { opacity: .55; }
+        50% { opacity: 1; }
+    }
+    @keyframes mamamia-loader-chiasma {
+        0%, 100% { transform: scale(.75); opacity: .55; }
+        50% { transform: scale(1.25); opacity: 1; }
+    }
+    @keyframes mamamia-loader-halo {
+        0%, 100% { transform: scale(.85); opacity: .45; }
+        50% { transform: scale(1.1); opacity: .9; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .mamamia-analysis-orbit,
+        .mamamia-analysis-strand,
+        .mamamia-analysis-chiasma,
+        .mamamia-analysis-loader::before {
+            animation: none;
+        }
+        .mamamia-analysis-fill { transition: none; }
+    }
     .mamamia-karyotype .shiny-input-container {
         width: auto;
         margin-bottom: 0;
@@ -3118,7 +3254,52 @@ bam_launcher_ui <- function(state) {
                     "}",
                     "$(function() { mamamiaResultTabs(false); });",
                     "Shiny.addCustomMessageHandler('mamamia-result-tabs',",
-                    "function(x) { mamamiaResultTabs(!!x.enabled); });"
+                    "function(x) { mamamiaResultTabs(!!x.enabled); });",
+                    "function mamamiaAnalysisState(x) {",
+                    "  var loading = document.querySelectorAll(",
+                    "    '.mamamia-analysis-loading');",
+                    "  Array.prototype.forEach.call(loading, function(node) {",
+                    "    if (x.running) {",
+                    "      node.style.display = 'flex';",
+                    "      node.classList.add('is-running');",
+                    "      node.setAttribute('aria-hidden', 'false');",
+                    "    } else {",
+                    "      node.classList.remove('is-running');",
+                    "      node.setAttribute('aria-hidden', 'true');",
+                    "      node.style.display = 'none';",
+                    "    }",
+                    "  });",
+                    "  if (x.stage) {",
+                    "    var stage = document.querySelectorAll(",
+                    "      '.mamamia-analysis-stage');",
+                    "    Array.prototype.forEach.call(stage, function(node) {",
+                    "      node.textContent = x.stage;",
+                    "    });",
+                    "  }",
+                    "  if (x.progress !== null && x.progress !== undefined) {",
+                    "    var fill = document.querySelectorAll(",
+                    "      '.mamamia-analysis-fill');",
+                    "    var width = Math.round(",
+                    "      100 * Math.max(0, Math.min(1, x.progress)));",
+                    "    Array.prototype.forEach.call(fill, function(node) {",
+                    "      node.style.width = width + '%';",
+                    "    });",
+                    "  }",
+                    "  var run = document.getElementById('run');",
+                    "  if (run) {",
+                    "    if (x.running) {",
+                    "      run.classList.add('disabled');",
+                    "      run.setAttribute('disabled', 'disabled');",
+                    "      run.setAttribute('aria-busy', 'true');",
+                    "    } else {",
+                    "      run.classList.remove('disabled');",
+                    "      run.removeAttribute('disabled');",
+                    "      run.removeAttribute('aria-busy');",
+                    "    }",
+                    "  }",
+                    "}",
+                    "Shiny.addCustomMessageHandler('mamamia-analysis-state',",
+                    "function(x) { mamamiaAnalysisState(x); });"
                 )
             )),
             shiny::tags$script(shiny::HTML(
@@ -3385,6 +3566,22 @@ bam_launcher_server <- function(state) {
             log_entries(c(log_entries(), entry))
             try(
                 session$sendCustomMessage("mamamia-log-scroll", NULL),
+                silent = TRUE
+            )
+            invisible(NULL)
+        }
+
+        send_analysis_state <- function(running, stage = NULL,
+                                        progress = NULL) {
+            try(
+                session$sendCustomMessage(
+                    "mamamia-analysis-state",
+                    list(
+                        running = isTRUE(running),
+                        stage = stage,
+                        progress = progress
+                    )
+                ),
                 silent = TRUE
             )
             invisible(NULL)
@@ -4378,30 +4575,33 @@ bam_launcher_server <- function(state) {
                 )
             }
             progress_for <- function(prefix = "") {
-                raw_progress <- bam_progress_callback(
+                bam_progress_callback(
                     length(samples),
-                    total_steps = total_steps
+                    total_steps = total_steps,
+                    handler = function(stage, detail, progress) {
+                        label <- paste0(
+                            prefix, bam_progress_label(stage, detail)
+                        )
+                        log_line(label)
+                        send_analysis_state(TRUE, label, progress)
+                    }
                 )
-                function(stage, detail = list()) {
-                    log_line(paste0(
-                        prefix, bam_progress_label(stage, detail)
-                    ))
-                    raw_progress(stage, detail)
-                }
             }
 
+            send_analysis_state(TRUE, "Preparing analysis", 0)
+            session$onFlushed(
+                function() send_analysis_state(FALSE),
+                once = TRUE
+            )
             new_result <- tryCatch(
-                shiny::withProgress(
-                    message = "Analysis", value = 0,
-                    {
-                        primary <- run_analysis(
-                            pf$config, pf$assembly, progress_for()
-                        )
-                        result_cache$set(key, primary)
-                        active_key(key)
-                        primary
-                    }
-                ),
+                {
+                    primary <- run_analysis(
+                        pf$config, pf$assembly, progress_for()
+                    )
+                    result_cache$set(key, primary)
+                    active_key(key)
+                    primary
+                },
                 error = function(e) {
                     info <- bam_error_info(
                         e, files = pf$table$source, table = pf$table

@@ -327,6 +327,26 @@ test_that("progress labels stay short and ignore detail fields", {
     )
 })
 
+test_that("progress callbacks can update an inline status", {
+    seen <- list()
+    callback <- bam_progress_callback(
+        1L,
+        handler = function(stage, detail, progress) {
+            seen[[length(seen) + 1L]] <<- list(
+                stage = stage, progress = progress
+            )
+        }
+    )
+    callback("preflight", list())
+    callback("index", list())
+    expect_length(seen, 2L)
+    expect_identical(seen[[1L]]$stage, "preflight")
+    expect_equal(
+        seen[[2L]]$progress,
+        2 / length(bam_progress_stages(1L))
+    )
+})
+
 test_that("cohort summaries and warnings read WindowMetrics", {
     result <- list(
         samples = data.frame(

@@ -271,6 +271,9 @@ test_that("the explorer exposes the karyotype tab and mode switch", {
     expect_match(html, "Current view", fixed = TRUE)
     expect_match(html, "Full view", fixed = TRUE)
     expect_match(html, "mamamiaDownloadKaryotype", fixed = TRUE)
+    expect_match(html, "mamamia-analysis-loading", fixed = TRUE)
+    expect_match(html, "mamamia-analysis-stage", fixed = TRUE)
+    expect_match(html, "Preparing analysis", fixed = TRUE)
 })
 
 test_that("the karyotype export payload carries every call", {
