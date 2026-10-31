@@ -144,12 +144,13 @@ explorer_score_plot <- function(scores, calls = NULL) {
 
 explorer_view_filters_ui <- function(id) {
     ns <- shiny::NS(id)
-    picker <- function(inputId, label, title, choices) {
+    picker <- function(inputId, label, title, choices,
+                       selected = character(0)) {
         shinyWidgets::pickerInput(
             ns(inputId),
             label = shiny::span(class = "visually-hidden", label),
             choices = choices,
-            selected = character(0),
+            selected = selected,
             multiple = TRUE,
             width = "fit",
             options = shinyWidgets::pickerOptions(
@@ -180,7 +181,8 @@ explorer_view_filters_ui <- function(id) {
                 "Confident" = "confident",
                 "Ambiguous" = "ambiguous",
                 "Needs review" = "needs_review"
-            )
+            ),
+            selected = "confident"
         ),
         picker(
             "copy_state", "Copy state", "Copy",
@@ -228,8 +230,33 @@ explorer_selection_ui <- function(id) {
 explorer_export_ui <- function(id) {
     ns <- shiny::NS(id)
     shiny::tagList(
-        shiny::textOutput(ns("selection_status")),
-        shiny::downloadButton(ns("download_bedpe"), "Download selected BEDPE")
+        shiny::div(
+            class = "mamamia-export-section",
+            shiny::h5("Results bundle"),
+            shiny::p(
+                class = "mamamia-export-lead",
+                paste(
+                    "Download full and confident call tables, all-call,",
+                    "passing and confident BEDPE files, and matching",
+                    "karyotype SVGs in one ZIP archive."
+                )
+            ),
+            shiny::downloadButton(
+                ns("download_bundle"),
+                "Download results bundle (.zip)",
+                class = "btn-sm btn-primary"
+            )
+        ),
+        shiny::div(
+            class = "mamamia-export-section",
+            shiny::h5("Selected calls"),
+            shiny::textOutput(ns("selection_status")),
+            shiny::downloadButton(
+                ns("download_bedpe"),
+                "Download selected BEDPE",
+                class = "btn-sm"
+            )
+        )
     )
 }
 
@@ -920,7 +947,8 @@ explorer_karyotype_ui <- function(id, height = "calc(100vh - 360px)") {
 #' @param calls Calls to overlay; defaults to every call in the result.
 #' @param selected_groups Groups currently selected in the explorer.
 #'
-#' @return A karyotype payload with a `full_calls` list.
+#' @return A karyotype payload with `full_chromosomes` and `full_calls`
+#'   entries for the unfiltered export.
 #' @noRd
 karyotype_export_payload <- function(result, sample = NULL,
                                      mode = c("heatmap", "calls"),
@@ -940,14 +968,17 @@ karyotype_export_payload <- function(result, sample = NULL,
         calls = NULL,
         selected_groups = NULL
     )
-    if (length(full$chromosomes) == length(payload$chromosomes)) {
-        payload$full_calls <- lapply(
-            full$chromosomes,
-            function(chromosome) chromosome$calls
-        )
-    } else {
-        payload$full_calls <- list()
-    }
+    payload$full_chromosomes <- lapply(
+        full$chromosomes,
+        function(chromosome) {
+            chromosome$scores <- numeric()
+            chromosome
+        }
+    )
+    payload$full_calls <- lapply(
+        full$chromosomes,
+        function(chromosome) chromosome$calls
+    )
     payload
 }
 
@@ -1162,34 +1193,123 @@ explorer_server <- function(id, result, sample = NULL) {
                 shiny::need(!is.null(result_value()), "Run the analysis to list calls")
             )
             x <- visible_calls()
-            columns <- c(
-                "sample", "group", "class", "copy_state", "class_group",
-                "class_evidence", "class_confidence", "class_status",
-                "total_evidence", "component_status", "mappability_status",
-                "confidence", "recipient_group", "recipient_cross_group",
-                "recipient_component", "recipient_chr_name",
-                "recipient_start_bp", "recipient_end_bp",
-                "recipient_deletion_width_bp", "recipient_assignment",
-                "recipient_weight", "recipient_margin",
-                "recipient_expected_breadth", "recipient_observed_breadth",
-                "recipient_copy_number", "affected_fraction",
-                "affected_copies", "dosage_confidence",
-                "recipient_mean_depletion", "recipient_depletion_se",
-                "recipient_depletion_lower", "recipient_width_overlap",
-                "recipient_fraction_ratio", "recipient_mapq_fraction",
-                "recipient_alternative", "recipient_alternative_score",
-                "donor_component", "donor_chr_name",
-                "start_bp", "end_bp", "width_bp",
-                "score_mean", "donor_mean", "recipient_mean",
-                "method", "mode", "pass"
-            )
+            columns <- intersect(bam_brief_call_columns(x), names(x))
+            display <- x[, columns, drop = FALSE]
+            humanise <- function(values, labels) {
+                values <- as.character(values)
+                out <- unname(labels[values])
+                out[is.na(out)] <- values[is.na(out)]
+                out
+            }
+            if ("class" %in% names(display)) {
+                display$class <- humanise(display$class, c(
+                    substitution = "Substitution",
+                    addition = "Addition",
+                    deletion = "Deletion",
+                    complex = "Complex",
+                    other = "Other"
+                ))
+            }
+            if ("copy_state" %in% names(display)) {
+                display$copy_state <- humanise(display$copy_state, c(
+                    balanced = "Balanced",
+                    gain = "Gain",
+                    loss = "Loss",
+                    compound = "Compound",
+                    neutral = "Neutral"
+                ))
+            }
+            if ("class_status" %in% names(display)) {
+                display$class_status <- humanise(display$class_status, c(
+                    confident = "Confident",
+                    ambiguous = "Ambiguous",
+                    needs_review = "Needs review"
+                ))
+            }
+            if ("recipient_assignment" %in% names(display)) {
+                display$recipient_assignment <- humanise(
+                    display$recipient_assignment,
+                    c(
+                        assigned = "Assigned",
+                        ambiguous = "Ambiguous",
+                        cross_group = "Cross-group",
+                        no_recipient_loss = "No host"
+                    )
+                )
+            }
+            if ("pass" %in% names(display)) {
+                display$pass <- ifelse(
+                    is.na(display$pass), NA_character_,
+                    ifelse(isTRUE_vec(display$pass), "Yes", "No")
+                )
+            }
             DT::datatable(
-                x[, intersect(columns, names(x)), drop = FALSE],
+                display,
+                colnames = bam_brief_call_labels(columns),
                 rownames = FALSE,
                 selection = "multiple",
                 options = list(pageLength = 10, scrollX = TRUE)
             )
         })
+
+        output$download_bundle <- shiny::downloadHandler(
+            filename = function() {
+                bam_bundle_filename(sample_value())
+            },
+            content = function(file) {
+                res <- result_value()
+                if (is.null(res)) {
+                    stop(
+                        "Run the analysis before downloading",
+                        call. = FALSE
+                    )
+                }
+                sample <- sample_value()
+                if (is.null(sample)) {
+                    sample <- karyotype_sample(res, NULL)
+                }
+                mode <- input$karyotype_mode
+                if (length(mode) != 1L || is.na(mode) ||
+                    !mode %in% c("heatmap", "calls")) {
+                    mode <- "heatmap"
+                }
+                shown <- visible_calls()
+                if (!is.null(shown) && nrow(shown) > 0L) {
+                    shown <- shown[
+                        as.character(shown$sample) == sample, ,
+                        drop = FALSE
+                    ]
+                }
+                current_payload <- karyotype_export_payload(
+                    res,
+                    sample = sample,
+                    mode = mode,
+                    calls = shown,
+                    selected_groups = group_filter()
+                )
+                full_payload <- bam_full_karyotype_payload(current_payload)
+                confident_calls <- bam_confident_calls(
+                    res$calls[
+                        as.character(res$calls$sample) == sample, ,
+                        drop = FALSE
+                    ]
+                )
+                confident_payload <- karyotype_payload(
+                    res,
+                    sample = sample,
+                    mode = "calls",
+                    calls = confident_calls,
+                    selected_groups = NULL
+                )
+                bam_write_result_bundle(
+                    res, file,
+                    sample = sample,
+                    current_payload = current_payload,
+                    full_payload = full_payload,
+                    confident_payload = confident_payload
+                )
+            }
+        )
 
         output$download_bedpe <- shiny::downloadHandler(
             filename = function() {
@@ -1231,7 +1351,8 @@ explorer_server <- function(id, result, sample = NULL) {
 #' Opens a Shiny application for a `BamAnalysisResult` from
 #' [analyzeBamInput()]. The dashboard offers class, class-status, copy-state,
 #' confidence and width filters, a vertical karyotype with a score heatmap or
-#' a call map, a sortable call table and a BEDPE export of the selected calls.
+#' a call map, a brief sortable call table, a selected-call BEDPE export and a
+#' results bundle with the full call table, BEDPE files and karyotype images.
 #'
 #' @param result A `BamAnalysisResult`.
 #' @param host Host passed to [shiny::runApp()].

@@ -33,7 +33,7 @@ The output path, invisibly.
 \description{
 Writes one row per call with donor and recipient intervals plus the score,
 class, group class, class evidence/confidence/status, confidence, method,
-mode and the dosage fields
+mode, calibration pass flag and the dosage fields
 (\code{recipient_observed_breadth}, \code{recipient_copy_number},
 \code{affected_fraction}, \code{affected_copies}, \code{dosage_confidence}). When the
 calls carry a positional

@@ -159,6 +159,7 @@ test_that("writeCallsToBedpe() writes donor and recipient intervals", {
         "class_group", "class_evidence", "class_confidence", "class_status",
         "copy_state", "total_evidence", "component_status",
         "mappability_status", "confidence", "method", "mode",
+        "pass",
         "recipient_component",
         "recipient_chr_name", "recipient_group", "recipient_assignment",
         "recipient_cross_group", "recipient_expected_breadth",

@@ -740,19 +740,41 @@ HTMLWidgets.widget({
       Object.keys(payload).forEach(function (key) {
         full[key] = payload[key];
       });
-      var allCalls = payload.full_calls || [];
-      full.chromosomes = (payload.chromosomes || []).map(
-        function (chromosome, index) {
+      var currentScores = {};
+      (payload.chromosomes || []).forEach(function (chromosome) {
+        currentScores[String(chromosome.id) + "|" +
+          String(chromosome.copy)] = chromosome.scores || [];
+      });
+      var fullChromosomes = payload.full_chromosomes || [];
+      if (fullChromosomes.length) {
+        full.chromosomes = fullChromosomes.map(function (chromosome) {
           var copy = {};
           Object.keys(chromosome).forEach(function (key) {
             copy[key] = chromosome[key];
           });
-          copy.calls = allCalls[index] || [];
+          if (!copy.scores || !copy.scores.length) {
+            copy.scores = currentScores[String(copy.id) + "|" +
+              String(copy.copy)] || [];
+          }
           copy.selected = true;
           return copy;
-        }
-      );
+        });
+      } else {
+        var allCalls = payload.full_calls || [];
+        full.chromosomes = (payload.chromosomes || []).map(
+          function (chromosome, index) {
+            var copy = {};
+            Object.keys(chromosome).forEach(function (key) {
+              copy[key] = chromosome[key];
+            });
+            copy.calls = allCalls[index] || [];
+            copy.selected = true;
+            return copy;
+          }
+        );
+      }
       delete full.full_calls;
+      delete full.full_chromosomes;
       return full;
     }
 

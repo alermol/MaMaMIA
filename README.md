@@ -292,7 +292,15 @@ quality chips, dosage, geometry, and a group-filter hint. The bundled
 **Example data** button loads eight 160–260 kb chromosome pairs with
 substitution, addition, deletion, complex and other segments, a full
 substitution, a whole added donor chromosome and a whole deleted recipient
-chromosome. A sortable call table and BEDPE export follow. See
+chromosome. The **Calls** tab is a brief, sortable inspection view with the
+group, class, copy state, review status, recipient placement, coordinates,
+width and pass flag. The **Karyotype** and **Calls** tabs start with
+class-status **Confident** calls; clearing the **Status** filter shows
+ambiguous and needs-review calls. The **Export** tab downloads one ZIP archive
+containing full and confident call tables, all-call, passing-call and
+confident BEDPE files, and full, confident and filtered karyotype SVGs. The
+CSV and BEDPE files use descriptive column names, and the bundled README
+contains a dictionary for every column. See
 [`docs-source/karyotype-tooltip.md`](docs-source/karyotype-tooltip.md) for the
 field-by-field tooltip reference. The **Tooltip help** button in the
 Karyotype tab opens the same field guide in the app.

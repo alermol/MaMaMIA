@@ -108,8 +108,11 @@ karyotype_deleted <- function(result, sample, deletion_breadth = 0.001,
 #' A call is full-chromosome when it passes calibration, starts at the first
 #' window, ends at the last window and covers at least 95% of the group.
 #' @noRd
-karyotype_full_calls <- function(result, sample, n_per = NULL) {
-    calls <- result$calls
+karyotype_full_calls <- function(result, sample, n_per = NULL,
+                                 calls = NULL) {
+    if (is.null(calls)) {
+        calls <- result$calls
+    }
     if (is.null(calls) || nrow(calls) == 0L) {
         return(calls)
     }
@@ -184,7 +187,19 @@ karyotype_payload <- function(result, sample = NULL,
     n_per <- as.integer(result$windows$n_per_chromosome)[[1L]]
     scores <- result$scores
     scores <- scores[as.character(scores$sample) == sample, , drop = FALSE]
-    full <- karyotype_full_calls(result, sample, n_per)
+    overlay <- if (is.null(calls)) {
+        result$calls
+    } else {
+        calls
+    }
+    if (!is.null(overlay)) {
+        overlay <- overlay[
+            as.character(overlay$sample) == sample, , drop = FALSE
+        ]
+    }
+    full <- karyotype_full_calls(
+        result, sample, n_per, calls = overlay
+    )
     if (is.null(full) || nrow(full) == 0L) {
         full <- data.frame(
             group = character(),
@@ -271,15 +286,8 @@ karyotype_payload <- function(result, sample = NULL,
         }
         deleted <- union(deleted, substituted_ids)
     }
-    overlay <- if (is.null(calls)) {
-        result$calls
-    } else {
-        calls
-    }
     if (is.null(overlay)) {
         overlay <- full[0, , drop = FALSE]
-    } else {
-        overlay <- overlay[as.character(overlay$sample) == sample, , drop = FALSE]
     }
     selected_groups <- if (is.null(selected_groups) ||
         length(selected_groups) == 0L) {
@@ -694,7 +702,7 @@ mamamia_karyotype <- function(payload, width = NULL, height = NULL) {
     ## change so the browser cannot keep serving the previous file.
     js <- htmltools::htmlDependency(
         name = "mamamiaKaryotypeCard-binding",
-        version = "0.1.0",
+        version = "0.1.1",
         src = "htmlwidgets",
         package = "MaMaMIA",
         script = "mamamiaKaryotypeCard.js",

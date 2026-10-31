@@ -27,5 +27,6 @@ The return value of \code{\link[shiny:runApp]{shiny::runApp()}}.
 Opens a Shiny application for a \code{BamAnalysisResult} from
 \code{\link[=analyzeBamInput]{analyzeBamInput()}}. The dashboard offers class, class-status, copy-state,
 confidence and width filters, a vertical karyotype with a score heatmap or
-a call map, a sortable call table and a BEDPE export of the selected calls.
+a call map, a brief sortable call table, a selected-call BEDPE export and a
+results bundle with the full call table, BEDPE files and karyotype images.
 }

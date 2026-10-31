@@ -1357,19 +1357,6 @@ bam_analysis_key <- function(preflight, resolution, donor_aggregation = NULL,
 }
 
 #' @noRd
-bam_bedpe_filename <- function(sample) {
-    if (is.null(sample) || length(sample) != 1L || is.na(sample) ||
-        !nzchar(sample)) {
-        return("mamamia-selected-introgressions.bedpe")
-    }
-    safe <- gsub("[^A-Za-z0-9._-]+", "-", sample)
-    safe <- gsub("^[.-]+|[.-]+$", "", safe)
-    if (!nzchar(safe)) {
-        safe <- "sample"
-    }
-    paste0("mamamia-", safe, "-selected-introgressions.bedpe")
-}
-
 ## UI ------------------------------------------------------------------------
 
 #' @noRd
@@ -2363,6 +2350,18 @@ bam_dashboard_css <- function() {
     .mamamia-export-panel {
         max-width: 56rem;
     }
+    .mamamia-export-lead {
+        margin: 0 0 .55rem;
+        color: var(--mm-muted);
+        font-size: .7rem;
+        line-height: 1.42;
+    }
+    .mamamia-call-note {
+        margin: .2rem 0 .5rem;
+        color: var(--mm-muted);
+        font-size: .68rem;
+        line-height: 1.35;
+    }
     .mamamia-export-panel h5 {
         margin: 1rem 0 .4rem;
         color: var(--mm-muted);
@@ -2370,6 +2369,15 @@ bam_dashboard_css <- function() {
         font-weight: 750;
         letter-spacing: .12em;
         text-transform: uppercase;
+    }
+    .mamamia-export-panel .mamamia-export-section h5 {
+        margin-top: 0;
+    }
+    .mamamia-export-panel .mamamia-export-section + .mamamia-export-section {
+        margin-top: 1rem;
+    }
+    .mamamia-export-panel #cohort_ui {
+        margin-top: 1rem;
     }
     .mamamia-export-panel h5:first-child { margin-top: 0; }
     .mamamia-export-panel .btn {
@@ -3326,15 +3334,21 @@ bam_results_ui <- function() {
                     explorer_call_filters_ui("explorer"),
                     explorer_selection_ui("explorer")
                 ),
+                shiny::p(
+                    class = "mamamia-call-note",
+                    paste(
+                        "Brief view. Defaults to confident calls; clear",
+                        "Status for other review classes. The results bundle",
+                        "adds the full table, BEDPE files and karyotype images."
+                    )
+                ),
                 DT::DTOutput(ns("calls"))
             ),
             bslib::nav_panel(
                 "Export",
                 shiny::div(
                     class = "mamamia-export-panel",
-                    shiny::h5("Selected calls"),
                     explorer_export_ui("explorer"),
-                    shiny::h5("Cohort"),
                     shiny::uiOutput("cohort_ui")
                 )
             )
@@ -4867,31 +4881,39 @@ bam_launcher_server <- function(state) {
             multiple_samples <- length(samples) > 1L
             shiny::tagList(
                 shiny::div(
-                    class = "table-responsive",
-                    shiny::tableOutput("cohort_table")
-                ),
-                shiny::div(
-                    class = "d-flex flex-column gap-1",
-                    shiny::downloadButton(
-                        "download_sample",
-                        "Download BEDPE (current sample)",
-                        class = "btn-sm"
+                    class = "mamamia-export-section",
+                    shiny::h5(
+                        if (multiple_samples) "Cohort" else "Sample summary"
+                    ),
+                    shiny::div(
+                        class = "table-responsive",
+                        shiny::tableOutput("cohort_table")
                     ),
                     if (multiple_samples) {
-                        shiny::downloadButton(
-                            "download_cohort",
-                            "Download selected BEDPE (all samples)",
-                            class = "btn-sm"
+                        shiny::div(
+                            class = "d-flex flex-column gap-1",
+                            shiny::downloadButton(
+                                "download_cohort",
+                                "Download all samples (BEDPE)",
+                                class = "btn-sm"
+                            )
                         )
-                    }
-                ),
-                shiny::p(
-                    class = "text-muted small",
-                    paste(
-                        "The per-sample export uses the rows selected for the",
-                        "current sample, or all calibrated calls when none are",
-                        "selected. The cohort export includes only selected",
-                        "rows and adds a `sample` column."
+                    },
+                    shiny::p(
+                        class = "text-muted small",
+                        if (multiple_samples) {
+                            paste(
+                                "The results bundle above exports the current",
+                                "sample. The cohort BEDPE adds a `sample` column",
+                                "for every sample in the BAM."
+                            )
+                        } else {
+                            paste(
+                                "The results bundle above contains the full",
+                                "call table, BEDPE files and karyotype images",
+                                "for this sample."
+                            )
+                        }
                     )
                 )
             )
@@ -4911,30 +4933,9 @@ bam_launcher_server <- function(state) {
         rownames = FALSE, digits = 0
         )
 
-        output$download_sample <- shiny::downloadHandler(
-            filename = function() {
-                bam_bedpe_filename(result_sample())
-            },
-            content = function(file) {
-                res <- result()
-                sample <- result_sample()
-                if (is.null(res) || is.null(sample)) {
-                    stop(
-                        "Run the analysis before downloading",
-                        call. = FALSE
-                    )
-                }
-                writeCallsToBedpe(
-                    res, file,
-                    samples = sample,
-                    pass_only = TRUE
-                )
-            }
-        )
-
         output$download_cohort <- shiny::downloadHandler(
             filename = function() {
-                "mamamia-cohort-selected-introgressions.bedpe"
+                "mamamia-cohort-introgressions.bedpe"
             },
             content = function(file) {
                 res <- result()

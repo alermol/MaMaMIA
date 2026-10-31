@@ -113,6 +113,7 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         fontconfig \
         fonts-dejavu-core \
+        zip \
     && rm -rf /var/lib/apt/lists/*
 USER mamamia
 

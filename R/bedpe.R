@@ -105,7 +105,7 @@
 #'
 #' Writes one row per call with donor and recipient intervals plus the score,
 #' class, group class, class evidence/confidence/status, confidence, method,
-#' mode and the dosage fields
+#' mode, calibration pass flag and the dosage fields
 #' (`recipient_observed_breadth`, `recipient_copy_number`,
 #' `affected_fraction`, `affected_copies`, `dosage_confidence`). When the
 #' calls carry a positional
@@ -174,7 +174,7 @@ writeCallsToBedpe <- function(x, file, samples = NULL, selected = NULL,
                 confidence = character(0),
                 method = character(0),
                 mode = character(0), group = character(0),
-                class_group = character(0),
+                pass = logical(0),
                 recipient_component = character(0),
                 recipient_chr_name = character(0),
                 recipient_group = character(0),
@@ -215,7 +215,7 @@ writeCallsToBedpe <- function(x, file, samples = NULL, selected = NULL,
         "copy_state", "total_evidence", "component_status",
         "mappability_status", "mapq_fraction",
         "confidence", "method", "mode", "group",
-        "start_iid", "end_iid", "recipient_component", "recipient_chr_name",
+        "start_iid", "end_iid", "pass", "recipient_component", "recipient_chr_name",
         "recipient_group", "recipient_assignment", "recipient_cross_group",
         "recipient_weight", "recipient_expected_breadth",
         "recipient_observed_breadth", "recipient_copy_number",

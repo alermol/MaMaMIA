@@ -414,13 +414,24 @@ test_that("the explorer has no chromosome group selector", {
         expect_false(grepl("Chromosome groups", html, fixed = TRUE))
     }
     expect_match(bam, "mamamia-sample-picker", fixed = TRUE)
+    expect_match(bam, "mamamia-call-note", fixed = TRUE)
     expect_match(filters, "Call class", fixed = TRUE)
     expect_match(filters, "deletion", fixed = TRUE)
     expect_match(filters, "complex", fixed = TRUE)
     expect_match(filters, "Class status", fixed = TRUE)
+    expect_match(filters, 'value="confident" selected', fixed = TRUE)
     expect_match(filters, "Copy state", fixed = TRUE)
     expect_match(filters, "balanced", fixed = TRUE)
     expect_match(filters, "Confidence", fixed = TRUE)
+})
+
+test_that("the export panel offers one results bundle", {
+    html <- as.character(explorer_export_ui("explorer"))
+    expect_match(html, "Results bundle", fixed = TRUE)
+    expect_match(html, "download_bundle", fixed = TRUE)
+    expect_match(html, "Download results bundle", fixed = TRUE)
+    expect_match(html, "Selected calls", fixed = TRUE)
+    expect_match(html, "download_bedpe", fixed = TRUE)
 })
 
 test_that("the empty sample picker is not hidden from Shiny", {

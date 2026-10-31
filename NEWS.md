@@ -90,7 +90,7 @@
   deletion-only signal is no longer promoted to substitution.
 * **BEDPE export.** `writeCallsToBedpe()` writes donor and recipient intervals
   with `score_mean`, `class`, `class_group`, `class_evidence`,
-  `class_confidence`, `confidence`, `method` and `mode`.
+  `class_confidence`, `confidence`, `method`, `mode` and the `pass` flag.
 
 ## Dashboard
 
@@ -165,6 +165,20 @@
   loader with the current stage instead of a progress toast.
 * A BAM whose header does not match a configured assembly now shows a calm
   amber recovery card in the sidebar instead of a red error line.
+* The **Calls** tab now shows a brief inspection table: group, class, copy
+  state, class status, recipient placement, group coordinates, width and the
+  pass flag, plus the sample when a BAM contains several samples. The full
+  table with every diagnostic column is in the downloadable result bundle.
+* The **Karyotype** and **Calls** tabs start with class-status **Confident**
+  calls. Clearing the **Status** filter shows ambiguous and needs-review
+  calls again.
+* The **Export** tab adds a single ZIP archive containing full and confident
+  call tables, all-call, passing-call and confident BEDPE files, and full,
+  confident and filtered karyotype SVGs. The CSV and BEDPE files use
+  descriptive column names, README.txt documents every field, and the
+  karyotype SVGs use centred headings, safe margins and truncated long labels
+  so they are not cropped. The separate current-sample BEDPE button is folded
+  into this bundle; a cohort BEDPE remains for multi-sample BAMs.
 * The call table drops the inert per-column "All" filter row that server-side
   DT renders disabled. The global search and the pill filters remain.
 * The result filter bar is now a compact row of pill dropdowns for class,
