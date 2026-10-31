@@ -4,6 +4,12 @@ HTMLWidgets.widget({
 
   factory: function (el, width, height) {
     var payload = null;
+    var plotFont = "'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
+    var legendFontSize = 10;
+    var legendRowHeight = 19;
+    var legendSwatch = 11;
+    var legendGap = 6;
+    var legendItemGap = 16;
 
     function svgEl(name, attrs) {
       var node = document.createElementNS("http://www.w3.org/2000/svg", name);
@@ -20,7 +26,48 @@ HTMLWidgets.widget({
     function textEl(text, attrs) {
       var node = svgEl("text", attrs);
       node.textContent = text;
+      if (!node.getAttribute("font-family")) {
+        node.setAttribute("font-family", plotFont);
+      }
       return node;
+    }
+
+    function callLegendEntries() {
+      return [
+        ["substitution", "Substitution"],
+        ["addition", "Addition"],
+        ["deletion", "Deletion"],
+        ["complex", "Complex"],
+        ["other", "Other"],
+        ["deleted", "Deleted"],
+        ["added", "Added donor"]
+      ];
+    }
+
+    function legendItemWidth(entry) {
+      return legendSwatch + legendGap + entry[1].length * 5.6;
+    }
+
+    function layoutLegend(entries, maxWidth) {
+      var rows = [];
+      var row = [];
+      var width = 0;
+      entries.forEach(function (entry) {
+        var itemWidth = legendItemWidth(entry);
+        var gap = row.length ? legendItemGap : 0;
+        if (row.length && width + gap + itemWidth > maxWidth) {
+          rows.push({ items: row, width: width });
+          row = [];
+          width = 0;
+          gap = 0;
+        }
+        row.push({ entry: entry, x: width + gap, width: itemWidth });
+        width += gap + itemWidth;
+      });
+      if (row.length) {
+        rows.push({ items: row, width: width });
+      }
+      return rows;
     }
 
     function escapeHtml(value) {
@@ -71,7 +118,7 @@ HTMLWidgets.widget({
       return isNumber(value) ? Number(value).toFixed(2) : "NA";
     }
 
-    function addLegend(svg, x, y, payload) {
+    function addLegend(svg, x, y, payload, maxWidth) {
       var palette = payload.palette;
       var legend = svgEl("g", { "class": "karyotype-legend" });
       svg.appendChild(legend);
@@ -94,48 +141,49 @@ HTMLWidgets.widget({
         defs.appendChild(gradient);
         legend.appendChild(defs);
         legend.appendChild(textEl("Score", {
-          x: x, y: y, "font-size": 9, fill: palette.text
+          x: x, y: y, "font-size": 10, "font-weight": 600,
+          fill: palette.text
         }));
         legend.appendChild(svgEl("rect", {
-          x: x + 34, y: y - 8, width: 120, height: 9,
-          fill: "url(#" + gradientId + ")", rx: 1
+          x: x + 36, y: y - 9, width: 126, height: 10,
+          fill: "url(#" + gradientId + ")", rx: 1.5
         }));
         legend.appendChild(textEl("-" + Number(payload.score_limit).toFixed(1), {
-          x: x + 34, y: y + 12, "font-size": 8, fill: palette.text
+          x: x + 36, y: y + 13, "font-size": 9, "font-weight": 500,
+          fill: palette.text
         }));
         legend.appendChild(textEl("0", {
-          x: x + 94, y: y + 12, "font-size": 8, fill: palette.text,
-          "text-anchor": "middle"
+          x: x + 99, y: y + 13, "font-size": 9, "font-weight": 500,
+          fill: palette.text, "text-anchor": "middle"
         }));
         legend.appendChild(textEl("+" + Number(payload.score_limit).toFixed(1), {
-          x: x + 154, y: y + 12, "font-size": 8, fill: palette.text,
-          "text-anchor": "end"
+          x: x + 162, y: y + 13, "font-size": 9, "font-weight": 500,
+          fill: palette.text, "text-anchor": "end"
         }));
       } else {
-        var entries = [
-          ["substitution", "substitution"],
-          ["addition", "addition"],
-          ["deletion", "deletion"],
-          ["complex", "complex"],
-          ["other", "other"],
-          ["deleted", "deleted"],
-          ["added", "added donor"]
-        ];
-        var cursor = x;
-        entries.forEach(function (entry) {
-          var colour = palette[entry[0]];
-          legend.appendChild(svgEl("rect", {
-            x: cursor, y: y - 8, width: 10, height: 10,
-            fill: colour,
-            stroke: entry[0] === "deleted" ? palette.negative : palette.text,
-            "stroke-width": entry[0] === "deleted" ? 1.2 : 0.6,
-            "stroke-dasharray": entry[0] === "deleted" ? "3 2" : null,
-            rx: 1
-          }));
-          legend.appendChild(textEl(entry[1], {
-            x: cursor + 13, y: y, "font-size": 8, fill: palette.text
-          }));
-          cursor += 20 + entry[1].length * 5;
+        var rows = layoutLegend(callLegendEntries(), maxWidth);
+        rows.forEach(function (row, rowIndex) {
+          var rowY = y + rowIndex * legendRowHeight;
+          row.items.forEach(function (item) {
+            var entry = item.entry;
+            var itemX = x + item.x;
+            var colour = palette[entry[0]];
+            legend.appendChild(svgEl("rect", {
+              x: itemX, y: rowY - 9, width: legendSwatch,
+              height: legendSwatch, fill: colour,
+              stroke: entry[0] === "deleted" ? palette.negative : palette.text,
+              "stroke-width": entry[0] === "deleted" ? 1.2 : 0.6,
+              "stroke-dasharray": entry[0] === "deleted" ? "3 2" : null,
+              rx: 1.5
+            }));
+            legend.appendChild(textEl(entry[1], {
+              x: itemX + legendSwatch + legendGap,
+              y: rowY,
+              "font-size": legendFontSize,
+              "font-weight": 500,
+              fill: palette.text
+            }));
+          });
         });
       }
       return legend;
@@ -697,7 +745,15 @@ HTMLWidgets.widget({
       var box = el.getBoundingClientRect();
       var availableWidth = Math.max(width || box.width || 800, 480);
       var availableHeight = Math.max(height || box.height || 520, 420);
-      var margin = { top: 58, right: 22, bottom: 34, left: 22 };
+      var sideMargin = 22;
+      var legendWidth = Math.max(0, availableWidth - sideMargin * 2);
+      var legendRows = layoutLegend(callLegendEntries(), legendWidth).length;
+      var margin = {
+        top: 58 + Math.max(0, legendRows - 1) * legendRowHeight,
+        right: sideMargin,
+        bottom: 36,
+        left: sideMargin
+      };
       var maxBarHeight = Math.max(
         220,
         availableHeight - margin.top - margin.bottom
@@ -761,7 +817,7 @@ HTMLWidgets.widget({
       svg.style.display = "block";
       root.appendChild(svg);
 
-      addLegend(svg, margin.left, 14, payload);
+      addLegend(svg, margin.left, 16, payload, legendWidth);
 
       var cursorX = margin.left + (plotWidth - barsWidth) / 2;
       var y = margin.top;
@@ -829,22 +885,24 @@ HTMLWidgets.widget({
         }
 
         if (deleted && copy === 1) {
-          chromGroup.appendChild(textEl("deleted", {
+          chromGroup.appendChild(textEl("Deleted", {
             x: pairCenter,
-            y: margin.top - 6,
+            y: margin.top - 7,
             "text-anchor": "middle",
-            "font-size": 7,
-            "font-weight": 600,
+            "font-size": 9,
+            "font-weight": 700,
+            "letter-spacing": "0.03em",
             fill: payload.palette.negative
           }));
         }
         if (added && copy === 1) {
-          chromGroup.appendChild(textEl("added", {
+          chromGroup.appendChild(textEl("Added", {
             x: pairCenter,
-            y: margin.top - 6,
+            y: margin.top - 7,
             "text-anchor": "middle",
-            "font-size": 7,
-            "font-weight": 600,
+            "font-size": 9,
+            "font-weight": 700,
+            "letter-spacing": "0.03em",
             fill: payload.palette.addition
           }));
         }
@@ -854,9 +912,10 @@ HTMLWidgets.widget({
             chromosome.label || chromosome.name || chromosome.component || "",
             {
               x: pairCenter,
-              y: margin.top + maxBarHeight + 14,
+              y: margin.top + maxBarHeight + 17,
               "text-anchor": "middle",
-              "font-size": 9,
+              "font-size": 11,
+              "font-weight": 600,
               fill: payload.palette.text
             }
           ));

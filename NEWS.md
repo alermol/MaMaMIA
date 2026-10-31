@@ -125,7 +125,8 @@
   a chromosome-pair mark and the package version, the BAM chooser is a
   click-or-drop zone, **Run analysis** is the only filled action, and an
   empty result shows a centred illustrated state with a short hint instead
-  of a bare message.
+  of a bare message. Karyotype labels use larger Inter type, title-case
+  legend entries and captions, and a legend that wraps on narrow cards.
 * The call table drops the inert per-column "All" filter row that server-side
   DT renders disabled. The global search and the pill filters remain.
 * The result filter bar is now a compact row of pill dropdowns for class,
