@@ -415,6 +415,41 @@ bam_resolution_slider_ui <- function(defaults = .config_defaults()) {
 }
 
 #' @noRd
+bam_example_resolution_slider_ui <- function(defaults = .config_defaults()) {
+    resolution <- as.integer(bam_example_default_resolution())
+    display <- defaults
+    display$allowed_windows <- sort(unique(c(
+        as.integer(defaults$allowed_windows), resolution
+    )))
+    display$windows_per_chromosome <- resolution
+    shiny::tagList(
+        shiny::div(
+            class = "mamamia-resolution-locked",
+            bam_resolution_slider_ui(display),
+            shiny::actionButton(
+                "resolution_locked", "",
+                class = "mamamia-resolution-lock",
+                title = "Resolution is fixed for the bundled example",
+                `aria-label` = "Resolution is fixed for the bundled example"
+            )
+        ),
+        shiny::p(
+            class = "mamamia-resolution-note",
+            sprintf(
+                paste(
+                    "Fixed at %s windows per chromosome.",
+                    "Upload a BAM to change it."
+                ),
+                format(
+                    as.integer(resolution),
+                    big.mark = ",", scientific = FALSE
+                )
+            )
+        )
+    )
+}
+
+#' @noRd
 bam_default_resolution <- function(defaults = .config_defaults()) {
     range <- bam_resolution_range(defaults)
     valid <- function(value) {
@@ -1350,10 +1385,18 @@ bam_analysis_key <- function(preflight, resolution, donor_aggregation = NULL,
     if (length(controls) > 0L && setequal(controls, samples)) {
         controls <- character(0)
     }
-    resolution_key <- tryCatch(
-        as.character(bam_resolution_value(resolution, defaults)),
-        error = function(e) as.character(resolution)
-    )
+    if (isTRUE(preflight$example)) {
+        donor_aggregation <- defaults$donor_aggregation
+        controls <- character(0)
+    }
+    resolution_key <- if (isTRUE(preflight$example)) {
+        as.character(bam_example_default_resolution())
+    } else {
+        tryCatch(
+            as.character(bam_resolution_value(resolution, defaults)),
+            error = function(e) as.character(resolution)
+        )
+    }
     hash_object(list(
         example = isTRUE(preflight$example),
         paths = unique(as.character(preflight$table$path)),
@@ -2452,6 +2495,73 @@ bam_dashboard_css <- function() {
     .mamamia-resolution-ticks span.last {
         transform: translateX(-100%);
     }
+    .mamamia-resolution-locked {
+        position: relative;
+    }
+    .mamamia-resolution-locked .shiny-input-container {
+        margin-bottom: 0;
+        opacity: .55;
+        filter: grayscale(1);
+    }
+    .mamamia-resolution-locked .irs {
+        pointer-events: none;
+    }
+    .mamamia-resolution-lock {
+        position: absolute;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        padding: 0;
+        border: 0;
+        border-radius: .4rem;
+        background: transparent !important;
+        color: transparent !important;
+        cursor: not-allowed !important;
+        transition: none !important;
+        z-index: 5;
+    }
+    .mamamia-resolution-lock:hover,
+    .mamamia-resolution-lock:focus,
+    .mamamia-resolution-lock:active,
+    .mamamia-resolution-lock.active {
+        background: transparent !important;
+        border-color: transparent !important;
+        box-shadow: none !important;
+        color: transparent !important;
+        cursor: not-allowed !important;
+    }
+    .mamamia-resolution-lock:focus-visible {
+        outline: 2px solid rgba(var(--mm-accent-rgb), .45);
+        outline-offset: 2px;
+    }
+    .mamamia-resolution-note {
+        margin: .1rem 0 0;
+        color: var(--mm-muted);
+        font-size: .68rem;
+        line-height: 1.35;
+    }
+    .mamamia-fixed-control {
+        display: flex;
+        align-items: center;
+        min-height: 2rem;
+        padding: .28rem .5rem;
+        border: 1px solid var(--mm-line);
+        border-radius: .42rem;
+        background: var(--mm-paper);
+        color: var(--mm-muted);
+        font-size: .79rem;
+        line-height: 1.3;
+        cursor: not-allowed;
+    }
+    .mamamia-fixed-note {
+        margin: .15rem 0 .55rem;
+        color: var(--mm-muted);
+        font-size: .68rem;
+        line-height: 1.35;
+    }
     .mamamia-sidebar .table {
         margin-bottom: .25rem;
         font-size: .68rem;
@@ -2671,7 +2781,20 @@ bam_single_file_input <- function() {
 }
 
 #' @noRd
-bam_sidebar_species_ui <- function(config, selection = NULL) {
+bam_fixed_control_ui <- function(label, value) {
+    shiny::div(
+        class = "form-group shiny-input-container",
+        shiny::tags$label(class = "control-label", label),
+        shiny::tags$div(
+            class = "form-control mamamia-fixed-control",
+            `aria-disabled` = "true",
+            value
+        )
+    )
+}
+
+#' @noRd
+bam_sidebar_species_ui <- function(config, selection = NULL, locked = FALSE) {
     species_choices <- bam_species_choices(config)
     species_keys <- names(config$species)
     if (length(species_keys) < 2L) {
@@ -2701,6 +2824,33 @@ bam_sidebar_species_ui <- function(config, selection = NULL) {
         donor <- species_keys[[2L]]
     }
 
+    if (isTRUE(locked)) {
+        species_label <- function(key) {
+            matched <- species_choices[species_choices == key]
+            if (length(matched) == 0L) {
+                key
+            } else {
+                names(matched)[[1L]]
+            }
+        }
+        return(shiny::tagList(
+            bam_fixed_control_ui(
+                "Recipient species", species_label(recipient)
+            ),
+            bam_fixed_control_ui(
+                "Donor species", species_label(donor)
+            ),
+            shiny::uiOutput("component_summary_ui"),
+            shiny::p(
+                class = "mamamia-fixed-note",
+                paste(
+                    "Fixed for the bundled example.",
+                    "Upload a BAM to change the assembly."
+                )
+            )
+        ))
+    }
+
     shiny::tagList(
         shiny::selectInput(
             "recipient_species", "Recipient species",
@@ -2723,7 +2873,6 @@ bam_sidebar_species_ui <- function(config, selection = NULL) {
 
 #' @noRd
 bam_sidebar_details_ui <- function(config) {
-    defaults <- config$defaults
     shiny::tagList(
         bslib::accordion(
             id = "bam_sidebar_accordion",
@@ -2739,25 +2888,7 @@ bam_sidebar_details_ui <- function(config) {
             ),
             bslib::accordion_panel(
                 "Advanced",
-                shiny::selectInput(
-                    "donor_aggregation", "Donor aggregation",
-                    choices = c(
-                        "Max" = "max",
-                        "Mean" = "mean",
-                        "Sum" = "sum"
-                    ),
-                    selected = defaults$donor_aggregation
-                ),
-                shiny::p(
-                    class = "text-muted small mb-0",
-                    sprintf(
-                        paste(
-                            "How donor components are combined per window.",
-                            "Registry default: %s."
-                        ),
-                        defaults$donor_aggregation
-                    )
-                ),
+                shiny::uiOutput("donor_aggregation_ui"),
                 shiny::uiOutput("control_samples_ui")
             )
         ),
@@ -3117,6 +3248,12 @@ bam_launcher_server <- function(state) {
                 session, "explorer-min_width",
                 value = if (isTRUE(example_mode())) 0.001 else 5
             )
+            if (isTRUE(example_mode())) {
+                shiny::updateSliderInput(
+                    session, "resolution",
+                    value = as.integer(bam_example_default_resolution())
+                )
+            }
         }, ignoreInit = TRUE)
 
         result <- shiny::reactiveVal(NULL)
@@ -3521,13 +3658,91 @@ bam_launcher_server <- function(state) {
 
         output$resolution_ui <- shiny::renderUI({
             if (isTRUE(example_mode())) {
-                return(shiny::radioButtons(
-                    "resolution", "Resolution",
-                    choices = bam_example_resolution_choices(),
-                    selected = bam_example_default_resolution()
-                ))
+                return(bam_example_resolution_slider_ui(config$defaults))
             }
             bam_resolution_slider_ui(config$defaults)
+        })
+
+        notify_example_resolution <- function() {
+            resolution <- bam_example_default_resolution()
+            shiny::showNotification(
+                sprintf(
+                    paste(
+                        "The bundled example is fixed at %s windows",
+                        "per chromosome. Upload a BAM to choose",
+                        "another resolution."
+                    ),
+                    format(
+                        as.integer(resolution),
+                        big.mark = ",", scientific = FALSE
+                    )
+                ),
+                type = "warning",
+                duration = 7
+            )
+        }
+
+        shiny::observeEvent(input$resolution_locked, {
+            notify_example_resolution()
+        }, ignoreInit = TRUE)
+
+        shiny::observeEvent(input$resolution, {
+            if (!isTRUE(example_mode())) {
+                return()
+            }
+            expected <- suppressWarnings(
+                as.integer(bam_example_default_resolution())
+            )
+            current <- suppressWarnings(as.integer(input$resolution))
+            if (length(expected) == 1L && !is.na(expected) &&
+                !identical(current, expected)) {
+                shiny::updateSliderInput(
+                    session, "resolution", value = expected
+                )
+                notify_example_resolution()
+            }
+        }, ignoreInit = TRUE)
+
+        output$donor_aggregation_ui <- shiny::renderUI({
+            if (isTRUE(example_mode())) {
+                value <- bam_example_config()$defaults$donor_aggregation
+                label <- switch(
+                    as.character(value),
+                    max = "Max",
+                    mean = "Mean",
+                    sum = "Sum",
+                    as.character(value)
+                )
+                return(shiny::tagList(
+                    bam_fixed_control_ui("Donor aggregation", label),
+                    shiny::p(
+                        class = "mamamia-fixed-note",
+                        "Fixed for the bundled example."
+                    )
+                ))
+            }
+            defaults <- config$defaults
+            shiny::tagList(
+                shiny::selectInput(
+                    "donor_aggregation", "Donor aggregation",
+                    choices = c(
+                        "Max" = "max",
+                        "Mean" = "mean",
+                        "Sum" = "sum"
+                    ),
+                    selected = defaults$donor_aggregation
+                ),
+                shiny::p(
+                    class = "text-muted small mb-0",
+                    sprintf(
+                        paste(
+                            "How donor components are combined per window.",
+                            "Registry default: %s."
+                        ),
+                        defaults$donor_aggregation
+                    )
+                )
+            )
         })
 
         output$control_samples_ui <- shiny::renderUI({
@@ -3640,7 +3855,8 @@ bam_launcher_server <- function(state) {
             if (isTRUE(example_mode())) {
                 return(bam_sidebar_species_ui(
                     bam_example_config(),
-                    selection = bam_example_species_selection()
+                    selection = bam_example_species_selection(),
+                    locked = TRUE
                 ))
             }
             bam_sidebar_species_ui(config)
@@ -3892,6 +4108,15 @@ bam_launcher_server <- function(state) {
                     type = "error", duration = 12
                 )
                 return()
+            }
+            if (isTRUE(pf$example)) {
+                params$resolution <- as.integer(
+                    bam_example_default_resolution()
+                )
+                params$donor_aggregation <-
+                    pf$config$defaults$donor_aggregation
+                params$control_samples <- character(0)
+                params$calibration <- NULL
             }
 
             resolution_problem <- bam_resolution_problem(

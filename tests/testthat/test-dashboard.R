@@ -46,6 +46,24 @@ test_that("the resolution picker is a ten-window slider with three ticks", {
     expect_match(slider, "5,000", fixed = TRUE)
 })
 
+test_that("the example resolution slider is locked at its precomputed value", {
+    config <- readMaMaMIAConfig(
+        system.file("extdata", "bam-demo", "assemblies.yml",
+            package = "MaMaMIA")
+    )
+    slider <- as.character(bam_example_resolution_slider_ui(config$defaults))
+    expect_match(slider, 'id="resolution"', fixed = TRUE)
+    expect_match(slider, 'data-min="100"', fixed = TRUE)
+    expect_match(slider, 'data-max="5000"', fixed = TRUE)
+    expect_match(slider, 'data-from="1000"', fixed = TRUE)
+    expect_match(slider, 'resolution_locked', fixed = TRUE)
+    expect_match(
+        slider,
+        "Fixed at 1,000 windows per chromosome.",
+        fixed = TRUE
+    )
+})
+
 test_that("the BAM chooser accepts exactly one file", {
     chooser <- as.character(bam_single_file_input())
     expect_length(chooser, 1L)
@@ -99,7 +117,7 @@ test_that("donor aggregation defaults from the registry and is set under Advance
         "donor_aggregation"
     )
     html <- as.character(bam_sidebar_details_ui(config))
-    expect_match(html, 'id="donor_aggregation"', fixed = TRUE)
+    expect_match(html, 'id="donor_aggregation_ui"', fixed = TRUE)
     expect_match(html, "Advanced", fixed = TRUE)
 })
 
@@ -199,7 +217,34 @@ test_that("the sidebar no longer offers component selectors", {
     html <- as.character(bam_sidebar_species_ui(config))
     expect_false(grepl("recipient_component", html, fixed = TRUE))
     expect_false(grepl("donor_component", html, fixed = TRUE))
+    expect_match(html, 'id="recipient_species"', fixed = TRUE)
+    expect_match(html, 'id="donor_species"', fixed = TRUE)
+    expect_match(html, 'id="swap_species"', fixed = TRUE)
     expect_match(html, 'id="component_summary_ui"', fixed = TRUE)
+})
+
+test_that("example analysis controls render as read-only fields", {
+    skip_if_not(bam_example_available(), "bundled example is not installed")
+    html <- as.character(bam_sidebar_species_ui(
+        bam_example_config(),
+        selection = bam_example_species_selection(),
+        locked = TRUE
+    ))
+    expect_false(grepl('id="recipient_species"', html, fixed = TRUE))
+    expect_false(grepl('id="donor_species"', html, fixed = TRUE))
+    expect_false(grepl('id="swap_species"', html, fixed = TRUE))
+    expect_match(html, "Recipient species", fixed = TRUE)
+    expect_match(html, "Donor species", fixed = TRUE)
+    expect_match(html, "Fixed for the bundled example", fixed = TRUE)
+    expect_match(html, 'id="component_summary_ui"', fixed = TRUE)
+})
+
+test_that("example analysis keys ignore stale run controls", {
+    skip_if_not(bam_example_available(), "bundled example is not installed")
+    example <- bam_example_preflight_state()
+    expected <- bam_analysis_key(example, 1000, "max", NULL)
+    stale <- bam_analysis_key(example, 5000, "mean", "example-sample")
+    expect_identical(stale, expected)
 })
 
 test_that("an unknown progress stage does not abort the analysis", {

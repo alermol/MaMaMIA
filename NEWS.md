@@ -104,7 +104,11 @@
 * The resolution picker is a slider from the smallest to the largest
   `allowed_windows` value, in 10-window steps, with labelled ticks at those
   allowed values. The default range is 100–5,000 with ticks at 100, 1,000 and
-  5,000.
+  5,000. In the bundled example all analysis parameters are fixed: the
+  resolution slider is locked and shown as inactive at the precomputed
+  1,000-window value, while the recipient species, donor species and donor
+  aggregation are read-only. Clicking the slider explains that a BAM upload is
+  needed to change resolution.
 * The main tab is now a vertical, interactive karyotype built with
   `htmlwidgets`. Chromosomes are shown in the order they appear in the
   assembly config, with no group or component columns. Recipient and donor

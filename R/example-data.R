@@ -90,15 +90,6 @@ bam_example_resolutions <- function() {
 }
 
 #' @noRd
-bam_example_resolution_choices <- function() {
-    resolutions <- bam_example_resolutions()
-    if (length(resolutions) == 0L) {
-        return(character())
-    }
-    bam_resolution_choices(list(allowed_windows = resolutions))
-}
-
-#' @noRd
 bam_example_default_resolution <- function() {
     resolutions <- bam_example_resolutions()
     if (length(resolutions) == 0L) {
