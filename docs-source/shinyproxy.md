@@ -164,7 +164,7 @@ unchanged.
 From the repository root:
 
 ```sh
-docker build -f deployment/Dockerfile -t mamamia:0.99.2 .
+docker build -f deployment/Dockerfile -t mamamia:0.1.0 .
 ```
 
 If the build host cannot reach `bioconductor.org`, pass a mirror (the package
@@ -173,7 +173,7 @@ checksums still come from the committed lockfile):
 ```sh
 docker build --network=host \
   --build-arg BIOC_MIRROR=https://bioconductor.statistik.tu-dortmund.de/packages \
-  -f deployment/Dockerfile -t mamamia:0.99.2 .
+  -f deployment/Dockerfile -t mamamia:0.1.0 .
 ```
 
 The validation sandbox needed `--network=host` and
@@ -210,7 +210,7 @@ docker run --rm -p 3838:3838 \
   -e MAMAMIA_CONFIG=/srv/mamamia/config/assemblies.yml \
   -v "$PWD/inst/config/assemblies.example.yml:/srv/mamamia/config/assemblies.yml:ro" \
   -v "$PWD/test_data/gcidx:/srv/mamamia/gcidx:ro" \
-  mamamia:0.99.2
+  mamamia:0.1.0
 ```
 
 Open `http://127.0.0.1:3838/`, confirm that the calculation log shows the two
@@ -228,7 +228,7 @@ BAM or registry mount (set `MAMAMIA_SMOKE_BAM` and `MAMAMIA_CONFIG` to exercise
 a production registry instead):
 
 ```sh
-docker run --rm mamamia:0.99.2 uvr run /app/deployment/smoke-test.R
+docker run --rm mamamia:0.1.0 uvr run /app/deployment/smoke-test.R
 ```
 
 The script resolves the first two species when an external registry is used.
@@ -244,7 +244,7 @@ fontconfig or fonts fails in the smoke test rather than in the dashboard.
 Check the image without starting the app:
 
 ```sh
-docker run --rm mamamia:0.99.2 uvr doctor --unattended
+docker run --rm mamamia:0.1.0 uvr doctor --unattended
 ```
 
 For a startup-only check with the real mounts, run the full command above and

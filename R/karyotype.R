@@ -9,17 +9,17 @@
 karyotype_palette <- function() {
     list(
         negative = "#2166ac",
-        zero = "#f7f7f7",
+        zero = "#f1efe7",
         positive = "#b2182b",
         substitution = "#d95f02",
         addition = "#1f78b4",
         deletion = "#e31a1c",
         complex = "#e6ab02",
         other = "#7570b3",
-        deleted = "#d9d9d9",
-        added = "#a6cee3",
-        grid = "#e5e5e5",
-        text = "#333333"
+        deleted = "#d7d3c6",
+        added = "#9cc3d5",
+        grid = "#e8e4da",
+        text = "#3a3d35"
     )
 }
 
@@ -580,17 +580,17 @@ karyotype_payload <- function(result, sample = NULL,
 mamamia_karyotype <- function(payload, width = NULL, height = NULL) {
     css <- htmltools::htmlDependency(
         name = "mamamiaKaryotypeCard-css",
-        version = "0.99.2.2",
+        version = "0.1.0",
         src = c(file = system.file("htmlwidgets", package = "MaMaMIA")),
         stylesheet = "mamamiaKaryotypeCard.css"
     )
     ## htmlwidgets names its default binding dependency after the widget and
-    ## versions it with the package version. Declaring the same name with a
-    ## higher numeric version replaces that entry, so a widget change cannot
-    ## stay cached under the unchanged package version.
+    ## versions it with the package version. Declaring the same name here
+    ## keeps a single script URL; raise this asset version for a widget-only
+    ## change so the browser cannot keep serving the previous file.
     js <- htmltools::htmlDependency(
         name = "mamamiaKaryotypeCard-binding",
-        version = "0.99.2.2",
+        version = "0.1.0",
         src = "htmlwidgets",
         package = "MaMaMIA",
         script = "mamamiaKaryotypeCard.js",

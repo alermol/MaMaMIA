@@ -273,5 +273,5 @@ but can still appear on added donor chromosomes.
 | Payload contract test | `tests/testthat/test-karyotype.R` |
 
 The widget assets use the name `mamamiaKaryotypeCard` and the CSS dependency
-version `0.99.2.2`, so a browser cache cannot keep serving the previous flat
+version `0.1.0`, so a browser cache cannot keep serving the previous flat
 tooltip after an update. JavaScript syntax is checked with `node --check`.

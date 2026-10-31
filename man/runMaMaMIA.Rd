@@ -61,7 +61,7 @@ progress bar reports the pipeline stages (headers, indexes, windows, GC,
 breadth/counts, scoring, masking, segmentation, calibration). Errors are
 reported with the failing stage and a suggested fix.
 
-The explorer shows the score profile, the call table with the BEDPE export,
+The explorer shows the karyotype, the call table with the BEDPE export,
 and, for a cohort, a per-sample selector, a cohort summary and a combined
 BEDPE download carrying the \code{sample} column.
 

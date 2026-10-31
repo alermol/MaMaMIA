@@ -2,14 +2,14 @@
 #
 # Build from the repository root so the image gets the package sources:
 #
-#   docker build -f deployment/Dockerfile -t mamamia:0.99.2 .
+#   docker build -f deployment/Dockerfile -t mamamia:0.1.0 .
 #
 # On a host that cannot reach bioconductor.org, use host networking and the
 # mirror argument instead:
 #
 #   docker build --network=host \
 #     --build-arg BIOC_MIRROR=https://bioconductor.statistik.tu-dortmund.de/packages \
-#     -f deployment/Dockerfile -t mamamia:0.99.2 .
+#     -f deployment/Dockerfile -t mamamia:0.1.0 .
 #
 # The image pins the uvr release, R and every R package (uvr.lock). It runs as
 # an unprivileged user and is meant to be started by ShinyProxy through

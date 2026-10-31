@@ -113,7 +113,7 @@ test_that("the pipeline returns the BamAnalysisResult contract", {
         unique(progress) %in%
             MaMaMIA:::bam_progress_stages(length(unique(result$samples$sample)))
     ))
-    expect_identical(result$provenance$pipeline_version, "0.99.2")
+    expect_identical(result$provenance$pipeline_version, "0.1.0")
     expect_identical(result$provenance$breadth_backend, "htslib")
     expect_identical(result$provenance$gc_source, "gcrank")
     expect_equal(sum(result$masks$mask), 20)

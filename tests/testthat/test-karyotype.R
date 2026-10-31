@@ -224,7 +224,7 @@ test_that("mamamia_karyotype() returns a widget with its stylesheet", {
         dependencies
     )
     expect_length(binding, 1L)
-    expect_identical(binding[[1L]]$version, "0.99.2.2")
+    expect_identical(binding[[1L]]$version, "0.1.0")
     expect_true(any(vapply(
         widget$dependencies,
         function(dependency) {

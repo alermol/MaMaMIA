@@ -1398,42 +1398,218 @@ bam_bedpe_filename <- function(sample) {
 #' @noRd
 ## Dashboard layout ----------------------------------------------------------
 
+## The bundled Latin subset keeps the interface independent of the host's
+## installed fonts. Inter is distributed under the SIL Open Font License; the
+## licence text ships next to the font.
+#' @noRd
+mamamia_font_dependency <- function() {
+    path <- system.file("www", package = "MaMaMIA")
+    if (!nzchar(path) || !dir.exists(path)) {
+        return(NULL)
+    }
+    htmltools::htmlDependency(
+        name = "mamamia-font",
+        version = "1.0.0",
+        src = c(file = path),
+        stylesheet = "mamamia-font.css",
+        all_files = TRUE
+    )
+}
+
+#' @noRd
+mamamia_package_version <- function() {
+    tryCatch(
+        as.character(utils::packageVersion("MaMaMIA")),
+        error = function(e) ""
+    )
+}
+
+#' @noRd
+mamamia_asset_url <- function(file) {
+    dep <- mamamia_font_dependency()
+    if (is.null(dep)) {
+        return(file)
+    }
+    paste0(dep$name, "-", dep$version, "/", file)
+}
+
+#' @noRd
+mamamia_favicon <- function() {
+    shiny::tags$link(
+        rel = "icon",
+        type = "image/svg+xml",
+        href = mamamia_asset_url("mamamia-logo.svg")
+    )
+}
+
+## A warm, paper-like surface with a single deep-teal accent keeps the
+## scientific content in front. The chart palette stays blue-red so scores and
+## calls remain distinguishable from the interface accent.
+#' @noRd
+bam_dashboard_theme <- function() {
+    bslib::bs_theme(
+        version = 5,
+        primary = "#0f5c53",
+        secondary = "#6d7168",
+        success = "#2f7d5d",
+        info = "#2c6e8f",
+        warning = "#b7791f",
+        danger = "#b23a3a",
+        bg = "#f6f5f0",
+        fg = "#1b1e1a",
+        base_font = paste(
+            "'Inter'", "system-ui", "-apple-system", "'Segoe UI'", "Roboto",
+            "'Helvetica Neue'", "Arial", "sans-serif",
+            sep = ", "
+        ),
+        code_font = paste(
+            "ui-monospace", "SFMono-Regular", "Menlo", "Consolas",
+            "'Liberation Mono'", "monospace",
+            sep = ", "
+        ),
+        "border-color" = "#e4e1d7",
+        "border-radius" = ".5rem",
+        "font-size-base" = ".95rem",
+        "headings-font-weight" = "700"
+    )
+}
+
 ## The page is a three-column, three-row grid. The 2rem first column is a
 ## gutter; the header and footer span the sidebar and main columns. The grid
 ## keeps the log visible while the result tabs scroll independently.
 #' @noRd
 bam_dashboard_css <- function() {
     "
+    :root {
+        --mm-paper: #f6f5f0;
+        --mm-surface: #ffffff;
+        --mm-sidebar: #fbfaf6;
+        --mm-ink: #1b1e1a;
+        --mm-muted: #6d7168;
+        --mm-line: #e4e1d7;
+        --mm-line-strong: #d2cec0;
+        --mm-accent: #0f5c53;
+        --mm-accent-rgb: 15, 92, 83;
+        --mm-accent-soft: rgba(15, 92, 83, .07);
+        --mm-warm: #b7791f;
+        --mm-shadow: 0 1px 2px rgba(27, 30, 26, .04),
+            0 10px 30px rgba(27, 30, 26, .05);
+    }
     .container-fluid {
         height: 100vh;
         padding: 0 !important;
     }
     html, body { height: 100%; }
-    body { overflow: hidden; }
+    body {
+        overflow: hidden;
+        background-color: var(--mm-paper);
+        background-image: radial-gradient(
+            rgba(27, 30, 26, .028) .6px, transparent .6px
+        );
+        background-size: 18px 18px;
+        color: var(--mm-ink);
+        -webkit-font-smoothing: antialiased;
+        text-rendering: optimizeLegibility;
+    }
 
     .mamamia-header {
+        position: relative;
         display: flex;
-        align-items: baseline;
+        align-items: center;
+        justify-content: space-between;
         gap: 1rem;
         min-width: 0;
         height: 100%;
         padding: 0 .9rem;
-        border-bottom: 1px solid var(--bs-border-color);
-        background: var(--bs-tertiary-bg);
+        border-bottom: 1px solid var(--mm-line);
+        background: var(--mm-surface);
     }
-
+    .mamamia-header::after {
+        content: '';
+        position: absolute;
+        right: 0;
+        bottom: -1px;
+        left: 0;
+        height: 1px;
+        background: linear-gradient(
+            90deg,
+            var(--mm-accent),
+            rgba(183, 121, 31, .5) 32%,
+            transparent 72%
+        );
+    }
+    .mamamia-brand {
+        display: flex;
+        align-items: center;
+        gap: .65rem;
+        min-width: 0;
+    }
+    .mamamia-mark {
+        display: grid;
+        flex: 0 0 auto;
+        place-items: center;
+        width: 2.05rem;
+        height: 2.05rem;
+        border-radius: .62rem;
+        background: var(--mm-ink);
+        box-shadow: 0 2px 6px rgba(27, 30, 26, .18);
+        color: var(--mm-paper);
+    }
+    .mamamia-mark svg {
+        display: block;
+        width: 1.3rem;
+        height: 1.3rem;
+    }
+    .mamamia-brand-text { min-width: 0; }
+    .mamamia-title-row {
+        display: flex;
+        align-items: baseline;
+        gap: .45rem;
+    }
     .mamamia-title {
         margin: 0;
-        font-size: 1.95rem;
+        font-size: 1.55rem;
         font-weight: 800;
-        line-height: 1.05;
-        letter-spacing: -0.02em;
+        line-height: 1;
+        letter-spacing: -.035em;
     }
-
+    .mamamia-version {
+        padding: .05rem .35rem;
+        border: 1px solid var(--mm-line);
+        border-radius: 999px;
+        color: var(--mm-muted);
+        font-size: .58rem;
+        font-weight: 650;
+        letter-spacing: .04em;
+        white-space: nowrap;
+    }
     .mamamia-subtitle {
-        margin: 0;
-        color: var(--bs-secondary-color);
-        font-size: .82rem;
+        margin: .2rem 0 0;
+        color: var(--mm-muted);
+        font-size: .7rem;
+        letter-spacing: .012em;
+    }
+    .mamamia-header-note {
+        display: flex;
+        align-items: center;
+        gap: .45rem;
+        color: var(--mm-muted);
+        font-size: .64rem;
+        font-weight: 600;
+        letter-spacing: .1em;
+        text-transform: uppercase;
+        white-space: nowrap;
+    }
+    .mamamia-header-note::before {
+        content: '';
+        width: .38rem;
+        height: .38rem;
+        border-radius: 50%;
+        background: var(--mm-accent);
+        box-shadow: 0 0 0 3px var(--mm-accent-soft);
+    }
+    @media (max-width: 980px) {
+        .mamamia-header-note { display: none; }
     }
 
     .mamamia-sidebar {
@@ -1441,11 +1617,37 @@ bam_dashboard_css <- function() {
         min-height: 0;
         overflow-x: hidden;
         overflow-y: auto;
-        padding: .65rem .75rem;
-        border-right: 1px solid var(--bs-border-color);
-        background: var(--bs-body-bg);
-        font-size: .88rem;
+        padding: .75rem .85rem 1rem;
+        border-right: 1px solid var(--mm-line);
+        background: var(--mm-sidebar);
+        font-size: .85rem;
         line-height: 1.35;
+        scrollbar-width: thin;
+        scrollbar-color: var(--mm-line-strong) transparent;
+    }
+    .mamamia-sidebar::-webkit-scrollbar { width: 7px; }
+    .mamamia-sidebar::-webkit-scrollbar-thumb {
+        border: 2px solid var(--mm-sidebar);
+        border-radius: 999px;
+        background: var(--mm-line-strong);
+    }
+    .mamamia-sidebar-section { margin-top: .15rem; }
+    .mamamia-sidebar .mamamia-section-label {
+        margin: .1rem 0 .45rem;
+        color: var(--mm-muted);
+        font-size: .6rem;
+        font-weight: 750;
+        letter-spacing: .13em;
+        text-transform: uppercase;
+    }
+    .mamamia-sidebar .mamamia-sidebar-intro {
+        margin-bottom: .55rem;
+        color: var(--mm-muted);
+        font-size: .7rem;
+        line-height: 1.4;
+    }
+    .mamamia-sidebar .mamamia-sidebar-intro p {
+        margin: 0;
     }
 
     .mamamia-main {
@@ -1454,7 +1656,7 @@ bam_dashboard_css <- function() {
         min-width: 0;
         min-height: 0;
         overflow: hidden;
-        padding: .35rem .5rem;
+        padding: .6rem .7rem .65rem;
     }
 
     .mamamia-main > .tabbable,
@@ -1463,72 +1665,129 @@ bam_dashboard_css <- function() {
         min-height: 0;
         margin-bottom: 0;
     }
+    .mamamia-main > .card {
+        overflow: hidden;
+        border: 1px solid var(--mm-line);
+        border-radius: .7rem;
+        background: var(--mm-surface);
+        box-shadow: var(--mm-shadow);
+    }
     .mamamia-main .card-header {
         flex: 0 0 auto;
-        padding: .2rem .45rem;
+        padding: .3rem .6rem 0;
+        border-bottom: 1px solid var(--mm-line);
+        background: transparent;
     }
     .mamamia-main .card-body {
         min-height: 0;
+        padding: 0;
         overflow: auto;
     }
     .mamamia-main .tab-content {
         min-height: 0;
         overflow: hidden;
     }
+    /* bslib writes `padding:0` inline on fillable tab panes. Keep the tab
+       content aligned with the tab labels instead of the card border. */
     .mamamia-main .tab-pane {
         height: 100%;
+        padding: .65rem .7rem !important;
         overflow: auto;
     }
+    .mamamia-main .nav-tabs {
+        gap: .1rem;
+        border-bottom: 0;
+    }
     .mamamia-main .nav-link {
-        padding: .35rem .6rem;
-        font-size: .86rem;
+        padding: .48rem .72rem;
+        border: 0;
+        border-bottom: 2px solid transparent;
+        border-radius: 0;
+        color: var(--mm-muted);
+        font-size: .8rem;
+        font-weight: 600;
+        line-height: 1.2;
+    }
+    .mamamia-main .nav-link:hover {
+        border-bottom-color: var(--mm-line-strong);
+        color: var(--mm-ink);
+    }
+    .mamamia-main .nav-link.active {
+        border-bottom-color: var(--mm-accent);
+        background: transparent;
+        color: var(--mm-ink);
+    }
+    .mamamia-main .nav-link:focus-visible {
+        outline: 2px solid var(--mm-accent);
+        outline-offset: -2px;
     }
 
     .mamamia-footer {
         display: flex;
         flex-direction: column;
-        gap: .15rem;
+        gap: .2rem;
         min-width: 0;
         min-height: 0;
         overflow: hidden;
-        padding: .25rem .5rem .3rem;
-        border-top: 1px solid var(--bs-border-color);
-        background: var(--bs-tertiary-bg);
+        padding: .25rem .85rem .35rem;
+        border-top: 1px solid var(--mm-line);
+        background: var(--mm-sidebar);
     }
 
     .mamamia-footer .shiny-text-output {
         flex: 1 1 auto;
         margin: 0;
-        padding: .15rem .4rem;
+        padding: .2rem .45rem;
         overflow-y: auto;
-        font-size: .7rem;
-        line-height: 1.28;
+        border: 1px solid var(--mm-line);
+        border-radius: .35rem;
+        background: var(--mm-paper);
+        color: #474a42;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas,
+            'Liberation Mono', monospace;
+        font-size: .66rem;
+        line-height: 1.35;
         white-space: pre-wrap;
-        background: var(--bs-body-bg);
-        border: 1px solid var(--bs-border-color);
-        border-radius: .25rem;
     }
 
     .mamamia-footer .footer-status {
         display: flex;
         flex: 0 0 auto;
         align-items: center;
-        gap: .4rem;
-        font-size: .74rem;
+        gap: .5rem;
+        min-height: 1.35rem;
+        font-size: .72rem;
         line-height: 1.2;
-        min-height: 1.1rem;
     }
 
     .mamamia-footer .mamamia-footer-status {
         flex: 1 1 auto;
         min-width: 0;
     }
+    .mamamia-footer .badge {
+        padding: .32em .6em;
+        border-radius: 999px;
+        font-size: .58rem;
+        font-weight: 750;
+        letter-spacing: .07em;
+        text-transform: uppercase;
+        vertical-align: .08em;
+    }
 
     .mamamia-footer .mamamia-footer-toggle {
         flex: 0 0 auto;
-        padding: .1rem .45rem;
-        font-size: .7rem;
+        padding: .15rem .45rem;
+        border: 0;
+        border-radius: .35rem;
+        background: transparent;
+        color: var(--mm-muted);
+        font-size: .68rem;
         line-height: 1.2;
+    }
+    .mamamia-footer .mamamia-footer-toggle:hover,
+    .mamamia-footer .mamamia-footer-toggle:focus {
+        background: var(--mm-paper);
+        color: var(--mm-ink);
     }
 
     /* Collapsing the log gives its height back to the sidebar and main area. */
@@ -1538,9 +1797,6 @@ bam_dashboard_css <- function() {
     #mamamia-grid.mamamia-footer-collapsed .mamamia-footer .shiny-text-output {
         display: none;
     }
-    #mamamia-grid.mamamia-footer-collapsed #explorer-score_plot {
-        height: calc(100vh - 341px) !important;
-    }
     @media (max-width: 500px) {
         #mamamia-grid.mamamia-footer-collapsed {
             grid-template-rows: 85px 350px 2.25rem 350px;
@@ -1549,55 +1805,300 @@ bam_dashboard_css <- function() {
 
     .mamamia-sidebar .shiny-input-container {
         width: 100% !important;
-        margin-bottom: .6rem;
+        margin-bottom: .55rem;
     }
     .mamamia-sidebar .form-label,
     .mamamia-sidebar .control-label,
-    .mamamia-sidebar label {
-        margin-bottom: .15rem;
-        font-size: .8rem;
-        font-weight: 600;
+    .mamamia-sidebar .shiny-input-container > label {
+        margin-bottom: .18rem;
+        color: var(--mm-muted);
+        font-size: .67rem;
+        font-weight: 650;
+        letter-spacing: .03em;
         line-height: 1.25;
     }
     .mamamia-sidebar .form-control,
     .mamamia-sidebar .form-select {
-        min-height: 1.9rem;
+        min-height: 2rem;
         height: auto;
-        padding: .22rem .4rem;
-        font-size: .85rem;
+        padding: .28rem .5rem;
+        border-color: var(--mm-line);
+        border-radius: .42rem;
+        background-color: var(--mm-surface);
+        font-size: .79rem;
         line-height: 1.3;
+    }
+    .mamamia-sidebar .form-control:focus,
+    .mamamia-sidebar .form-select:focus {
+        border-color: var(--mm-accent);
+        box-shadow: 0 0 0 .15rem var(--mm-accent-soft);
     }
     .mamamia-sidebar .btn {
         padding: .25rem .5rem;
-        font-size: .82rem;
+        font-size: .78rem;
         line-height: 1.25;
     }
-    .mamamia-sidebar .accordion-button {
-        padding: .45rem .55rem;
-        font-size: .84rem;
+    .mamamia-sidebar .mamamia-ghost-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: .35rem;
+        width: 100%;
+        height: 1.95rem;
+        margin-top: .45rem;
+        border: 1px solid var(--mm-line);
+        border-radius: .42rem;
+        background: transparent;
+        color: var(--mm-ink);
+        font-size: .73rem;
         font-weight: 600;
     }
+    .mamamia-sidebar .mamamia-ghost-btn:hover,
+    .mamamia-sidebar .mamamia-ghost-btn:focus-visible {
+        border-color: var(--mm-line-strong);
+        background: var(--mm-paper);
+        color: var(--mm-ink);
+    }
+
+    .mamamia-upload .form-group { margin-bottom: 0; }
+    .mamamia-upload .control-label {
+        position: absolute !important;
+        width: 1px !important;
+        height: 1px !important;
+        padding: 0 !important;
+        margin: -1px !important;
+        overflow: hidden !important;
+        clip: rect(0, 0, 0, 0) !important;
+        white-space: nowrap !important;
+        border: 0 !important;
+    }
+    .mamamia-upload-head {
+        display: flex;
+        align-items: center;
+        gap: .5rem;
+        margin-bottom: .45rem;
+        cursor: pointer;
+    }
+    .mamamia-upload-icon {
+        display: grid;
+        flex: 0 0 auto;
+        place-items: center;
+        width: 1.65rem;
+        height: 1.65rem;
+        border-radius: .45rem;
+        background: var(--mm-accent-soft);
+        color: var(--mm-accent);
+        font-size: .74rem;
+    }
+    .mamamia-upload-title {
+        display: block;
+        font-size: .76rem;
+        font-weight: 650;
+        line-height: 1.2;
+    }
+    .mamamia-upload-hint {
+        display: block;
+        color: var(--mm-muted);
+        font-size: .64rem;
+        line-height: 1.3;
+    }
+    .mamamia-upload .input-group {
+        gap: .4rem;
+        padding: .5rem;
+        border: 1px dashed var(--mm-line-strong);
+        border-radius: .55rem;
+        background: var(--mm-surface);
+        cursor: pointer;
+        transition: border-color .15s ease, background-color .15s ease;
+    }
+    .mamamia-upload .input-group:hover,
+    .mamamia-upload.is-dragover .input-group {
+        border-color: var(--mm-accent);
+        background: var(--mm-accent-soft);
+    }
+    .mamamia-upload .input-group-btn {
+        display: block;
+        width: 100%;
+        margin: 0;
+    }
+    .mamamia-upload .btn-file {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        height: 1.85rem;
+        padding: 0 .55rem;
+        border: 0;
+        border-radius: .38rem;
+        background: var(--mm-ink);
+        color: var(--mm-paper);
+        font-size: .7rem;
+        font-weight: 650;
+        letter-spacing: .01em;
+        box-shadow: none;
+    }
+    .mamamia-upload .btn-file:hover,
+    .mamamia-upload .btn-file:focus {
+        background: var(--mm-accent);
+        color: #fff;
+    }
+    .mamamia-upload input.form-control[readonly] {
+        flex: 1 1 100%;
+        min-height: 0;
+        height: auto;
+        padding: 0 .1rem;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        color: var(--mm-muted);
+        font-size: .64rem;
+        line-height: 1.3;
+        text-align: center;
+        box-shadow: none;
+    }
+    .mamamia-upload .progress {
+        height: 3px;
+        margin: .35rem 0 0;
+        border-radius: 999px;
+        background: var(--mm-line);
+    }
+    /* Shiny writes the file name (and then 'Upload complete') into the
+       progress bar. Keep the bar as a pure fill indicator. */
+    .mamamia-upload .progress-bar {
+        overflow: hidden;
+        background-color: var(--mm-accent);
+        color: transparent;
+        font-size: 0;
+        line-height: 0;
+        text-indent: -9999px;
+        white-space: nowrap;
+    }
+
+    .mamamia-sidebar .accordion {
+        --bs-accordion-bg: transparent;
+        --bs-accordion-btn-bg: transparent;
+        --bs-accordion-active-bg: transparent;
+        --bs-accordion-border-color: var(--mm-line);
+        --bs-accordion-btn-focus-box-shadow: none;
+        margin-top: .6rem;
+    }
+    .mamamia-sidebar .accordion-item {
+        border: 0;
+        border-top: 1px solid var(--mm-line);
+        background: transparent;
+    }
+    .mamamia-sidebar .accordion-button {
+        padding: .62rem .1rem;
+        background: transparent;
+        color: var(--mm-muted);
+        font-size: .61rem;
+        font-weight: 750;
+        letter-spacing: .12em;
+        line-height: 1.2;
+        text-transform: uppercase;
+        box-shadow: none;
+    }
+    .mamamia-sidebar .accordion-button:not(.collapsed) {
+        color: var(--mm-ink);
+    }
+    .mamamia-sidebar .accordion-button::after {
+        width: .62rem;
+        height: .62rem;
+        background-size: .62rem;
+        opacity: .55;
+    }
     .mamamia-sidebar .accordion-body {
-        padding: .55rem .6rem;
+        padding: .05rem .1rem .8rem;
+    }
+    .mamamia-sidebar .shiny-options-group {
+        display: flex;
+        flex-direction: column;
+        gap: .2rem;
+    }
+    .mamamia-sidebar .radio-inline {
+        display: flex;
+        align-items: center;
+        gap: .4rem;
+        margin: 0;
+        font-size: .76rem;
+    }
+    .mamamia-sidebar .radio-inline input,
+    .mamamia-sidebar .form-check-input {
+        accent-color: var(--mm-accent);
+    }
+    .mamamia-sidebar .form-check-label,
+    .mamamia-sidebar .radio label,
+    .mamamia-sidebar .checkbox label {
+        font-size: .76rem;
+        font-weight: 450;
+        line-height: 1.35;
+    }
+    .mamamia-sidebar .text-muted.small,
+    .mamamia-sidebar small {
+        color: var(--mm-muted) !important;
+        font-size: .69rem;
+        line-height: 1.4;
+    }
+    .mamamia-sidebar .selectize-input {
+        min-height: 2rem;
+        padding: .25rem .4rem;
+        border-color: var(--mm-line);
+        border-radius: .42rem;
+        background: var(--mm-surface);
+        font-size: .74rem;
+    }
+    .mamamia-sidebar .selectize-control.multi .selectize-input > div {
+        border: 0;
+        border-radius: .3rem;
+        background: var(--mm-accent-soft);
+        color: var(--mm-accent);
+        font-size: .68rem;
     }
     .mamamia-run-panel {
-        margin-top: .75rem;
-        padding-top: .75rem;
-        border-top: 1px solid var(--bs-border-color);
+        margin-top: .35rem;
+        padding-top: .7rem;
+        border-top: 1px solid var(--mm-line);
     }
     .mamamia-run-panel .btn {
         width: 100%;
     }
+    .mamamia-run-panel #run {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: .45rem;
+        height: 2.3rem;
+        border: 0;
+        border-radius: .45rem;
+        background: var(--mm-accent);
+        color: #ffffff;
+        font-size: .76rem;
+        font-weight: 650;
+        letter-spacing: .015em;
+        box-shadow: 0 2px 5px rgba(15, 92, 83, .22);
+        transition: background-color .15s ease, transform .1s ease;
+    }
+    .mamamia-run-panel #run:hover:not(.disabled) {
+        background: #0b4a43;
+    }
+    .mamamia-run-panel #run:active:not(.disabled) {
+        transform: translateY(1px);
+    }
+    .mamamia-run-panel #run.disabled {
+        box-shadow: none;
+        opacity: .42;
+    }
+
     .mamamia-main > .mamamia-filter-bar {
         flex: 0 0 auto;
     }
     .mamamia-filter-bar {
         display: flex;
-        align-items: center;
-        gap: .6rem;
-        padding: .15rem 0 .5rem;
+        align-items: flex-end;
+        gap: .55rem;
+        padding: .1rem 0 .55rem;
         border: 0;
-        border-bottom: 1px solid var(--bs-border-color);
+        border-bottom: 1px solid var(--mm-line);
         border-radius: 0;
         background: transparent;
     }
@@ -1606,21 +2107,24 @@ bam_dashboard_css <- function() {
     }
     .mamamia-sample-picker .shiny-input-container,
     .mamamia-sample-picker .form-group {
-        width: 11rem;
+        width: 10.5rem;
         margin-bottom: 0;
     }
     .mamamia-sample-picker .control-label {
         margin-bottom: .15rem;
-        color: var(--bs-secondary-color);
-        font-size: .68rem;
-        font-weight: 600;
-        letter-spacing: .06em;
+        color: var(--mm-muted);
+        font-size: .61rem;
+        font-weight: 700;
+        letter-spacing: .1em;
         text-transform: uppercase;
     }
     .mamamia-sample-picker .form-select {
         min-height: 2rem;
-        padding: .2rem .5rem;
-        font-size: .82rem;
+        padding: .2rem .55rem;
+        border-color: var(--mm-line);
+        border-radius: 999px;
+        background-color: var(--mm-surface);
+        font-size: .78rem;
     }
     .mamamia-filter-controls {
         display: flex;
@@ -1634,7 +2138,7 @@ bam_dashboard_css <- function() {
         display: flex;
         flex-wrap: wrap;
         align-items: center;
-        gap: .4rem;
+        gap: .38rem;
         width: 100%;
     }
     .mamamia-filter-pills .shiny-input-container {
@@ -1648,34 +2152,49 @@ bam_dashboard_css <- function() {
     .mamamia-filter-pills .bootstrap-select > .dropdown-toggle {
         min-height: 2rem;
         height: 2rem;
-        padding: 0 .7rem;
-        border: 1px solid var(--bs-border-color);
+        padding: 0 .72rem;
+        border: 1px solid var(--mm-line);
         border-radius: 999px;
-        background: var(--bs-body-bg);
-        color: var(--bs-body-color);
-        font-size: .8rem;
+        background: var(--mm-surface);
+        color: var(--mm-muted);
+        font-size: .76rem;
+        font-weight: 550;
         box-shadow: none;
+        transition: border-color .15s ease, color .15s ease,
+            background-color .15s ease;
     }
     .mamamia-filter-pills .bootstrap-select > .dropdown-toggle:hover,
     .mamamia-filter-pills .bootstrap-select > .dropdown-toggle:focus {
-        border-color: var(--bs-primary);
-        color: var(--bs-primary);
+        border-color: var(--mm-accent);
+        background: var(--mm-accent-soft);
+        color: var(--mm-accent);
+    }
+    .mamamia-filter-pills .bootstrap-select > .dropdown-toggle:not(.bs-placeholder) {
+        border-color: var(--mm-accent);
+        background: var(--mm-accent-soft);
+        color: var(--mm-accent);
     }
     .mamamia-filter-pills .bootstrap-select.show > .dropdown-toggle {
-        border-color: var(--bs-primary);
-        box-shadow: 0 0 0 .15rem rgba(var(--bs-primary-rgb), .12);
+        border-color: var(--mm-accent);
+        box-shadow: 0 0 0 .15rem var(--mm-accent-soft);
     }
     .mamamia-filter-pills .bootstrap-select .filter-option-inner-inner {
-        font-size: .8rem;
+        font-size: .76rem;
     }
     .mamamia-filter-pills .bootstrap-select .dropdown-menu {
-        padding: .25rem 0;
-        border-color: var(--bs-border-color);
-        box-shadow: 0 .35rem 1rem rgba(0, 0, 0, .12);
-        font-size: .8rem;
+        padding: .28rem 0;
+        border-color: var(--mm-line);
+        border-radius: .5rem;
+        box-shadow: 0 .45rem 1.2rem rgba(27, 30, 26, .13);
+        font-size: .76rem;
     }
     .mamamia-filter-pills .bootstrap-select .dropdown-item {
-        padding: .25rem .75rem;
+        padding: .3rem .8rem;
+    }
+    .mamamia-filter-pills .bootstrap-select .dropdown-item.active,
+    .mamamia-filter-pills .bootstrap-select .dropdown-item:active {
+        background: var(--mm-accent-soft);
+        color: var(--mm-accent);
     }
     .mamamia-filter-pills .mamamia-filter-switch {
         display: flex;
@@ -1689,21 +2208,35 @@ bam_dashboard_css <- function() {
         min-height: 2rem;
         margin: 0;
         padding-left: 2.4em;
-        font-size: .8rem;
+        font-size: .76rem;
         white-space: nowrap;
     }
     .mamamia-filter-pills .form-check-input {
         margin-top: 0;
+        border-color: var(--mm-line-strong);
+        background-color: var(--mm-surface);
+    }
+    .mamamia-filter-pills .form-check-input:checked {
+        border-color: var(--mm-accent);
+        background-color: var(--mm-accent);
+    }
+    .mamamia-filter-pills .form-check-input:focus {
+        border-color: var(--mm-accent);
+        box-shadow: 0 0 0 .15rem var(--mm-accent-soft);
     }
     .mamamia-filter-pills .form-check-label {
-        font-size: .8rem;
+        color: var(--mm-muted);
+        font-size: .74rem;
+        font-weight: 550;
     }
     .mamamia-segment-controls {
         display: flex;
         flex-wrap: wrap;
         align-items: flex-end;
-        gap: .7rem;
+        gap: .5rem;
         margin-bottom: .55rem;
+        padding-bottom: .55rem;
+        border-bottom: 1px solid var(--mm-line);
     }
     .mamamia-segment-controls .shiny-input-container {
         margin-bottom: 0;
@@ -1711,40 +2244,162 @@ bam_dashboard_css <- function() {
     .mamamia-segment-controls .form-group {
         margin-bottom: 0;
     }
+    .mamamia-segment-controls .control-label {
+        margin-bottom: .18rem;
+        color: var(--mm-muted);
+        font-size: .64rem;
+        font-weight: 650;
+        letter-spacing: .03em;
+    }
+    .mamamia-segment-controls .form-control {
+        height: 2rem;
+        padding: .2rem .5rem;
+        border-color: var(--mm-line);
+        border-radius: .4rem;
+        font-size: .76rem;
+    }
+    .mamamia-segment-controls .btn {
+        height: 2rem;
+        padding: 0 .65rem;
+        border: 1px solid var(--mm-line);
+        border-radius: .4rem;
+        background: var(--mm-surface);
+        color: var(--mm-ink);
+        font-size: .72rem;
+        font-weight: 600;
+    }
+    .mamamia-segment-controls .btn:hover {
+        border-color: var(--mm-accent);
+        background: var(--mm-accent-soft);
+        color: var(--mm-accent);
+    }
+    .mamamia-segment-controls .d-flex { gap: .4rem !important; }
     .mamamia-export-panel {
-        max-width: 48rem;
+        max-width: 56rem;
     }
     .mamamia-export-panel h5 {
-        margin-top: .4rem;
-        font-size: .95rem;
+        margin: 1rem 0 .4rem;
+        color: var(--mm-muted);
+        font-size: .62rem;
+        font-weight: 750;
+        letter-spacing: .12em;
+        text-transform: uppercase;
+    }
+    .mamamia-export-panel h5:first-child { margin-top: 0; }
+    .mamamia-export-panel .btn {
+        border-radius: .4rem;
+        font-size: .78rem;
+    }
+    .mamamia-export-panel .btn.disabled,
+    .mamamia-export-panel .btn:disabled {
+        opacity: .45;
+        pointer-events: none;
+    }
+    .mamamia-export-panel #explorer-selection_status {
+        margin-bottom: .35rem;
+        color: var(--mm-muted);
+        font-size: .74rem;
+    }
+    .mamamia-export-panel .table-responsive {
+        margin-bottom: .7rem;
+        scrollbar-width: thin;
+        scrollbar-color: var(--mm-line-strong) transparent;
+    }
+    .mamamia-export-panel .table-responsive::-webkit-scrollbar {
+        height: 7px;
+    }
+    .mamamia-export-panel .table-responsive::-webkit-scrollbar-thumb {
+        border-radius: 999px;
+        background: var(--mm-line-strong);
+    }
+    .mamamia-export-panel .table-responsive::-webkit-scrollbar-track {
+        background: transparent;
+    }
+    .mamamia-export-panel .table {
+        margin-bottom: 0;
+        font-size: .72rem;
+        white-space: nowrap;
+    }
+    .mamamia-export-panel .table th {
+        color: var(--mm-muted);
+        font-size: .62rem;
+        font-weight: 700;
+        letter-spacing: .04em;
+    }
+    .mamamia-export-panel .table td,
+    .mamamia-export-panel .table th {
+        padding: .35rem .5rem;
     }
     .mamamia-karyotype {
+        display: flex;
+        flex-direction: column;
         height: 100%;
         min-height: 0;
+    }
+    .mamamia-karyotype > div:first-child {
+        flex: 0 0 auto;
+        justify-content: space-between;
+        gap: .5rem !important;
+        padding: 0 0 .5rem !important;
     }
     .mamamia-karyotype .shiny-input-container {
         width: auto;
         margin-bottom: 0;
     }
     .mamamia-karyotype .control-label {
-        margin-bottom: 0;
+        position: absolute !important;
+        width: 1px !important;
+        height: 1px !important;
+        padding: 0 !important;
+        margin: -1px !important;
+        overflow: hidden !important;
+        clip: rect(0, 0, 0, 0) !important;
+        white-space: nowrap !important;
+        border: 0 !important;
+    }
+    .mamamia-karyotype .shiny-options-group {
+        display: inline-flex;
+        padding: 2px;
+        border: 1px solid var(--mm-line);
+        border-radius: 999px;
+        background: var(--mm-paper);
     }
     .mamamia-karyotype .radio-inline {
-        margin-right: .75rem;
+        margin: 0;
+    }
+    .mamamia-karyotype .radio-inline input {
+        position: absolute;
+        opacity: 0;
+        pointer-events: none;
+    }
+    .mamamia-karyotype .radio-inline span {
+        display: block;
+        padding: .22rem .7rem;
+        border-radius: 999px;
+        color: var(--mm-muted);
+        font-size: .71rem;
+        font-weight: 600;
+        line-height: 1.3;
+        cursor: pointer;
+        transition: background-color .15s ease, color .15s ease;
+    }
+    .mamamia-karyotype .radio-inline input:checked + span {
+        background: var(--mm-surface);
+        box-shadow: 0 1px 2px rgba(27, 30, 26, .12);
+        color: var(--mm-ink);
+    }
+    .mamamia-karyotype .radio-inline input:focus-visible + span {
+        outline: 2px solid var(--mm-accent);
+        outline-offset: 1px;
     }
     .mamamia-karyotype .html-widget {
+        flex: 1 1 auto;
         min-height: 0;
+        height: 100% !important;
     }
     .mamamia-sidebar .form-check {
         margin-bottom: .25rem;
         min-height: 1.25rem;
-    }
-    .mamamia-sidebar .form-check-label,
-    .mamamia-sidebar .radio label,
-    .mamamia-sidebar .checkbox label {
-        font-size: .8rem;
-        font-weight: 400;
-        line-height: 1.3;
     }
     .mamamia-sidebar .radio-inline + .radio-inline {
         margin-left: .6rem;
@@ -1756,8 +2411,8 @@ bam_dashboard_css <- function() {
         position: relative;
         height: .9rem;
         margin: -.15rem .7rem .15rem;
-        color: var(--bs-secondary-color);
-        font-size: .65rem;
+        color: var(--mm-muted);
+        font-size: .62rem;
         line-height: 1;
     }
     .mamamia-resolution-ticks span {
@@ -1769,12 +2424,177 @@ bam_dashboard_css <- function() {
     }
     .mamamia-sidebar .table {
         margin-bottom: .25rem;
+        font-size: .68rem;
+    }
+
+    /* Call table */
+    .mamamia-main .dataTables_wrapper {
+        font-size: .75rem;
+    }
+    .mamamia-main .dataTables_wrapper .row:first-child {
+        align-items: center;
+        margin-bottom: .45rem;
+    }
+    .mamamia-main .dataTables_length label,
+    .mamamia-main .dataTables_filter label {
+        color: var(--mm-muted);
+        font-size: .68rem;
+        font-weight: 550;
+    }
+    .mamamia-main .dataTables_length .form-select {
+        height: 1.85rem;
+        padding: .1rem 1.6rem .1rem .45rem;
+        border-color: var(--mm-line);
+        border-radius: .38rem;
+        font-size: .72rem;
+    }
+    .mamamia-main .dataTables_wrapper .dataTables_filter input {
+        height: 1.85rem;
+        padding: .1rem .6rem;
+        border: 1px solid var(--mm-line);
+        border-radius: 999px;
+        background: var(--mm-surface);
+        font-size: .72rem;
+        box-shadow: none;
+    }
+    .mamamia-main .dataTables_wrapper .dataTables_filter input:focus {
+        border-color: var(--mm-accent);
+        box-shadow: 0 0 0 .15rem var(--mm-accent-soft);
+    }
+    .mamamia-main table.dataTable {
+        border-collapse: separate;
+        border-spacing: 0;
+    }
+    .mamamia-main table.dataTable thead th {
+        padding: .45rem .55rem;
+        border-bottom: 1px solid var(--mm-line-strong);
+        background: var(--mm-paper);
+        color: var(--mm-muted);
+        font-size: .6rem;
+        font-weight: 750;
+        letter-spacing: .06em;
+        text-transform: uppercase;
+        white-space: nowrap;
+    }
+    .mamamia-main table.dataTable tbody td {
+        padding: .4rem .55rem;
+        border-bottom: 1px solid var(--mm-line);
+        font-size: .72rem;
+        vertical-align: middle;
+        white-space: nowrap;
+    }
+    .mamamia-main table.dataTable.table-striped > tbody > tr:nth-of-type(odd) > * {
+        --bs-table-bg-type: var(--mm-paper);
+    }
+    .mamamia-main table.dataTable tbody tr:hover > * {
+        --bs-table-bg-state: var(--mm-accent-soft);
+    }
+    .mamamia-main table.dataTable tbody tr.selected > * {
+        --bs-table-bg-state: var(--mm-accent-soft);
+        box-shadow: inset 0 0 0 9999px transparent;
+        color: var(--mm-accent);
+    }
+    .mamamia-main table.dataTable thead tr.filters th {
+        padding: .2rem .3rem .35rem;
+        background: var(--mm-paper);
+    }
+    .mamamia-main table.dataTable thead tr.filters input {
+        height: 1.65rem;
+        padding: .1rem .35rem;
+        border: 1px solid var(--mm-line);
+        border-radius: .3rem;
+        font-size: .66rem;
+    }
+    .mamamia-main .dataTables_info,
+    .mamamia-main .dataTables_paginate {
+        margin-top: .55rem;
+        color: var(--mm-muted);
+        font-size: .68rem;
+    }
+    .mamamia-main .page-link {
+        padding: .2rem .5rem;
+        border-color: var(--mm-line);
+        color: var(--mm-muted);
         font-size: .7rem;
     }
-    .mamamia-sidebar .text-muted.small,
-    .mamamia-sidebar small {
-        font-size: .75rem;
-        line-height: 1.35;
+    .mamamia-main .active > .page-link,
+    .mamamia-main .page-link.active {
+        border-color: var(--mm-accent);
+        background: var(--mm-accent);
+    }
+    .mamamia-main .dataTables_empty {
+        padding: 2rem 1rem !important;
+        color: var(--mm-muted);
+        font-size: .8rem;
+    }
+
+    .mamamia-main .shiny-output-error-validation {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        min-height: 12rem;
+        padding: 2rem;
+        color: var(--mm-muted);
+        font-size: .85rem;
+        text-align: center;
+    }
+
+    /* Analysis progress */
+    .shiny-progress-notification {
+        padding: .6rem .8rem;
+        border: 1px solid var(--mm-line);
+        border-radius: .6rem;
+        background: var(--mm-surface);
+        box-shadow: 0 .6rem 1.6rem rgba(27, 30, 26, .16);
+    }
+    .shiny-progress-notification .progress {
+        height: 4px;
+        margin-top: .35rem;
+        border-radius: 999px;
+        background: var(--mm-line);
+    }
+    .shiny-progress-notification .progress-bar {
+        background-color: var(--mm-accent);
+    }
+    .shiny-progress-notification .progress-text {
+        color: var(--mm-ink);
+        font-size: .78rem;
+    }
+
+    /* Toasts */
+    #shiny-notification-panel {
+        right: 1rem;
+        bottom: 1rem;
+        width: min(23rem, calc(100vw - 2rem));
+    }
+    .shiny-notification {
+        padding: .65rem 2rem .65rem .8rem;
+        border: 1px solid var(--mm-line);
+        border-left: 3px solid var(--mm-accent);
+        border-radius: .6rem;
+        background: var(--mm-surface);
+        box-shadow: 0 .6rem 1.6rem rgba(27, 30, 26, .16);
+        color: var(--mm-ink);
+        font-size: .78rem;
+        line-height: 1.4;
+    }
+    .shiny-notification-close {
+        top: .45rem;
+        right: .55rem;
+        color: var(--mm-muted);
+        font-size: 1rem;
+    }
+    .shiny-notification-close:hover { color: var(--mm-ink); }
+
+    ::selection {
+        background: rgba(var(--mm-accent-rgb), .18);
+    }
+    .btn:focus-visible,
+    .form-control:focus-visible,
+    .form-select:focus-visible {
+        outline: 2px solid var(--mm-accent);
+        outline-offset: 2px;
     }
     "
 }
@@ -1792,6 +2612,22 @@ bam_dashboard_css <- function() {
 bam_single_file_input <- function() {
     shiny::div(
         class = "mamamia-upload",
+        shiny::div(
+            class = "mamamia-upload-head",
+            shiny::span(
+                class = "mamamia-upload-icon",
+                `aria-hidden` = "true",
+                shiny::icon("dna")
+            ),
+            shiny::div(
+                class = "mamamia-upload-copy",
+                shiny::span(class = "mamamia-upload-title", "BAM file"),
+                shiny::span(
+                    class = "mamamia-upload-hint",
+                    "Drag & drop or browse"
+                )
+            )
+        ),
         shiny::fileInput(
             "bams",
             "BAM file",
@@ -1922,15 +2758,7 @@ bam_results_ui <- function() {
             id = ns("tabs"),
             bslib::nav_panel(
                 "Karyotype",
-                explorer_karyotype_ui(
-                    "explorer", height = "calc(100vh - 390px)"
-                )
-            ),
-            bslib::nav_panel(
-                "Score profile",
-                shiny::plotOutput(
-                    ns("score_plot"), height = "calc(100vh - 335px)"
-                )
+                explorer_karyotype_ui("explorer", height = "100%")
             ),
             bslib::nav_panel(
                 "Calls",
@@ -1963,7 +2791,7 @@ bam_results_ui <- function() {
 #' @noRd
 bam_dashboard_layout <- function() {
     paste(
-        "|0.5rem|240px   |1fr      |",
+        "|0.5rem|264px   |1fr      |",
         "|75px  |header  |header   |",
         "|1fr   |sidebar |main     |",
         "|100px |footer  |footer   |",
@@ -2002,8 +2830,10 @@ bam_launcher_ui <- function(state) {
 
     bslib::page_fluid(
         title = "MaMaMIA",
-        theme = bslib::bs_theme(version = 5),
+        theme = bam_dashboard_theme(),
         shiny::tags$head(
+            mamamia_font_dependency(),
+            mamamia_favicon(),
             shiny::tags$style(shiny::HTML(bam_dashboard_css())),
             shiny::tags$script(shiny::HTML(
                 paste(
@@ -2055,10 +2885,14 @@ bam_launcher_ui <- function(state) {
                     "    return transfer.files;",
                     "  }",
                     "  function uploadInput(node) {",
-                    "    var zone = node && node.closest('.mamamia-upload');",
+                    "    var zone = uploadZone(node);",
                     "    if (!zone) return null;",
                     "    var input = zone.querySelector('input[type=\"file\"]');",
                     "    return input && input.id === id ? input : null;",
+                    "  }",
+                    "  function uploadZone(node) {",
+                    "    return node && node.closest ?",
+                    "      node.closest('.mamamia-upload') : null;",
                     "  }",
                     "  document.addEventListener('change', function(event) {",
                     "    var input = event.target;",
@@ -2067,10 +2901,37 @@ bam_launcher_ui <- function(state) {
                     "      input.files = onlyFirst(input.files);",
                     "    }",
                     "  }, true);",
+                    "  document.addEventListener('dragover', function(event) {",
+                    "    var zone = uploadZone(event.target);",
+                    "    if (!zone) return;",
+                    "    event.preventDefault();",
+                    "    if (event.dataTransfer) {",
+                    "      event.dataTransfer.dropEffect = 'copy';",
+                    "    }",
+                    "    zone.classList.add('is-dragover');",
+                    "  }, true);",
+                    "  document.addEventListener('dragleave', function(event) {",
+                    "    var zone = uploadZone(event.target);",
+                    "    if (!zone) return;",
+                    "    if (!zone.contains(event.relatedTarget)) {",
+                    "      zone.classList.remove('is-dragover');",
+                    "    }",
+                    "  }, true);",
+                    "  document.addEventListener('click', function(event) {",
+                    "    var zone = uploadZone(event.target);",
+                    "    if (!zone) return;",
+                    "    var own = event.target.closest(",
+                    "      'input[type=\"file\"], .btn-file, label');",
+                    "    if (own) return;",
+                    "    var input = zone.querySelector('input[type=\"file\"]');",
+                    "    if (input) input.click();",
+                    "  }, true);",
                     "  document.addEventListener('drop', function(event) {",
+                    "    var zone = uploadZone(event.target);",
+                    "    if (zone) zone.classList.remove('is-dragover');",
                     "    var input = uploadInput(event.target);",
                     "    var files = event.dataTransfer && event.dataTransfer.files;",
-                    "    if (!input || !files || files.length <= 1) return;",
+                    "    if (!input || !files || files.length < 1) return;",
                     "    event.preventDefault();",
                     "    event.stopPropagation();",
                     "    input.files = onlyFirst(files);",
@@ -2088,14 +2949,44 @@ bam_launcher_ui <- function(state) {
                 shiny::tags$header(
                     class = "mamamia-header",
                     shiny::div(
-                        shiny::h1("MaMaMIA", class = "mamamia-title"),
-                        shiny::p(
-                            class = "mamamia-subtitle",
-                            paste(
-                                "Max Mapping for Meticulous Introgression",
-                                "Analysis"
+                        class = "mamamia-brand",
+                        shiny::span(
+                            class = "mamamia-mark",
+                            `aria-hidden` = "true",
+                            shiny::HTML(paste0(
+                                '<svg viewBox="0 0 24 24" fill="none" ',
+                                'xmlns="http://www.w3.org/2000/svg">',
+                                '<path d="M8.2 4.7c3.1 2.6 3.1 6.7 0 9.3',
+                                '-2.4 2-2.4 4.2 0 5.3" stroke="currentColor" ',
+                                'stroke-width="1.8" stroke-linecap="round"/>',
+                                '<path d="M15.8 4.7c-3.1 2.6-3.1 6.7 0 9.3',
+                                '2.4 2 2.4 4.2 0 5.3" stroke="#d9a441" ',
+                                'stroke-width="1.8" stroke-linecap="round"/>',
+                                '</svg>'
+                            ))
+                        ),
+                        shiny::div(
+                            class = "mamamia-brand-text",
+                            shiny::div(
+                                class = "mamamia-title-row",
+                                shiny::h1("MaMaMIA", class = "mamamia-title"),
+                                shiny::span(
+                                    class = "mamamia-version",
+                                    mamamia_package_version()
+                                )
+                            ),
+                            shiny::p(
+                                class = "mamamia-subtitle",
+                                paste(
+                                    "Max Mapping for Meticulous Introgression",
+                                    "Analysis"
+                                )
                             )
                         )
+                    ),
+                    shiny::span(
+                        class = "mamamia-header-note",
+                        "Breadth-aware introgression mapping"
                     )
                 )
             ),
@@ -2103,15 +2994,24 @@ bam_launcher_ui <- function(state) {
                 "sidebar",
                 shiny::tags$div(
                     class = "mamamia-sidebar",
-                    shiny::uiOutput("bam_mode_note"),
-                    shiny::uiOutput("bam_upload_ui"),
-                    if (example_available) {
-                        shiny::actionButton(
-                            "example_data", "Example data",
-                            class = "btn-outline-secondary btn-sm",
-                            style = "width: 100%"
-                        )
-                    },
+                    shiny::div(
+                        class = "mamamia-sidebar-intro",
+                        shiny::uiOutput("bam_mode_note")
+                    ),
+                    shiny::div(
+                        class = "mamamia-sidebar-section",
+                        shiny::div(class = "mamamia-section-label", "Input"),
+                        shiny::uiOutput("bam_upload_ui"),
+                        if (example_available) {
+                            shiny::actionButton(
+                                "example_data", "Example data",
+                                class = "btn mamamia-ghost-btn",
+                                title = paste(
+                                    "Load the bundled example dataset"
+                                )
+                            )
+                        }
+                    ),
                     shiny::uiOutput("sidebar_recovery"),
                     shiny::uiOutput("sidebar_body")
                 )
@@ -2839,7 +3739,8 @@ bam_launcher_server <- function(state) {
                         if (!ready) "disabled"
                     ),
                     disabled = if (ready) NULL else "",
-                    shiny::span(class = "action-label", "Run analysis")
+                    shiny::span(class = "action-label", "Run analysis"),
+                    shiny::icon("arrow-right", `aria-hidden` = "true")
                 ),
                 if (!is.null(problem)) {
                     shiny::p(class = "text-danger", problem)
@@ -3113,15 +4014,21 @@ bam_launcher_server <- function(state) {
             result_cache$set(key, new_result)
             active_key(key)
             result(new_result)
+            n_samples <- length(bam_sample_choices(new_result))
+            n_calls <- sum(new_result$samples$n_calls, na.rm = TRUE)
+            sample_word <- if (n_samples == 1L) "sample" else "samples"
+            call_word <- if (n_calls == 1L) {
+                "calibrated call"
+            } else {
+                "calibrated calls"
+            }
             log_line(sprintf(
-                "Analysis finished: %d sample(s), %d calibrated call(s).",
-                length(bam_sample_choices(new_result)),
-                sum(new_result$samples$n_calls, na.rm = TRUE)
+                "Analysis finished: %d %s, %d %s.",
+                n_samples, sample_word, n_calls, call_word
             ))
             run_summary <- sprintf(
-                "%d sample(s), %d calibrated call(s)",
-                length(bam_sample_choices(new_result)),
-                sum(new_result$samples$n_calls, na.rm = TRUE)
+                "%d %s, %d %s",
+                n_samples, sample_word, n_calls, call_word
             )
             shiny::showNotification(
                 run_summary,
@@ -3135,8 +4042,8 @@ bam_launcher_server <- function(state) {
         })
 
         ## The sample selector belongs to the main result area: it controls the
-        ## karyotype, score profile, call table and exports. It is only useful
-        ## when the input BAM contains several @RG SM samples.
+        ## karyotype, call table and exports. It is only useful when the input
+        ## BAM contains several @RG SM samples.
         output$sample_selector_ui <- shiny::renderUI({
             samples <- result_samples()
             if (length(samples) <= 1L) {

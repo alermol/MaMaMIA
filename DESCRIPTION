@@ -1,6 +1,6 @@
 Package: MaMaMIA
 Title: Max Mapping for Meticulous Introgression Analysis
-Version: 0.99.2
+Version: 0.1.0
 Authors@R: c(
     person("Aleksey", "Ermolaev", email = "alerm@al-erm.ru", role = c("aut", "cre"), comment = c(ORCID = "0000-0001-9789-8694")),
     person("Daniil", "Ulyanov", email = "uldas1508@gmail.com", role = "aut")

@@ -660,10 +660,36 @@ HTMLWidgets.widget({
 
       var chromosomes = payload.chromosomes || [];
       if (!chromosomes.length) {
-        var empty = document.createElement("p");
+        var empty = document.createElement("div");
         empty.className = "mamamia-karyotype-empty";
-        empty.textContent = payload.message ||
+
+        var mark = document.createElement("div");
+        mark.className = "mamamia-empty-mark";
+        mark.setAttribute("aria-hidden", "true");
+        mark.innerHTML =
+          '<svg viewBox="0 0 32 32" fill="none" ' +
+          'xmlns="http://www.w3.org/2000/svg">' +
+          '<path d="M11 6c4 3.5 4 8.5 0 12-3 2.6-3 5.4 0 8" ' +
+          'stroke="currentColor" stroke-width="2.2" ' +
+          'stroke-linecap="round"/>' +
+          '<path d="M21 6c-4 3.5-4 8.5 0 12 3 2.6 3 5.4 0 8" ' +
+          'stroke="#b7791f" stroke-width="2.2" ' +
+          'stroke-linecap="round"/></svg>';
+        empty.appendChild(mark);
+
+        var title = document.createElement("p");
+        title.className = "mamamia-empty-title";
+        title.textContent = payload.message ||
           "No chromosomes in this result.";
+        empty.appendChild(title);
+
+        if (payload.hint) {
+          var hint = document.createElement("p");
+          hint.className = "mamamia-empty-hint";
+          hint.textContent = payload.hint;
+          empty.appendChild(hint);
+        }
+
         root.appendChild(empty);
         return;
       }
@@ -703,9 +729,9 @@ HTMLWidgets.widget({
       var slotWidth = (availableWidth - margin.left - margin.right) /
         Math.max(1, nPairs);
       var barWidth = Math.max(
-        6,
+        7,
         Math.min(
-          24,
+          34,
           (slotWidth - Math.max(0, maxCopies - 1) * pairGap -
             chromosomeGap) / maxCopies
         )

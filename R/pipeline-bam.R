@@ -12,7 +12,7 @@
 ## `calibration`, `calls` and `provenance`.
 
 ## Synchronized with DESCRIPTION by tests/testthat/test-pipeline.R.
-.MaMaMIAPipelineVersion <- "0.99.2"
+.MaMaMIAPipelineVersion <- "0.1.0"
 
 ## Synchronized with tools/vendor-gcrank.txt by tests/testthat/test-pipeline.R.
 .MaMaMIAgcrankCommit <- "aa3a32b4cd748ead4c933225d0c990689499f92f"

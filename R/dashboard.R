@@ -1,5 +1,4 @@
-## The introgression explorer: score profiles, calls, filters and BEDPE
-## export.
+## The introgression explorer: karyotype, calls, filters and BEDPE export.
 
 dashboard_packages <- c(
     "bslib", "DT", "htmltools", "htmlwidgets", "shiny", "shinyWidgets"
@@ -20,7 +19,7 @@ require_dashboard_packages <- function() {
     )
 }
 
-#' Build the explorer score profile
+#' Build a score profile plot
 #'
 #' One ggplot per result: a score line faceted by chromosome group with a
 #' shaded rectangle over every visible call. Split out of the Shiny module so
@@ -32,6 +31,9 @@ require_dashboard_packages <- function() {
 #' @return A `ggplot` object.
 #' @noRd
 explorer_score_plot <- function(scores, calls = NULL) {
+    modes <- unique(as.character(scores$mode))
+    mode_colours <- c(single = "#0f5c53", multi = "#b7791f")
+    mode_colours <- mode_colours[intersect(names(mode_colours), modes)]
     p <- ggplot2::ggplot(
         scores,
         ggplot2::aes(
@@ -39,14 +41,56 @@ explorer_score_plot <- function(scores, calls = NULL) {
             colour = .data$mode
         )
     ) +
-        ggplot2::geom_hline(yintercept = 0, colour = "grey70") +
-        ggplot2::geom_line(linewidth = 0.3) +
-        ggplot2::facet_wrap(~group, scales = "free_x", ncol = 1) +
+        ggplot2::geom_hline(
+            yintercept = 0, colour = "#d8d4c8", linewidth = 0.3
+        ) +
+        ggplot2::geom_line(linewidth = 0.35) +
+        ggplot2::facet_wrap(
+            ~group,
+            scales = "free_x", ncol = 1,
+            labeller = ggplot2::as_labeller(
+                function(x) paste("Group", x)
+            )
+        ) +
         ggplot2::labs(
             x = "Position (Mb)", y = "Introgression score",
-            colour = "Mode"
+            colour = NULL
         ) +
-        ggplot2::theme_minimal(base_size = 12)
+        ggplot2::theme_minimal(base_size = 11) +
+        ggplot2::theme(
+            plot.background = ggplot2::element_rect(
+                fill = "#ffffff", colour = NA
+            ),
+            panel.background = ggplot2::element_rect(
+                fill = "#ffffff", colour = NA
+            ),
+            panel.grid.major = ggplot2::element_line(
+                colour = "#ece9df", linewidth = 0.3
+            ),
+            panel.grid.minor = ggplot2::element_blank(),
+            panel.spacing = ggplot2::unit(8, "pt"),
+            axis.text = ggplot2::element_text(
+                colour = "#6d7168", size = 8.5
+            ),
+            axis.title = ggplot2::element_text(
+                colour = "#4a4d45", size = 9.5
+            ),
+            strip.text = ggplot2::element_text(
+                colour = "#1b1e1a", face = "bold", size = 8.5,
+                hjust = 0, margin = ggplot2::margin(b = 3)
+            ),
+            strip.background = ggplot2::element_blank(),
+            legend.position = "top",
+            legend.justification = "right",
+            legend.key.width = ggplot2::unit(16, "pt"),
+            legend.text = ggplot2::element_text(
+                colour = "#6d7168", size = 8
+            ),
+            plot.margin = ggplot2::margin(8, 12, 6, 10)
+        )
+    if (length(mode_colours) > 0L) {
+        p <- p + ggplot2::scale_colour_manual(values = mode_colours)
+    }
     if (!is.null(calls) && nrow(calls) > 0L) {
         rect <- calls[
             as.character(calls$group) %in% unique(as.character(scores$group)),
@@ -66,8 +110,8 @@ explorer_score_plot <- function(scores, calls = NULL) {
                 xmax = .data$end_bp / 1e6,
                 ymin = .data$ymin, ymax = .data$ymax
             ),
-            inherit.aes = FALSE, alpha = 0.15,
-            fill = "firebrick"
+            inherit.aes = FALSE, alpha = 0.1, colour = NA,
+            fill = "#b23a3a"
         )
     }
     p
@@ -214,10 +258,6 @@ explorer_results_ui <- function(id) {
             explorer_karyotype_ui(id, height = "calc(100vh - 360px)")
         ),
         bslib::nav_panel(
-            "Score profile",
-            shiny::plotOutput(ns("score_plot"), height = "calc(100vh - 280px)")
-        ),
-        bslib::nav_panel(
             "Calls",
             DT::DTOutput(ns("calls"))
         )
@@ -334,18 +374,6 @@ explorer_server <- function(id, result, sample = NULL) {
             x[keep, , drop = FALSE]
         })
 
-        visible_scores <- shiny::reactive({
-            x <- scores()
-            if (is.null(x) || nrow(x) == 0L) {
-                return(x)
-            }
-            groups <- group_filter()
-            if (length(groups) > 0L) {
-                x <- x[as.character(x$group) %in% groups, , drop = FALSE]
-            }
-            x
-        })
-
         selected <- shiny::reactive({
             x <- visible_calls()
             rows <- input$calls_rows_selected
@@ -373,18 +401,6 @@ explorer_server <- function(id, result, sample = NULL) {
             DT::selectRows(proxy, NULL)
         })
 
-        output$score_plot <- shiny::renderPlot({
-            x <- visible_scores()
-            shiny::validate(
-                shiny::need(!is.null(result_value()), "Run the analysis to plot"),
-                shiny::need(
-                    !is.null(x) && nrow(x) > 0L,
-                    "Select at least one chromosome group"
-                )
-            )
-            explorer_score_plot(x, visible_calls())
-        })
-
         output$karyotype <- render_mamamia_karyotype({
             mode <- input$karyotype_mode
             if (length(mode) != 1L || is.na(mode) ||
@@ -399,7 +415,11 @@ explorer_server <- function(id, result, sample = NULL) {
                     score_limit = 0.5,
                     palette = karyotype_palette(),
                     groups = list(),
-                    message = "Run the analysis to plot"
+                    message = "Run the analysis to plot",
+                    hint = paste(
+                        "Load a BAM or the bundled example data, then run",
+                        "the analysis to map introgressions."
+                    )
                 )))
             }
             mamamia_karyotype(karyotype_payload(
@@ -441,7 +461,6 @@ explorer_server <- function(id, result, sample = NULL) {
                 x[, intersect(columns, names(x)), drop = FALSE],
                 rownames = FALSE,
                 selection = "multiple",
-                filter = "top",
                 options = list(pageLength = 10, scrollX = TRUE)
             )
         })
@@ -484,10 +503,9 @@ explorer_server <- function(id, result, sample = NULL) {
 #' Explore introgression calls in an interactive dashboard
 #'
 #' Opens a Shiny application for a `BamAnalysisResult` from
-#' [analyzeBamInput()]. The dashboard offers chromosome-group, class,
+#' [analyzeBamInput()]. The dashboard offers class, class-status, copy-state,
 #' confidence and width filters, a vertical karyotype with a score heatmap or
-#' a call map, a score profile with called intervals, a sortable call table and
-#' a BEDPE export of the selected calls.
+#' a call map, a sortable call table and a BEDPE export of the selected calls.
 #'
 #' @param result A `BamAnalysisResult`.
 #' @param host Host passed to [shiny::runApp()].
@@ -506,11 +524,15 @@ exploreIntrogressions <- function(result,
         )
     }
     require_dashboard_packages()
-    ui <- bslib::page_sidebar(
-        title = "MaMaMIA introgression explorer",
-        fillable = FALSE,
-        sidebar = bslib::sidebar(explorer_controls_ui("explorer")),
-        explorer_results_ui("explorer")
+    ui <- htmltools::attachDependencies(
+        bslib::page_sidebar(
+            title = "MaMaMIA introgression explorer",
+            fillable = FALSE,
+            theme = bam_dashboard_theme(),
+            sidebar = bslib::sidebar(explorer_controls_ui("explorer")),
+            explorer_results_ui("explorer")
+        ),
+        mamamia_font_dependency()
     )
     server <- function(input, output, session) {
         explorer_server("explorer", shiny::reactive(result))

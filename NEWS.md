@@ -1,4 +1,4 @@
-# MaMaMIA 0.99.2
+# MaMaMIA 0.1.0
 
 ## Breaking changes
 
@@ -115,10 +115,19 @@
   bar, and donor chromosomes are added only when a passing call covers at
   least 95% of the group. A toggle switches between the introgression-score
   heatmap and the coloured call map; clicking a chromosome filters its group
-  and clicking the background clears the filter. The score profile remains as
-  a second tab. The chromosome-group picker is removed from both the BAM
-  dashboard and the standalone explorer; group filtering is driven by the
-  karyotype click.
+  and clicking the background clears the filter. The Score profile tab was
+  removed. The chromosome-group picker is removed from both the BAM dashboard
+  and the standalone explorer; group filtering is driven by the karyotype
+  click.
+* The dashboard has a new visual system: bundled Inter type, warm paper
+  surfaces, a deep-teal accent and a single white result card with underline
+  tabs. Result panes are inset to align with the tab labels. The header adds
+  a chromosome-pair mark and the package version, the BAM chooser is a
+  click-or-drop zone, **Run analysis** is the only filled action, and an
+  empty result shows a centred illustrated state with a short hint instead
+  of a bare message.
+* The call table drops the inert per-column "All" filter row that server-side
+  DT renders disabled. The global search and the pill filters remain.
 * The result filter bar is now a compact row of pill dropdowns for class,
   class status, copy state and confidence, plus a **Passing only** switch.
   Empty selections mean "all", so the bar no longer shows four inline
@@ -153,6 +162,13 @@
   same-group candidate it is `cross_group`, and with a competing same-group
   candidate it stays `ambiguous`. This keeps a copy-neutral event from being
   confirmed on an unrelated deletion.
+
+## Packaging
+
+* The chromosome-pair mark now ships as `inst/www/mamamia-logo.svg` and is
+  served as the browser favicon. The package, pipeline and widget-asset
+  versions are reset to 0.1.0. The version is pinned from here and changes
+  only on an explicit request.
 
 ## Validation
 

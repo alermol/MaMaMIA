@@ -3,7 +3,7 @@
 `MaMaMIA` (Max Mapping for Meticulous Introgression Analysis) detects
 interspecific introgressions from Genotyping-by-Sequencing (GBS) coverage data.
 
-Version 0.99.2 uses **breadth of coverage and read counts** in exact windows. It
+Version 0.1.0 uses **breadth of coverage and read counts** in exact windows. It
 computes a paired donor/recipient log-ratio of per-component depth, corrects GC
 bias with a spline (single sample) or median polish (cohort), applies a
 window-level recurrence/blacklist mask, segments with CBS, calibrates
@@ -268,8 +268,8 @@ offers compact pill dropdowns for class, class status, copy state and
 confidence, plus a passing-only switch and a width filter; class choices are
 substitution, addition, deletion, complex and other. An empty dropdown means
 "all".
-The main tab is
-a vertical karyotype with a score heatmap or call-map mode. Chromosomes are
+
+The main tab is a vertical karyotype with a score heatmap or call-map mode. Chromosomes are
 shown in assembly-config order without group or component columns, as diploid
 homolog pairs: a small gap inside each pair, a larger gap between chromosomes,
 the same `1A`/`1B` label on both copies, and every bar scaled by its configured
@@ -283,7 +283,7 @@ scheduled by weighted interval scheduling, cross-group choices are reported as
 strong assigned loss reclassifies the call as a substitution. Deleted
 chromosomes and added donor chromosomes are drawn separately. Hovering a call
 opens a structured card: class and status, placement, evidence residuals and
-quality chips, dosage, geometry, and a group-filter hint. A score profile, call
+quality chips, dosage, geometry, and a group-filter hint. A sortable call
 table and BEDPE export follow. See
 [`docs-source/karyotype-tooltip.md`](docs-source/karyotype-tooltip.md) for the
 field-by-field tooltip reference.

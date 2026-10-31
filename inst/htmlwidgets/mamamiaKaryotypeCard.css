@@ -218,9 +218,58 @@
 }
 
 .mamamia-karyotype-empty {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: calc(100% - 2rem);
     margin: 1rem;
-    color: var(--bs-secondary-color, #6c757d);
-    font-size: 0.9rem;
+    padding: 2rem;
+    border: 1px dashed #d5d1c4;
+    border-radius: 12px;
+    background-color: #fcfbf7;
+    background-image: radial-gradient(
+        rgba(15, 92, 83, 0.055) 0.6px, transparent 0.6px
+    );
+    background-size: 16px 16px;
+    text-align: center;
+}
+
+.mamamia-empty-mark {
+    display: grid;
+    place-items: center;
+    width: 3.2rem;
+    height: 3.2rem;
+    margin-bottom: 0.5rem;
+    border: 1px solid var(--bs-border-color, #dee2e6);
+    border-radius: 1rem;
+    background: var(--bs-body-bg, #ffffff);
+    box-shadow: 0 6px 18px rgba(27, 30, 26, 0.07);
+    color: var(--bs-primary, #0f5c53);
+}
+
+.mamamia-empty-mark svg {
+    width: 1.65rem;
+    height: 1.65rem;
+}
+
+.mamamia-empty-title {
+    margin: 0;
+    color: var(--bs-body-color, #1b1e1a);
+    font-size: 0.95rem;
+    font-weight: 650;
+}
+
+.mamamia-empty-hint {
+    max-width: 26rem;
+    margin: 0.2rem 0 0;
+    color: var(--bs-secondary-color, #6d7168);
+    font-size: 0.8rem;
+    line-height: 1.45;
+}
+
+.mamamia-karyotype-root svg text {
+    font-variant-numeric: tabular-nums;
 }
 
 .karyotype-hit:hover {
