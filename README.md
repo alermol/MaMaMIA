@@ -281,7 +281,9 @@ before non-passing calls, multiple non-overlapping runs on one contig are
 scheduled by weighted interval scheduling, cross-group choices are reported as
 `cross_group` translocation candidates rather than confirmed hosts, and a
 strong assigned loss reclassifies the call as a substitution. Deleted
-chromosomes and added donor chromosomes are drawn separately. Hovering a call
+chromosomes and added donor chromosomes are drawn separately; an added donor
+chromosome sits next to its recipient group, and a full substitution is shown
+as the lost recipient plus the added donor. Hovering a call
 opens a structured card: class and status, placement, evidence residuals and
 quality chips, dosage, geometry, and a group-filter hint. The bundled
 **Example data** button loads eight 160–260 kb chromosome pairs with

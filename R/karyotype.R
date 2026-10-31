@@ -197,8 +197,9 @@ karyotype_payload <- function(result, sample = NULL,
         deletion_breadth = deletion_breadth,
         deletion_relative = deletion_relative
     )
-    ## A full balanced substitution replaces a recipient chromosome rather
-    ## than deleting it: the donor signal is present across the whole group.
+    ## A full balanced substitution replaces the recipient chromosome. Show
+    ## that as the loss of the recipient copy plus an added donor chromosome,
+    ## so the plot does not caption the donor signal as the recipient.
     full_substitution <- if ("class" %in% names(full)) {
         unique(as.character(full$group[
             as.character(full$class) == "substitution"
@@ -210,7 +211,7 @@ karyotype_payload <- function(result, sample = NULL,
         substituted_ids <- as.character(recipient$id[
             as.character(recipient$group) %in% full_substitution
         ])
-        deleted <- setdiff(deleted, substituted_ids)
+        deleted <- union(deleted, substituted_ids)
     }
     overlay <- if (is.null(calls)) {
         result$calls
@@ -451,7 +452,7 @@ karyotype_payload <- function(result, sample = NULL,
         )
     }
     recipient_calls <- function(chr_id, group, component, length_bp) {
-        if (nrow(overlay) == 0L) {
+        if (nrow(overlay) == 0L || chr_id %in% deleted) {
             return(list())
         }
         own <- !is.na(recipient_ids) & recipient_ids == chr_id
@@ -484,7 +485,8 @@ karyotype_payload <- function(result, sample = NULL,
     added_groups <- if (nrow(full) > 0L) {
         keep <- !is.na(full$donor_mean) & full$donor_mean > 0.5
         if ("class" %in% names(full)) {
-            keep <- keep & as.character(full$class) == "addition"
+            keep <- keep & as.character(full$class) %in%
+                c("addition", "substitution")
         }
         unique(as.character(full$group[keep]))
     } else {
@@ -576,6 +578,32 @@ karyotype_payload <- function(result, sample = NULL,
                 calls = chr_calls
             )
         }
+    }
+
+    ## Keep each added donor chromosome next to its recipient group instead of
+    ## appending it after every recipient chromosome. Donor groups without a
+    ## recipient contig stay at the end of the layout.
+    if (length(chromosome_payload) > 0L) {
+        payload_group <- vapply(
+            chromosome_payload,
+            function(x) as.character(x$group),
+            character(1)
+        )
+        payload_added <- vapply(
+            chromosome_payload,
+            function(x) isTRUE(x$added),
+            logical(1)
+        )
+        group_order <- unique(as.character(recipient$group))
+        group_order <- c(
+            group_order,
+            setdiff(unique(payload_group), group_order)
+        )
+        chromosome_payload <- unlist(lapply(group_order, function(group) {
+            entries <- chromosome_payload[payload_group == group]
+            added <- payload_added[payload_group == group]
+            c(entries[!added], entries[added])
+        }), recursive = FALSE)
     }
 
     limit <- suppressWarnings(stats::quantile(

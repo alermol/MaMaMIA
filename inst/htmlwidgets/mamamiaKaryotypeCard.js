@@ -846,10 +846,15 @@ HTMLWidgets.widget({
         }
         svg.appendChild(chromGroup);
 
+        var addedClass = added && barCalls.length === 1
+          ? barCalls[0].class
+          : null;
+        var addedColour = (addedClass && payload.palette[addedClass]) ||
+          payload.palette.added;
         var baseFill = deleted ? payload.palette.deleted :
-          (added ? payload.palette.added : "#f4f4f4");
+          (added ? addedColour : "#f4f4f4");
         var baseStroke = deleted ? payload.palette.negative :
-          (added ? payload.palette.addition : "#666666");
+          (added ? addedColour : "#666666");
         var base = svgEl("rect", {
           x: x,
           y: y,

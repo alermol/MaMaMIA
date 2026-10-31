@@ -7,22 +7,26 @@ test_that("karyotype_payload() lays out diploid pairs in config order", {
     expect_identical(payload$sample, "example-sample")
     expect_true(is.finite(payload$score_limit))
     recipient_names <- rep(paste0(1:8, "A"), each = 2L)
-    expect_length(payload$chromosomes, 18L)
+    expected_names <- c(
+        recipient_names[1:10], "5R", "5R",
+        recipient_names[11:16], "8R", "8R"
+    )
+    expect_length(payload$chromosomes, 20L)
     expect_identical(
         vapply(payload$chromosomes, function(x) x$name, character(1)),
-        c(recipient_names, "5R", "5R")
+        expected_names
     )
     expect_identical(
         vapply(payload$chromosomes, function(x) x$label, character(1)),
-        c(recipient_names, "5R", "5R")
+        expected_names
     )
     expect_identical(
         vapply(payload$chromosomes, function(x) x$copy, integer(1)),
-        c(rep(c(1L, 2L), 8L), 1L, 2L)
+        rep(c(1L, 2L), 10L)
     )
     expect_identical(
         vapply(payload$chromosomes, function(x) x$copies, integer(1)),
-        rep(2L, 18L)
+        rep(2L, 20L)
     )
     expect_true(any(vapply(
         payload$chromosomes, function(x) isTRUE(x$added), logical(1)
@@ -79,25 +83,29 @@ test_that("a full donor chromosome is added with its diploid copies", {
 
     payload <- karyotype_payload(result, "example-sample", "calls")
     recipient_names <- rep(paste0(1:8, "A"), each = 2L)
+    expected_names <- c(
+        recipient_names[1:2], "1R", "1R", recipient_names[3:10],
+        "5R", "5R", recipient_names[11:16], "8R", "8R"
+    )
     expect_identical(
         vapply(payload$chromosomes, function(x) x$name, character(1)),
-        c(recipient_names, "1R", "1R", "5R", "5R")
+        expected_names
     )
     expect_identical(
         vapply(payload$chromosomes, function(x) x$label, character(1)),
-        c(recipient_names, "1R", "1R", "5R", "5R")
+        expected_names
     )
-    expect_identical(
-        vapply(payload$chromosomes, function(x) x$added, logical(1)),
-        c(rep(FALSE, 16L), TRUE, TRUE, TRUE, TRUE)
+    added <- vapply(
+        payload$chromosomes, function(x) isTRUE(x$added), logical(1)
     )
+    expect_identical(which(added), c(3L, 4L, 13L, 14L, 21L, 22L))
     expect_identical(
         vapply(payload$chromosomes, function(x) x$copy, integer(1)),
-        rep(c(1L, 2L), 10L)
+        rep(c(1L, 2L), 11L)
     )
     expect_identical(
         vapply(payload$chromosomes, function(x) x$copies, integer(1)),
-        rep(2L, 20L)
+        rep(2L, 22L)
     )
 })
 
@@ -120,9 +128,13 @@ test_that("a partial donor call is not a whole-chromosome addition", {
     result$calls <- rbind(result$calls, addition)
 
     payload <- karyotype_payload(result, "example-sample", "calls")
+    recipient_names <- rep(paste0(1:8, "A"), each = 2L)
     expect_identical(
         vapply(payload$chromosomes, function(x) x$name, character(1)),
-        c(rep(paste0(1:8, "A"), each = 2L), "5R", "5R")
+        c(
+            recipient_names[1:10], "5R", "5R",
+            recipient_names[11:16], "8R", "8R"
+        )
     )
 })
 
@@ -146,14 +158,19 @@ test_that("a deleted recipient chromosome stays in the karyotype", {
     result$metrics$breadth[result$metrics$chr_id == "r1"] <- 0.0009
 
     payload <- karyotype_payload(result, "example-sample", "heatmap")
+    expected_names <- c(
+        rep("1A", 2L), rep("1B", 2L),
+        rep(paste0(2:5, "A"), each = 2L), "5R", "5R",
+        rep(paste0(6:8, "A"), each = 2L), "8R", "8R"
+    )
     expect_identical(
         vapply(payload$chromosomes, function(x) x$name, character(1)),
-        c(rep(paste0(1:8, "A"), each = 2L), "1B", "1B", "5R", "5R")
+        expected_names
     )
     deleted <- vapply(
         payload$chromosomes, function(x) isTRUE(x$deleted), logical(1)
     )
-    expect_identical(which(deleted), c(1L, 2L, 11L, 12L))
+    expect_identical(which(deleted), c(1L, 2L, 15L, 16L, 19L, 20L))
 })
 
 test_that("a cross-group assignment is painted on the recipient chromosome", {
@@ -249,25 +266,37 @@ test_that("the explorer exposes the karyotype tab and mode switch", {
     expect_match(html, "explorer-karyotype", fixed = TRUE)
 })
 
-test_that("a full substitution replaces the recipient chromosome", {
+test_that("a full substitution splits into a lost recipient and added donor", {
     result <- bam_example_result(1000)
     payload <- karyotype_payload(result, "example-sample", "calls")
-    eight <- Filter(function(x) identical(x$name, "8A"), payload$chromosomes)
-    expect_length(eight, 2L)
-    expect_false(any(vapply(
-        eight, function(x) isTRUE(x$deleted), logical(1)
+    recipient <- Filter(
+        function(x) identical(x$name, "8A"), payload$chromosomes
+    )
+    donor <- Filter(
+        function(x) identical(x$name, "8R"), payload$chromosomes
+    )
+    expect_length(recipient, 2L)
+    expect_length(donor, 2L)
+    expect_true(all(vapply(
+        recipient, function(x) isTRUE(x$deleted), logical(1)
     )))
-    expect_true(all(vapply(eight, function(x) {
+    expect_true(all(vapply(
+        recipient, function(x) length(x$calls) == 0L, logical(1)
+    )))
+    expect_false(any(vapply(
+        donor, function(x) isTRUE(x$deleted), logical(1)
+    )))
+    expect_true(all(vapply(
+        donor, function(x) isTRUE(x$added), logical(1)
+    )))
+    expect_true(all(vapply(donor, function(x) {
         any(vapply(x$calls, function(call) {
             identical(call$class, "substitution")
         }, logical(1)))
     }, logical(1))))
-    expect_false(any(vapply(payload$chromosomes, function(x) {
-        isTRUE(x$added) && identical(x$name, "8R")
-    }, logical(1))))
 })
 
-test_that("added donor chromosomes preserve registry order", {
+test_that("added donor chromosomes follow their recipient group", {
     result <- bam_example_result(1000)
     base <- result$calls[result$calls$class == "substitution" &
         result$calls$pass %in% TRUE, , drop = FALSE][1L, , drop = FALSE]
@@ -293,9 +322,14 @@ test_that("added donor chromosomes preserve registry order", {
     )
 
     payload <- karyotype_payload(result, "example-sample", "calls")
-    added <- vapply(payload$chromosomes, function(x) isTRUE(x$added), logical(1))
     expect_identical(
-        vapply(payload$chromosomes[added], function(x) x$name, character(1)),
-        c("1R", "1R", "3R", "3R")
+        vapply(payload$chromosomes, function(x) x$name, character(1)),
+        c(
+            "1A", "1A", "1R", "1R", "2A", "2A", "3A", "3A",
+            "3R", "3R", "4A", "4A", "5A", "5A", "6A", "6A",
+            "7A", "7A", "8A", "8A"
+        )
     )
+    added <- vapply(payload$chromosomes, function(x) isTRUE(x$added), logical(1))
+    expect_identical(which(added), c(3L, 4L, 9L, 10L))
 })

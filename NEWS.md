@@ -113,7 +113,10 @@
   carry the same label (`1A`, `1B`, …), and each bar is scaled by its
   configured length. A deleted recipient chromosome stays as a grey dashed
   bar, and donor chromosomes are added only when a passing call covers at
-  least 95% of the group. A toggle switches between the introgression-score
+  least 95% of the group. Added donor chromosomes sit next to their recipient
+  group rather than at the end of the layout, and a full substitution is drawn
+  as the lost recipient plus the added donor. A toggle switches between the
+  introgression-score
   heatmap and the coloured call map; clicking a chromosome filters its group
   and clicking the background clears the filter. The Score profile tab was
   removed. The chromosome-group picker is removed from both the BAM dashboard
