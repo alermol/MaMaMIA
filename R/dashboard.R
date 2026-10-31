@@ -805,7 +805,33 @@ explorer_karyotype_ui <- function(id, height = "calc(100vh - 360px)") {
                 selected = "heatmap", inline = TRUE
             ),
             shiny::div(
-                class = "ms-auto",
+                class = paste(
+                    "ms-auto d-flex flex-wrap align-items-center gap-2"
+                ),
+                shiny::tags$button(
+                    id = ns("download_karyotype_current"),
+                    type = "button",
+                    class = "btn btn-sm btn-outline-secondary",
+                    disabled = "disabled",
+                    title = paste(
+                        "Download the karyotype exactly as filtered",
+                        "and displayed (SVG)."
+                    ),
+                    shiny::icon("download"),
+                    "Current view"
+                ),
+                shiny::tags$button(
+                    id = ns("download_karyotype_full"),
+                    type = "button",
+                    class = "btn btn-sm btn-outline-secondary",
+                    disabled = "disabled",
+                    title = paste(
+                        "Download every call for this sample,",
+                        "ignoring the active filters (SVG)."
+                    ),
+                    shiny::icon("download"),
+                    "Full view"
+                ),
                 shiny::actionButton(
                     ns("tooltip_help"), "Tooltip help",
                     icon = shiny::icon("circle-question"),
@@ -813,8 +839,73 @@ explorer_karyotype_ui <- function(id, height = "calc(100vh - 360px)") {
                 )
             )
         ),
-        mamamia_karyotype_output(ns("karyotype"), height = height)
+        mamamia_karyotype_output(ns("karyotype"), height = height),
+        shiny::tags$script(shiny::HTML(
+            "$(document).off('click.mamamiaKaryotypeCurrent').on(",
+            "'click.mamamiaKaryotypeCurrent', ",
+            "'[id$=\"-download_karyotype_current\"]', function() {",
+            "  var id = this.id.replace(",
+            "    /-download_karyotype_current$/, '-karyotype');",
+            "  var el = document.getElementById(id);",
+            "  if (el && el.mamamiaDownloadKaryotype) {",
+            "    el.mamamiaDownloadKaryotype('current');",
+            "  }",
+            "});",
+            "$(document).off('click.mamamiaKaryotypeFull').on(",
+            "'click.mamamiaKaryotypeFull', ",
+            "'[id$=\"-download_karyotype_full\"]', function() {",
+            "  var id = this.id.replace(",
+            "    /-download_karyotype_full$/, '-karyotype');",
+            "  var el = document.getElementById(id);",
+            "  if (el && el.mamamiaDownloadKaryotype) {",
+            "    el.mamamiaDownloadKaryotype('full');",
+            "  }",
+            "});"
+        ))
     )
+}
+
+#' Build the karyotype payload with an unfiltered export copy
+#'
+#' The dashboard renders the current sample, mode and filters. The full
+#' export ignores the call filters and group dimming, so the widget receives
+#' the per-chromosome calls for every call in the same sample.
+#'
+#' @param result A `BamAnalysisResult`.
+#' @param sample Sample to display; defaults to the first.
+#' @param mode `"heatmap"` or `"calls"`.
+#' @param calls Calls to overlay; defaults to every call in the result.
+#' @param selected_groups Groups currently selected in the explorer.
+#'
+#' @return A karyotype payload with a `full_calls` list.
+#' @noRd
+karyotype_export_payload <- function(result, sample = NULL,
+                                     mode = c("heatmap", "calls"),
+                                     calls = NULL, selected_groups = NULL) {
+    mode <- match.arg(mode)
+    payload <- karyotype_payload(
+        result,
+        sample = sample,
+        mode = mode,
+        calls = calls,
+        selected_groups = selected_groups
+    )
+    full <- karyotype_payload(
+        result,
+        sample = sample,
+        mode = mode,
+        calls = NULL,
+        selected_groups = NULL
+    )
+    if (length(full$chromosomes) == length(payload$chromosomes)) {
+        payload$full_calls <- lapply(
+            full$chromosomes,
+            function(chromosome) chromosome$calls
+        )
+    } else {
+        payload$full_calls <- list()
+    }
+    payload
 }
 
 explorer_controls_ui <- function(id) {
@@ -1014,7 +1105,7 @@ explorer_server <- function(id, result, sample = NULL) {
                     )
                 )))
             }
-            mamamia_karyotype(karyotype_payload(
+            mamamia_karyotype(karyotype_export_payload(
                 res,
                 sample = sample_value(),
                 mode = mode,

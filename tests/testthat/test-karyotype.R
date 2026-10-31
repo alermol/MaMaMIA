@@ -266,6 +266,31 @@ test_that("the explorer exposes the karyotype tab and mode switch", {
     expect_match(html, "explorer-karyotype", fixed = TRUE)
     expect_match(html, "explorer-tooltip_help", fixed = TRUE)
     expect_match(html, "Tooltip help", fixed = TRUE)
+    expect_match(html, "explorer-download_karyotype_current", fixed = TRUE)
+    expect_match(html, "explorer-download_karyotype_full", fixed = TRUE)
+    expect_match(html, "Current view", fixed = TRUE)
+    expect_match(html, "Full view", fixed = TRUE)
+    expect_match(html, "mamamiaDownloadKaryotype", fixed = TRUE)
+})
+
+test_that("the karyotype export payload carries every call", {
+    result <- bam_example_result(1000)
+    visible <- result$calls[
+        result$calls$class == "substitution" &
+            result$calls$pass %in% TRUE, , drop = FALSE
+    ]
+    payload <- karyotype_export_payload(
+        result, "example-sample", "calls", calls = visible
+    )
+    expect_length(payload$full_calls, length(payload$chromosomes))
+    current <- sum(vapply(
+        payload$chromosomes,
+        function(chromosome) length(chromosome$calls),
+        integer(1)
+    ))
+    full <- sum(vapply(payload$full_calls, length, integer(1)))
+    expect_gt(current, 0L)
+    expect_gt(full, current)
 })
 
 test_that("the tooltip help explains the call card fields", {

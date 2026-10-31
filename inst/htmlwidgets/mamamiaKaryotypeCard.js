@@ -689,10 +689,133 @@ HTMLWidgets.widget({
       }
     }
 
+    function exportFileName(kind) {
+      var sample = payload && payload.sample
+        ? String(payload.sample)
+        : "sample";
+      sample = sample.replace(/[^A-Za-z0-9._-]+/g, "-");
+      var mode = payload && payload.mode ? String(payload.mode) : "karyotype";
+      return "mamamia-karyotype-" + sample + "-" + mode + "-" + kind + ".svg";
+    }
+
+    function svgWithBackground(svg) {
+      var clone = svg.cloneNode(true);
+      clone.setAttribute("xmlns", "http://www.w3.org/2000/svg");
+      var svgWidth = Number(clone.getAttribute("width"));
+      var svgHeight = Number(clone.getAttribute("height"));
+      if (!(svgWidth > 0)) {
+        svgWidth = 800;
+      }
+      if (!(svgHeight > 0)) {
+        svgHeight = 520;
+      }
+      clone.insertBefore(svgEl("rect", {
+        x: 0,
+        y: 0,
+        width: svgWidth,
+        height: svgHeight,
+        fill: "#ffffff"
+      }), clone.firstChild);
+      return clone;
+    }
+
+    function downloadSvg(svg, filename) {
+      var source = '<?xml version="1.0" encoding="UTF-8"?>\n' +
+        new XMLSerializer().serializeToString(svgWithBackground(svg));
+      var blob = new Blob([source], { type: "image/svg+xml;charset=utf-8" });
+      var url = URL.createObjectURL(blob);
+      var link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.setTimeout(function () {
+        URL.revokeObjectURL(url);
+      }, 1000);
+    }
+
+    function fullExportPayload() {
+      var full = {};
+      Object.keys(payload).forEach(function (key) {
+        full[key] = payload[key];
+      });
+      var allCalls = payload.full_calls || [];
+      full.chromosomes = (payload.chromosomes || []).map(
+        function (chromosome, index) {
+          var copy = {};
+          Object.keys(chromosome).forEach(function (key) {
+            copy[key] = chromosome[key];
+          });
+          copy.calls = allCalls[index] || [];
+          copy.selected = true;
+          return copy;
+        }
+      );
+      delete full.full_calls;
+      return full;
+    }
+
+    function renderFullSvg() {
+      var fullWidth = Math.max(1600, Number(width) || 0);
+      var fullHeight = Math.max(900, Number(height) || 0);
+      var holder = document.createElement("div");
+      holder.style.position = "fixed";
+      holder.style.left = "-100000px";
+      holder.style.top = "0";
+      holder.style.width = fullWidth + "px";
+      holder.style.height = fullHeight + "px";
+      document.body.appendChild(holder);
+      var savedEl = el;
+      var savedPayload = payload;
+      var savedWidth = width;
+      var savedHeight = height;
+      el = holder;
+      payload = fullExportPayload();
+      width = fullWidth;
+      height = fullHeight;
+      var svg = null;
+      try {
+        render();
+        svg = holder.querySelector("svg");
+      } finally {
+        el = savedEl;
+        payload = savedPayload;
+        width = savedWidth;
+        height = savedHeight;
+        holder.remove();
+      }
+      return svg ? svg.cloneNode(true) : null;
+    }
+
+    function downloadKaryotype(kind) {
+      if (!payload || !(payload.chromosomes || []).length) {
+        return false;
+      }
+      var svg = kind === "full"
+        ? renderFullSvg()
+        : el.querySelector("svg");
+      if (!svg) {
+        return false;
+      }
+      downloadSvg(svg, exportFileName(kind === "full" ? "full" : "current"));
+      return true;
+    }
+
     function render() {
       if (!payload) {
         return;
       }
+      var hasChromosomes = (payload.chromosomes || []).length > 0;
+      var buttonPrefix = el.id ? el.id.replace(/-karyotype$/, "") : "";
+      ["current", "full"].forEach(function (kind) {
+        var button = document.getElementById(
+          buttonPrefix + "-download_karyotype_" + kind
+        );
+        if (button) {
+          button.disabled = !hasChromosomes;
+        }
+      });
       el.innerHTML = "";
       var root = document.createElement("div");
       root.className = "mamamia-karyotype-root";
@@ -988,6 +1111,8 @@ HTMLWidgets.widget({
         sendClick(null);
       });
     }
+
+    el.mamamiaDownloadKaryotype = downloadKaryotype;
 
     return {
       renderValue: function (x) {

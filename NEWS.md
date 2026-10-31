@@ -154,6 +154,8 @@
   remain in the calculation log.
 * The karyotype legend labels the dashed deleted-chromosome state **Deleted
   recipient**; the caption above the chromosome remains **Deleted**.
+* The **Karyotype** toolbar downloads the current filtered view or a full
+  view with every call for the sample as an SVG.
 * The call table drops the inert per-column "All" filter row that server-side
   DT renders disabled. The global search and the pill filters remain.
 * The result filter bar is now a compact row of pill dropdowns for class,
