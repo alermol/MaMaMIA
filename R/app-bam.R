@@ -673,12 +673,10 @@ bam_preflight_log <- function(pf) {
     } else {
         length(unique(table$path))
     }
-    n_samples <- if (is.null(table)) 0L else nrow(table)
     lines <- character()
     lines <- c(lines, sprintf(
-        "Preflight OK: %d BAM file%s, %d sample%s.",
-        n_bams, if (n_bams == 1L) "" else "s",
-        n_samples, if (n_samples == 1L) "" else "s"
+        "Preflight OK: %d BAM file%s.",
+        n_bams, if (n_bams == 1L) "" else "s"
     ))
     if (!is.null(table) && nrow(table) > 0L) {
         warnings <- unique(table$warnings[nzchar(table$warnings)])
@@ -721,7 +719,7 @@ bam_initial_log <- function(time = Sys.time()) {
     c(
         bam_log_entry("MaMaMIA session started.", time),
         bam_log_entry("Configuration validated.", time),
-        bam_log_entry("Samples are detected from the BAM header.", time)
+        bam_log_entry("BAM header parsed.", time)
     )
 }
 
@@ -1073,18 +1071,10 @@ bam_progress_label <- function(stage, detail = list()) {
             if (is.null(n)) {
                 return(label)
             }
-            n_samples <- count(detail$n_samples)
             sprintf(
-                "%s (%s BAM file%s%s)",
+                "%s (%s BAM file%s)",
                 label, n,
-                if (isTRUE(detail$n_bams == 1)) "" else "s",
-                if (!is.null(n_samples)) {
-                    sprintf(", %s sample%s", n_samples,
-                        if (isTRUE(detail$n_samples == 1)) "" else "s"
-                    )
-                } else {
-                    ""
-                }
+                if (isTRUE(detail$n_bams == 1)) "" else "s"
             )
         },
         index = {
@@ -3152,7 +3142,7 @@ bam_launcher_server <- function(state) {
             if (isTRUE(example_mode())) {
                 return(shiny::p(
                     class = "text-muted small mb-2",
-                    "Example data: one sample, four events on four chromosomes."
+                    "Example data: four events on four chromosomes."
                 ))
             }
             pf <- preflight_state()
@@ -3160,30 +3150,20 @@ bam_launcher_server <- function(state) {
                 return(shiny::p(
                     class = "text-muted small mb-2",
                     paste(
-                        "One BAM per run. Samples are detected from the @RG SM",
-                        "tags in its header."
+                        "One BAM per run. The BAM header is matched to the",
+                        "configured assembly."
                     )
                 ))
             }
             if (!isTRUE(pf$ok) || is.null(pf$table)) {
                 return(shiny::p(
                     class = "text-danger small mb-2",
-                    "Sample detection failed; see the calculation log."
+                    "Preflight failed; see the calculation log."
                 ))
             }
-            n_samples <- nrow(pf$table)
             shiny::p(
                 class = "text-muted small mb-2",
-                sprintf(
-                    "%d sample%s detected from @RG SM tags%s",
-                    n_samples,
-                    if (n_samples == 1L) "" else "s",
-                    if (n_samples > 1L) {
-                        "; cohort median-polish correction is used."
-                    } else {
-                        "; single-sample GC correction is used."
-                    }
-                )
+                "BAM ready. The assembly was matched from the header."
             )
         })
 
@@ -3962,11 +3942,9 @@ bam_launcher_server <- function(state) {
             }
             log_line(sprintf(
                 paste(
-                    "Starting analysis: %d sample%s, %s windows/chromosome,",
+                    "Starting analysis: %s windows/chromosome,",
                     "metric '%s', score '%s', donor aggregation '%s'."
                 ),
-                length(samples),
-                if (length(samples) == 1L) "" else "s",
                 format(params$resolution, big.mark = ",", scientific = FALSE),
                 params$metric, params$score, params$donor_aggregation
             ))
@@ -4054,22 +4032,17 @@ bam_launcher_server <- function(state) {
             result_cache$set(key, new_result)
             active_key(key)
             result(new_result)
-            n_samples <- length(bam_sample_choices(new_result))
             n_calls <- sum(new_result$samples$n_calls, na.rm = TRUE)
-            sample_word <- if (n_samples == 1L) "sample" else "samples"
             call_word <- if (n_calls == 1L) {
                 "calibrated call"
             } else {
                 "calibrated calls"
             }
             log_line(sprintf(
-                "Analysis finished: %d %s, %d %s.",
-                n_samples, sample_word, n_calls, call_word
+                "Analysis finished: %d %s.",
+                n_calls, call_word
             ))
-            run_summary <- sprintf(
-                "%d %s, %d %s",
-                n_samples, sample_word, n_calls, call_word
-            )
+            run_summary <- sprintf("%d %s", n_calls, call_word)
             shiny::showNotification(
                 run_summary,
                 type = "message",
