@@ -312,6 +312,38 @@ test_that("a full substitution splits into a lost recipient and added donor", {
     }, logical(1))))
 })
 
+test_that("a full substitution only deletes its assigned recipient", {
+    result <- bam_example_result(1000)
+    extra <- result$assembly$contigs$recipient[
+        result$assembly$contigs$recipient$id == "r8", , drop = FALSE
+    ]
+    extra$id <- "r8b"
+    extra$name <- "8B"
+    extra$component <- "B"
+    result$assembly$contigs$recipient <- rbind(
+        result$assembly$contigs$recipient, extra
+    )
+    normal <- result$metrics[
+        result$metrics$role == "recipient" &
+            result$metrics$chr_id == "r7", , drop = FALSE
+    ]
+    normal$chr_id <- "r8b"
+    normal$chr_name <- "8B"
+    normal$component <- "B"
+    normal$group <- "8"
+    result$metrics <- rbind(result$metrics, normal)
+
+    payload <- karyotype_payload(result, "example-sample", "calls")
+    deleted <- vapply(
+        payload$chromosomes, function(x) isTRUE(x$deleted), logical(1)
+    )
+    labels <- vapply(
+        payload$chromosomes, function(x) x$name, character(1)
+    )
+    expect_true(all(deleted[labels == "8A"]))
+    expect_false(any(deleted[labels == "8B"]))
+})
+
 test_that("added donor chromosomes follow their recipient group", {
     result <- bam_example_result(1000)
     base <- result$calls[result$calls$class == "substitution" &

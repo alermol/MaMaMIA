@@ -197,20 +197,78 @@ karyotype_payload <- function(result, sample = NULL,
         deletion_breadth = deletion_breadth,
         deletion_relative = deletion_relative
     )
-    ## A full balanced substitution replaces the recipient chromosome. Show
-    ## that as the loss of the recipient copy plus an added donor chromosome,
+    ## A full balanced substitution replaces one recipient chromosome. Show
+    ## that as the loss of that recipient copy plus an added donor chromosome,
     ## so the plot does not caption the donor signal as the recipient.
+    ##
+    ## A group can contain several homoeologs (7A, 7B and 7D), and a call is
+    ## assigned to only one of them. Marking every contig in the group would
+    ## dash 7A and 7B when only 7D was replaced.
     full_substitution <- if ("class" %in% names(full)) {
-        unique(as.character(full$group[
-            as.character(full$class) == "substitution"
-        ]))
+        full[as.character(full$class) == "substitution", , drop = FALSE]
     } else {
-        character()
+        full[0, , drop = FALSE]
     }
-    if (length(full_substitution) > 0L) {
-        substituted_ids <- as.character(recipient$id[
-            as.character(recipient$group) %in% full_substitution
-        ])
+    if (nrow(full_substitution) > 0L) {
+        substituted_ids <- character()
+        for (i in seq_len(nrow(full_substitution))) {
+            group <- if ("recipient_group" %in%
+                names(full_substitution)) {
+                as.character(full_substitution$recipient_group[[i]])
+            } else {
+                NA_character_
+            }
+            if (length(group) != 1L || is.na(group) || !nzchar(group)) {
+                group <- as.character(full_substitution$group[[i]])
+            }
+            candidates <- character()
+            if ("recipient_chr_id" %in% names(full_substitution)) {
+                id <- as.character(
+                    full_substitution$recipient_chr_id[[i]]
+                )
+                if (length(id) == 1L && !is.na(id) && nzchar(id) &&
+                    id %in% as.character(recipient$id)) {
+                    candidates <- id
+                }
+            }
+            if (length(candidates) == 0L &&
+                "recipient_chr_name" %in% names(full_substitution)) {
+                name <- as.character(
+                    full_substitution$recipient_chr_name[[i]]
+                )
+                if (length(name) == 1L && !is.na(name) && nzchar(name)) {
+                    candidates <- as.character(recipient$id[
+                        as.character(recipient$name) == name &
+                            as.character(recipient$group) == group
+                    ])
+                }
+            }
+            if (length(candidates) == 0L &&
+                "recipient_component" %in% names(full_substitution) &&
+                "component" %in% names(recipient)) {
+                component <- as.character(
+                    full_substitution$recipient_component[[i]]
+                )
+                if (length(component) == 1L && !is.na(component) &&
+                    nzchar(component)) {
+                    candidates <- as.character(recipient$id[
+                        as.character(recipient$component) == component &
+                            as.character(recipient$group) == group
+                    ])
+                }
+            }
+            if (length(candidates) == 0L) {
+                group_ids <- as.character(recipient$id[
+                    as.character(recipient$group) == group
+                ])
+                ## A single-contig group is unambiguous; a multi-contig group
+                ## without an assigned recipient must not lose all homoeologs.
+                if (length(group_ids) == 1L) {
+                    candidates <- group_ids
+                }
+            }
+            substituted_ids <- union(substituted_ids, candidates)
+        }
         deleted <- union(deleted, substituted_ids)
     }
     overlay <- if (is.null(calls)) {

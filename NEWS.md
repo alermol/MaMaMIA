@@ -122,8 +122,10 @@
   bar, and donor chromosomes are added only when a passing call covers at
   least 95% of the group. Added donor chromosomes sit next to their recipient
   group rather than at the end of the layout, and a full substitution is drawn
-  as the lost recipient plus the added donor. A toggle switches between the
-  introgression-score
+  as the lost recipient plus the added donor. A full substitution marks only
+  the recipient chromosome it is assigned to; in a multi-contig group such as
+  wheat 7A/7B/7D it no longer dashes every homoeolog in the group. A toggle
+  switches between the introgression-score
   heatmap and the coloured call map; clicking a chromosome filters its group
   and clicking the background clears the filter. The Score profile tab was
   removed. The chromosome-group picker is removed from both the BAM dashboard
