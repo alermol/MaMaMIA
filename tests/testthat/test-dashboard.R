@@ -349,6 +349,24 @@ test_that("the empty sample picker is not hidden from Shiny", {
     )
 })
 
+test_that("notifications match bslib's specificity to stay compact", {
+    ## bslib ships doubled class and id selectors for the toast panel and
+    ## cards; a single-class rule is overridden and the popup grows again.
+    css <- bam_dashboard_css()
+    expect_match(
+        css, "#shiny-notification-panel#shiny-notification-panel",
+        fixed = TRUE
+    )
+    expect_match(
+        css, ".shiny-notification.shiny-notification", fixed = TRUE
+    )
+    expect_match(
+        css,
+        ".shiny-notification.shiny-notification .shiny-progress-notification",
+        fixed = TRUE
+    )
+})
+
 test_that("the launcher builds with the demo registry", {
     config <- system.file("extdata", "bam-demo", "assemblies.yml",
         package = "MaMaMIA")

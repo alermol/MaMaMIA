@@ -2843,7 +2843,7 @@ bam_dashboard_css <- function() {
     }
     .shiny-progress-notification .progress {
         height: 4px;
-        margin-top: .35rem;
+        margin: .3rem 0 .1rem;
         border-radius: 999px;
         background: var(--mm-line);
     }
@@ -2855,14 +2855,18 @@ bam_dashboard_css <- function() {
         font-size: .78rem;
     }
 
-    /* Toasts */
-    #shiny-notification-panel {
+    /* Toasts. bslib doubles the class and id selectors, so match that
+       specificity to keep the compact spacing. */
+    #shiny-notification-panel#shiny-notification-panel {
         right: 1rem;
         bottom: 1rem;
         width: min(23rem, calc(100vw - 2rem));
+        padding: 0;
+        z-index: 99999;
     }
-    .shiny-notification {
-        padding: .65rem 2rem .65rem .8rem;
+    .shiny-notification.shiny-notification {
+        padding: .5rem 2rem .5rem .75rem;
+        margin: 0 0 .4rem;
         border: 1px solid var(--mm-line);
         border-left: 3px solid var(--mm-accent);
         border-radius: .6rem;
@@ -2872,13 +2876,30 @@ bam_dashboard_css <- function() {
         font-size: .78rem;
         line-height: 1.4;
     }
-    .shiny-notification-close {
-        top: .45rem;
-        right: .55rem;
+    .shiny-notification.shiny-notification:last-child {
+        margin-bottom: 0;
+    }
+    .shiny-notification.shiny-notification .shiny-progress-notification {
+        padding: 0;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        box-shadow: none;
+    }
+    .shiny-notification.shiny-notification .shiny-notification-close {
+        top: .25rem;
+        right: .45rem;
+        width: 1.5rem;
+        height: 1.5rem;
+        padding: 0;
         color: var(--mm-muted);
         font-size: 1rem;
+        font-weight: 400;
     }
-    .shiny-notification-close:hover { color: var(--mm-ink); }
+    .shiny-notification.shiny-notification .shiny-notification-close:hover {
+        color: var(--mm-ink);
+        font-weight: 400;
+    }
 
     ::selection {
         background: rgba(var(--mm-accent-rgb), .18);
