@@ -8,6 +8,10 @@
 * **Configuration version 2 is required.** `version: 1` is rejected with a
   migration error; see `MIGRATION.md`. The `max_fit_windows` and
   `normalization_by_side` defaults were removed.
+* **One BAM file by default.** `server.max_bams` now defaults to 1, and the
+  shipped registries set it to 1. The dashboard accepts one BAM per run; a
+  multi-sample BAM is still one file, read through its `@RG SM` tags. A
+  programmatic cohort run must raise `server.max_bams` explicitly.
 * **New result contract.** `BamAnalysisResult` now exposes `metrics`, `scores`,
   `masks`, `calibration` and `calls`. The `counts`, `rca`, `isa` and
   `normalization` fields were removed.
@@ -343,7 +347,8 @@
 * BAMs are accepted only through the Shiny upload control. `server.bam_root`,
   the server-side BAM picker, the `bam_paths` argument of `runMaMaMIA()` and the
   `/srv/mamamia/bams` container mount are removed. An old registry key is
-  ignored; `server.max_bams` and `server.max_total_bytes` still apply.
+  ignored; `server.max_total_bytes` still applies, and `server.max_bams`
+  defaults to the single-file dashboard limit.
 * Added `inst/extdata/example`: a self-contained registry and pre-computed
   `BamAnalysisResult` tables at 100 and 1,000 windows per chromosome. The live
   sidebar offers the **Example data** button; it replays the normal pipeline

@@ -185,7 +185,7 @@ config <- list(
         gc_validate_crc = FALSE
     ),
     server = list(
-        max_bams = 4L,
+        max_bams = 1L,
         max_total_bytes = 20 * 1024^2
     ),
     species = list(

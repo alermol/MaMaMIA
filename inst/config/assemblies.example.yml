@@ -34,7 +34,8 @@ defaults:
   donor_aggregation: max   # default; mean | max | sum, Advanced panel
 
 server:
-  max_bams: 20
+  # The dashboard accepts one BAM per run. A multi-sample BAM is one file.
+  max_bams: 1
   max_total_bytes: 5368709120.0   # 5 GiB
 
 species:

@@ -67,7 +67,7 @@ defaults:
   donor_aggregation: max   # default; mean | max | sum, Advanced panel
 
 server:
-  max_bams: 30
+  max_bams: 1              # dashboard: one BAM per run
   max_total_bytes: 5368709120
 
 species:
@@ -114,7 +114,7 @@ pair <- resolveSpeciesAssembly(
     config, donor = "aegilops_speltoides", recipient = "triticum_aestivum"
 )
 result <- analyzeBamInput(
-    c("Sq74.bam", "Sq75.bam", "Sq76.bam"),
+    "Sq74.bam",
     pair$config,
     assembly = pair$key,
     windows_per_chromosome = 1000L,
@@ -125,6 +125,10 @@ result$samples[, c("sample", "mode", "n_windows", "n_calls")]
 result$calls[result$calls$pass, ]
 writeCallsToBedpe(result, "calls.bedpe")
 ```
+
+A multi-sample BAM is still one file: samples are read from its `@RG SM`
+tags. `server.max_bams` is the preflight guard, and the example registry sets
+it to one.
 
 `windows_per_chromosome` must lie between the smallest and largest
 `defaults.allowed_windows` value in steps of 10. The allowed values are the
@@ -263,10 +267,12 @@ runMaMaMIA(config = "assemblies.yml")
 exploreIntrogressions(result)
 ```
 
-The dashboard analyses every component declared for the selected species and
-offers compact pill dropdowns for class, class status, copy state and
-confidence, plus a passing-only switch and a width filter; class choices are
-substitution, addition, deletion, complex and other. An empty dropdown means
+The dashboard analyses one BAM per run; a multi-sample BAM is one file and is
+read through its `@RG SM` tags. It analyses every component declared for the
+selected species and offers compact pill dropdowns for class, class status,
+copy state and confidence, plus a passing-only switch and a width filter;
+class choices are substitution, addition, deletion, complex and other. An
+empty dropdown means
 "all". A multi-sample BAM adds a **Sample** selector beside the filters as
 soon as preflight reads its `@RG SM` samples; it drives the karyotype, call
 table and exports and stays available after the run. The resolution slider
@@ -315,7 +321,9 @@ global assignment, takes about 450 s with 30 cores. Global assignment places
 five of the six reference events on recipient contigs (Sq74 7D; Sq75
 2B/5B/6D/7D). The Sq76 7A event is detected as an addition without recipient
 loss and receives no host. Synthetic copy-neutral events are never marked
-`assigned`. The reproducible check is:
+`assigned`. This validation is a programmatic cohort run and raises
+`server.max_bams` explicitly; the dashboard still accepts one BAM file. The
+reproducible check is:
 
 ```sh
 Rscript tools/validate-24.R --out test_data/introgression-study/results/validation_24bam.rds

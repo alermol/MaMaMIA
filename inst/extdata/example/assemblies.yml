@@ -8,7 +8,7 @@ defaults:
   gc_mmap: true
   gc_validate_crc: false
 server:
-  max_bams: 4
+  max_bams: 1
   max_total_bytes: 2.097152e+07
 species:
   triticum_like:

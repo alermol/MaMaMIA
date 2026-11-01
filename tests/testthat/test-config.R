@@ -238,6 +238,11 @@ test_that("the derived assembly carries group and copy_number", {
     expect_identical(unique(windows$table$group), "1")
 })
 
+test_that("the server accepts one BAM by default", {
+    config <- tiny_species_config()
+    expect_identical(config$server$max_bams, 1L)
+})
+
 test_that("the shipped registry example is role-free", {
     path <- system.file("config", "assemblies.example.yml",
         package = "MaMaMIA")
@@ -245,6 +250,7 @@ test_that("the shipped registry example is role-free", {
         "the example registry is not installed")
     example <- yaml::read_yaml(path, handlers = list(int = as.numeric))
     expect_identical(as.integer(example$version), 2L)
+    expect_identical(as.integer(example$server$max_bams), 1L)
     expect_null(example$assemblies)
     expect_gte(length(example$species), 2L)
     for (species in example$species) {

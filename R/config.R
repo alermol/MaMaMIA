@@ -50,7 +50,9 @@
 
 .config_server_defaults <- function() {
     list(
-        max_bams = 20L,
+        ## The dashboard accepts one BAM file per run; a multi-sample BAM is
+        ## still one file. Programmatic cohort callers raise this explicitly.
+        max_bams = 1L,
         max_total_bytes = 5 * 1024^3
     )
 }

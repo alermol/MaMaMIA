@@ -4,6 +4,7 @@ test_that("the bundled example is available", {
     skip_if_not(bam_example_available(), "bundled example is not installed")
     config <- bam_example_config()
     expect_identical(config$version, 2L)
+    expect_identical(config$server$max_bams, 1L)
     expect_true("triticum_like" %in% names(config$species))
     expect_identical(bam_example_resolutions(), 1000L)
     expect_identical(bam_example_default_resolution(), "1000")
