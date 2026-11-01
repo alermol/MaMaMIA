@@ -181,8 +181,7 @@ explorer_view_filters_ui <- function(id) {
                 "Confident" = "confident",
                 "Ambiguous" = "ambiguous",
                 "Needs review" = "needs_review"
-            ),
-            selected = "confident"
+            )
         ),
         picker(
             "copy_state", "Copy state", "Copy",
@@ -201,7 +200,7 @@ explorer_view_filters_ui <- function(id) {
         shiny::div(
             class = "mamamia-filter-switch",
             bslib::input_switch(
-                ns("pass_only"), "Passing only", value = TRUE
+                ns("pass_only"), "Passing only", value = FALSE
             )
         )
     )
@@ -210,7 +209,7 @@ explorer_view_filters_ui <- function(id) {
 explorer_call_filters_ui <- function(id) {
     ns <- shiny::NS(id)
     shiny::numericInput(
-        ns("min_width"), "Minimum call width (Mb)", value = 5, min = 0, step = 1
+        ns("min_width"), "Minimum call width (Mb)", value = 0, min = 0, step = 1
     )
 }
 

@@ -11,6 +11,7 @@
 ^\.Rprofile$
 ^docs-source$
 ^deployment$
+^graphify-out$
 ^\.dockerignore$
 ^tools$
 ^src/gcrank/src/.*[.]o$

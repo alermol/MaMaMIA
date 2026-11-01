@@ -300,9 +300,10 @@ substitution, addition, deletion, complex and other segments, a full
 substitution, a whole added donor chromosome and a whole deleted recipient
 chromosome. The **Calls** tab is a brief, sortable inspection view with the
 group, class, copy state, review status, recipient placement, coordinates,
-width and pass flag. The **Karyotype** and **Calls** tabs start with
-class-status **Confident** calls; clearing the **Status** filter shows
-ambiguous and needs-review calls. The **Export** tab downloads one ZIP archive
+width and pass flag. The **Karyotype** and **Calls** tabs show every call by
+default; the **Status** filter, **Passing only** switch and minimum-width
+field narrow the view without hiding calls on load. The **Export** tab
+downloads one ZIP archive
 containing full and confident call tables, all-call, passing-call and
 confident BEDPE files, and full, confident and filtered karyotype SVGs. The
 CSV and BEDPE files use descriptive column names, and the bundled README

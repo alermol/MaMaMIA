@@ -3337,9 +3337,9 @@ bam_results_ui <- function() {
                 shiny::p(
                     class = "mamamia-call-note",
                     paste(
-                        "Brief view. Defaults to confident calls; clear",
-                        "Status for other review classes. The results bundle",
-                        "adds the full table, BEDPE files and karyotype images."
+                        "Brief view of every call. Use the filters to narrow",
+                        "by review status or width. The results bundle adds",
+                        "the full table, BEDPE files and karyotype images."
                     )
                 ),
                 DT::DTOutput(ns("calls"))
@@ -3727,14 +3727,7 @@ bam_launcher_server <- function(state) {
         sidebar_unlocked <- shiny::reactiveVal(FALSE)
         upload_epoch <- shiny::reactiveVal(0L)
 
-        ## The bundled example has 200 kb contigs, so its 2 kb calls would
-        ## disappear under the 5 Mb production filter. Use a toy-scale filter
-        ## while example mode is active and restore the default afterwards.
         shiny::observeEvent(example_mode(), {
-            shiny::updateNumericInput(
-                session, "explorer-min_width",
-                value = if (isTRUE(example_mode())) 0.001 else 5
-            )
             if (isTRUE(example_mode())) {
                 shiny::updateSliderInput(
                     session, "resolution",

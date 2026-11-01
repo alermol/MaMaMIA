@@ -215,7 +215,7 @@ bam_bundle_descriptive_calls <- function(calls) {
     calls
 }
 
-#' Confident calls used by the default plot
+#' Confident calls used by the confident export
 #'
 #' A confident call passes calibration and has class status `confident`.
 #' @noRd
@@ -832,9 +832,9 @@ bam_bundle_readme <- function(sample, calls, generated, version,
         "Confident set",
         "-------------",
         "The confident set contains calls that pass calibration and have",
-        "review_status = confident. The Karyotype and Calls tabs use this",
-        "set by default; clear the Status filter to see ambiguous and",
-        "needs-review calls. The full CSV and BEDPE keep every call.",
+        "review_status = confident. The Karyotype and Calls tabs show every",
+        "call by default; select a Status or turn on Passing only to narrow",
+        "the view. The full CSV and BEDPE keep every call.",
         "",
         "Column conventions",
         "------------------",

@@ -419,10 +419,19 @@ test_that("the explorer has no chromosome group selector", {
     expect_match(filters, "deletion", fixed = TRUE)
     expect_match(filters, "complex", fixed = TRUE)
     expect_match(filters, "Class status", fixed = TRUE)
-    expect_match(filters, 'value="confident" selected', fixed = TRUE)
+    expect_false(grepl('value="confident" selected', filters, fixed = TRUE))
+    expect_false(grepl("checked", filters, fixed = TRUE))
     expect_match(filters, "Copy state", fixed = TRUE)
     expect_match(filters, "balanced", fixed = TRUE)
     expect_match(filters, "Confidence", fixed = TRUE)
+})
+
+test_that("the explorer applies no call filters on load", {
+    view <- as.character(explorer_view_filters_ui("explorer"))
+    width <- as.character(explorer_call_filters_ui("explorer"))
+    expect_false(grepl('value="confident" selected', view, fixed = TRUE))
+    expect_false(grepl("checked", view, fixed = TRUE))
+    expect_match(width, 'value="0"', fixed = TRUE)
 })
 
 test_that("the export panel offers one results bundle", {
