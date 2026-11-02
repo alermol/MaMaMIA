@@ -169,10 +169,14 @@
   loader with the current stage instead of a progress toast.
 * A BAM whose header does not match a configured assembly now shows a calm
   amber recovery card in the sidebar instead of a red error line.
-* The **Calls** tab now shows a brief inspection table: group, class, copy
-  state, class status, recipient placement, group coordinates, width and the
-  pass flag, plus the sample when a BAM contains several samples. The full
-  table with every diagnostic column is in the downloadable result bundle.
+* The **Calls** tab shows a brief inspection table: group, class, copy state,
+  class status, recipient and donor chromosome, placement, group coordinates,
+  width and the pass flag, plus the sample when a BAM contains several
+  samples. Every heading has a description tooltip, and **Additional columns**
+  adds any other diagnostic field while keeping the defaults. Clicking a
+  sortable heading cycles ascending, descending and unsorted, and shift-click
+  adds secondary sort columns. The full table with every diagnostic column is
+  in the downloadable result bundle.
 * The **Karyotype** and **Calls** tabs show passing calls by default.
   Turning off **Passing only** reveals calls that failed calibration; no
   class-status or width filter is applied on load.

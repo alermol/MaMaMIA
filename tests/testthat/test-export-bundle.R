@@ -9,7 +9,7 @@ test_that("the brief call table keeps the inspection columns", {
         bam_brief_call_columns(many),
         c(
             "sample", "group", "class", "copy_state", "class_status",
-            "recipient_chr_name", "recipient_assignment",
+            "recipient_chr_name", "donor_chr_name", "recipient_assignment",
             "start_bp", "end_bp", "width_bp", "pass"
         )
     )
@@ -18,14 +18,15 @@ test_that("the brief call table keeps the inspection columns", {
         bam_brief_call_columns(one),
         c(
             "group", "class", "copy_state", "class_status",
-            "recipient_chr_name", "recipient_assignment",
+            "recipient_chr_name", "donor_chr_name", "recipient_assignment",
             "start_bp", "end_bp", "width_bp", "pass"
         )
     )
     labels <- bam_brief_call_labels(bam_brief_call_columns(one))
     expect_identical(labels[[1L]], "Group")
     expect_identical(labels[[5L]], "Recipient")
-    expect_identical(labels[[10L]], "Pass")
+    expect_identical(labels[[6L]], "Donor")
+    expect_identical(labels[[11L]], "Pass")
 })
 
 test_that("the bundle column dictionary is complete and unique", {
@@ -41,6 +42,30 @@ test_that("the bundle column dictionary is complete and unique", {
         group = "1", class = "addition", stringsAsFactors = FALSE
     ))
     expect_named(renamed, c("chromosome_group", "call_class"))
+})
+
+test_that("every call column has a label and a description", {
+    metadata <- bam_call_column_metadata()
+    expect_identical(nrow(metadata), 69L)
+    expect_identical(anyDuplicated(metadata$column), 0L)
+    expect_identical(anyDuplicated(metadata$label), 0L)
+    expect_false(anyNA(metadata$label))
+    expect_false(any(!nzchar(metadata$label)))
+    expect_false(anyNA(metadata$description))
+    expect_false(any(!nzchar(metadata$description)))
+    expect_identical(
+        metadata$description[metadata$column == "donor_chr_name"],
+        "Display name of the donor contig."
+    )
+})
+
+test_that("the extra-column picker keeps defaults out of its choices", {
+    choices <- bam_call_extra_column_choices()
+    expect_true(all(nzchar(names(choices))))
+    expect_true("Mean depletion" %in% names(choices))
+    expect_true("recipient_mean_depletion" %in% unname(choices))
+    expect_false(any(unname(choices) %in% bam_brief_call_columns()))
+    expect_false("sample" %in% unname(choices))
 })
 
 test_that("the bundle filename is safe", {

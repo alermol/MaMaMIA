@@ -245,7 +245,7 @@ bam_confident_calls <- function(calls) {
 bam_brief_call_columns <- function(x = NULL) {
     columns <- c(
         "group", "class", "copy_state", "class_status",
-        "recipient_chr_name", "recipient_assignment",
+        "recipient_chr_name", "donor_chr_name", "recipient_assignment",
         "start_bp", "end_bp", "width_bp", "pass"
     )
     include_sample <- is.data.frame(x) &&
@@ -257,23 +257,130 @@ bam_brief_call_columns <- function(x = NULL) {
     columns
 }
 
-#' Human-readable labels for the brief call table
+#' Human-readable labels for call-table columns
 #' @noRd
-bam_brief_call_labels <- function(columns) {
+bam_call_column_labels <- function(columns = NULL) {
     labels <- c(
         sample = "Sample",
         group = "Group",
-        class = "Class",
-        copy_state = "Copy state",
-        class_status = "Status",
-        recipient_chr_name = "Recipient",
-        recipient_assignment = "Placement",
+        start_iid = "Start window",
+        end_iid = "End window",
         start_bp = "Group start (bp)",
         end_bp = "Group end (bp)",
         width_bp = "Width (bp)",
-        pass = "Pass"
+        score_mean = "Score",
+        donor_mean = "Donor mean",
+        recipient_mean = "Recipient mean",
+        total_mean = "Total mean",
+        donor_component_spread = "Donor spread",
+        recipient_component_spread = "Recipient spread",
+        n_donor_supported = "Donor sets",
+        mapq_fraction = "MAPQ fraction",
+        n_windows = "Windows",
+        method = "Method",
+        mode = "Mode",
+        metric = "Metric",
+        length_bin = "Length bin",
+        threshold = "Threshold",
+        pass = "Pass",
+        class = "Class",
+        class_evidence = "Class evidence",
+        copy_state = "Copy state",
+        total_evidence = "Total evidence",
+        class_confidence = "Class confidence",
+        class_status = "Status",
+        component_status = "Component status",
+        mappability_status = "Mappability",
+        confidence = "Confidence",
+        class_group = "Group class",
+        recipient_component = "Recipient set",
+        recipient_chr_id = "Recipient ID",
+        recipient_chr_name = "Recipient",
+        recipient_group = "Recipient group",
+        recipient_start_bp = "Recipient start (bp)",
+        recipient_end_bp = "Recipient end (bp)",
+        recipient_run_start_bp = "Depletion start (bp)",
+        recipient_run_end_bp = "Depletion end (bp)",
+        recipient_deletion_width_bp = "Depletion width (bp)",
+        recipient_expected_breadth = "Expected breadth",
+        recipient_observed_breadth = "Observed breadth",
+        recipient_mapq_fraction = "Recipient MAPQ",
+        recipient_copy_number = "Recipient copies",
+        recipient_mean_depletion = "Mean depletion",
+        recipient_depletion_se = "Depletion SE",
+        recipient_depletion_lower = "Depletion lower",
+        recipient_depletion_z = "Depletion Z",
+        recipient_width_overlap = "Width overlap",
+        recipient_fraction_ratio = "Width ratio",
+        donor_copies = "Donor copies",
+        copy_state_group = "Group copy state",
+        affected_fraction = "Affected fraction",
+        affected_copies = "Affected copies",
+        dosage_confidence = "Dosage confidence",
+        recipient_weight = "Recipient weight",
+        recipient_margin = "Recipient margin",
+        recipient_assignment = "Placement",
+        recipient_cross_group = "Cross-group",
+        recipient_reliable = "Recipient reliable",
+        recipient_strong = "Recipient strong",
+        recipient_alternative = "Alternative recipient",
+        recipient_alternative_score = "Alternative score",
+        donor_component = "Donor set",
+        donor_chr_id = "Donor ID",
+        donor_chr_name = "Donor",
+        donor_start_bp = "Donor start (bp)",
+        donor_end_bp = "Donor end (bp)"
     )
-    unname(labels[columns])
+    if (is.null(columns)) {
+        return(labels)
+    }
+    out <- unname(labels[columns])
+    out[is.na(out)] <- columns[is.na(out)]
+    out
+}
+
+#' Human-readable labels for the brief call table
+#' @noRd
+bam_brief_call_labels <- function(columns) {
+    bam_call_column_labels(columns)
+}
+
+#' Column metadata for the Calls tab
+#'
+#' Combines short display labels with the bundle dictionary descriptions.
+#' @param columns Call-table columns; every dictionary column by default.
+#' @noRd
+bam_call_column_metadata <- function(columns = NULL) {
+    dictionary <- bam_bundle_column_dictionary()
+    if (is.null(columns)) {
+        columns <- dictionary$old
+    }
+    index <- match(columns, dictionary$old)
+    description <- dictionary$description[index]
+    description[is.na(description)] <- "No description available."
+    data.frame(
+        column = columns,
+        label = bam_call_column_labels(columns),
+        description = description,
+        stringsAsFactors = FALSE
+    )
+}
+
+#' Selectable extra columns for the Calls tab
+#'
+#' The brief inspection columns stay visible. Every other diagnostic column
+#' can be added from the picker. `sample` is omitted because it appears
+#' automatically when the result contains more than one sample.
+#' @noRd
+bam_call_extra_column_choices <- function() {
+    metadata <- bam_call_column_metadata()
+    defaults <- bam_brief_call_columns()
+    extra <- metadata[
+        !metadata$column %in% c(defaults, "sample"),
+        ,
+        drop = FALSE
+    ]
+    stats::setNames(extra$column, extra$label)
 }
 
 #' Safe stem for a bundle filename

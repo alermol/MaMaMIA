@@ -434,6 +434,26 @@ test_that("the explorer shows passing calls by default", {
     expect_false(grepl('value="confident" selected', view, fixed = TRUE))
     expect_match(view, 'id="explorer-pass_only".*checked')
     expect_match(width, 'value="0"', fixed = TRUE)
+    expect_match(width, "Additional columns", fixed = TRUE)
+    expect_match(width, "Add columns", fixed = TRUE)
+})
+
+test_that("the call table header carries column tooltips", {
+    header <- as.character(bam_call_table_header(c(
+        "group", "donor_chr_name", "recipient_mean_depletion"
+    )))
+    expect_match(
+        header,
+        "Chromosome homology group used for scoring",
+        fixed = TRUE
+    )
+    expect_match(header, "Display name of the donor contig.", fixed = TRUE)
+    expect_match(
+        header,
+        "Mean corrected log-depth depletion",
+        fixed = TRUE
+    )
+    expect_match(header, 'class="mamamia-call-label"', fixed = TRUE)
 })
 
 test_that("the export panel offers one results bundle", {

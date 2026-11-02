@@ -298,12 +298,15 @@ quality chips, dosage, geometry, and a group-filter hint. The bundled
 **Example data** button loads eight 160–260 kb chromosome pairs with
 substitution, addition, deletion, complex and other segments, a full
 substitution, a whole added donor chromosome and a whole deleted recipient
-chromosome. The **Calls** tab is a brief, sortable inspection view with the
-group, class, copy state, review status, recipient placement, coordinates,
-width and pass flag. The **Karyotype** and **Calls** tabs show passing calls
-by default; turn off **Passing only** to see every call. The **Status** filter
-and minimum-width field narrow the view further. The **Export** tab
-downloads one ZIP archive
+chromosome. The **Calls** tab is a brief, sortable inspection view. Its
+default columns are group, class, copy state, review status, recipient and
+donor chromosome, placement, group coordinates, width and pass flag. Hover
+any heading for a description, and use **Additional columns** to add any
+other diagnostic field without removing the defaults. Shift-click headings
+to sort by several columns; a third click clears the sort. The **Karyotype**
+and **Calls** tabs show passing calls by default; turn off **Passing only** to
+see every call. The **Status** filter and minimum-width field narrow the
+view further. The **Export** tab downloads one ZIP archive
 containing full and confident call tables, all-call, passing-call and
 confident BEDPE files, and full, confident and filtered karyotype SVGs. The
 CSV and BEDPE files use descriptive column names, and the bundled README

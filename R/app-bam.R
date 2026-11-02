@@ -2331,6 +2331,31 @@ bam_dashboard_css <- function() {
         border-radius: .4rem;
         font-size: .76rem;
     }
+    .mamamia-segment-controls .mamamia-call-columns {
+        flex: 0 1 11rem;
+        min-width: 9rem;
+    }
+    .mamamia-segment-controls .mamamia-call-columns .bootstrap-select {
+        display: block;
+        width: 100% !important;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        box-shadow: none;
+    }
+    .mamamia-segment-controls .mamamia-call-columns .dropdown-toggle {
+        width: 100%;
+        text-align: left;
+    }
+    .mamamia-segment-controls .mamamia-call-columns .dropdown-toggle .filter-option {
+        display: flex;
+        align-items: center;
+        height: 100%;
+    }
+    .mamamia-segment-controls .mamamia-call-columns .dropdown-toggle .filter-option-inner {
+        display: block;
+        width: 100%;
+    }
     .mamamia-segment-controls .btn {
         height: 2rem;
         padding: 0 .65rem;
@@ -2850,6 +2875,8 @@ bam_dashboard_css <- function() {
     /* Call table */
     .mamamia-main .dataTables_wrapper {
         font-size: .75rem;
+        overflow-x: hidden;
+        overflow-x: clip;
     }
     .mamamia-main .dataTables_wrapper .row:first-child {
         align-items: center;
@@ -2893,8 +2920,28 @@ bam_dashboard_css <- function() {
         font-size: .6rem;
         font-weight: 750;
         letter-spacing: .06em;
+        line-height: 1.2;
         text-transform: uppercase;
+        vertical-align: bottom;
         white-space: nowrap;
+    }
+    .mamamia-main table.dataTable thead > tr > th[class*='sorting'] {
+        padding-right: 1.5rem;
+    }
+    @media (max-width: 1320px) {
+        .mamamia-main table.dataTable thead > tr > th[class*='sorting'] {
+            padding-right: 14px;
+        }
+        .mamamia-main table.dataTable thead > tr > th[class*='sorting']::before,
+        .mamamia-main table.dataTable thead > tr > th[class*='sorting']::after {
+            right: 2px;
+        }
+    }
+    .mamamia-main table.dataTable thead th[title] {
+        cursor: help;
+    }
+    .mamamia-main table.dataTable thead th .mamamia-call-label {
+        border-bottom: 1px dotted var(--mm-line-strong);
     }
     .mamamia-main table.dataTable tbody td {
         padding: .4rem .55rem;
@@ -3341,9 +3388,12 @@ bam_results_ui <- function() {
                 shiny::p(
                     class = "mamamia-call-note",
                     paste(
-                        "Brief view of passing calls. Turn off Passing only",
-                        "to include calls that failed calibration. The results",
-                        "bundle adds the full table, BEDPE files and images."
+                        "Brief view of passing calls. Hover a column heading",
+                        "for its description; use Additional columns to add",
+                        "diagnostics. Shift-click headings to sort by several",
+                        "columns. Turn off Passing only to include calls that",
+                        "failed calibration. The full table, BEDPE files and",
+                        "images are in the results bundle."
                     )
                 ),
                 DT::DTOutput(ns("calls"))

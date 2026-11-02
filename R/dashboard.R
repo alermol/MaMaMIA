@@ -208,8 +208,57 @@ explorer_view_filters_ui <- function(id) {
 
 explorer_call_filters_ui <- function(id) {
     ns <- shiny::NS(id)
-    shiny::numericInput(
-        ns("min_width"), "Minimum call width (Mb)", value = 0, min = 0, step = 1
+    shiny::tagList(
+        shiny::numericInput(
+            ns("min_width"),
+            "Minimum call width (Mb)",
+            value = 0,
+            min = 0,
+            step = 1
+        ),
+        shiny::div(
+            class = "mamamia-call-columns",
+            shinyWidgets::pickerInput(
+                ns("call_columns"),
+                "Additional columns",
+                choices = bam_call_extra_column_choices(),
+                selected = character(0),
+                multiple = TRUE,
+                width = "fit",
+                options = shinyWidgets::pickerOptions(
+                    actionsBox = TRUE,
+                    liveSearch = TRUE,
+                    title = "Add columns",
+                    noneSelectedText = "Add columns",
+                    selectedTextFormat = "count > 0",
+                    countSelectedText = "{0} added"
+                )
+            )
+        )
+    )
+}
+
+bam_call_table_header <- function(columns) {
+    metadata <- bam_call_column_metadata(columns)
+    shiny::tags$table(
+        class = "display",
+        shiny::tags$thead(
+            shiny::tags$tr(
+                lapply(seq_len(nrow(metadata)), function(i) {
+                    description <- metadata$description[[i]]
+                    shiny::tags$th(
+                        title = description,
+                        `aria-label` = paste0(
+                            metadata$label[[i]], ". ", description
+                        ),
+                        shiny::tags$span(
+                            class = "mamamia-call-label",
+                            metadata$label[[i]]
+                        )
+                    )
+                })
+            )
+        )
     )
 }
 
@@ -1192,7 +1241,15 @@ explorer_server <- function(id, result, sample = NULL) {
                 shiny::need(!is.null(result_value()), "Run the analysis to list calls")
             )
             x <- visible_calls()
-            columns <- intersect(bam_brief_call_columns(x), names(x))
+            defaults <- intersect(bam_brief_call_columns(x), names(x))
+            selected_columns <- input$call_columns
+            if (is.null(selected_columns)) {
+                selected_columns <- character(0)
+            }
+            extras <- names(x)[
+                names(x) %in% as.character(selected_columns)
+            ]
+            columns <- unique(c(defaults, extras))
             display <- x[, columns, drop = FALSE]
             humanise <- function(values, labels) {
                 values <- as.character(values)
@@ -1242,13 +1299,54 @@ explorer_server <- function(id, result, sample = NULL) {
                     ifelse(isTRUE_vec(display$pass), "Yes", "No")
                 )
             }
-            DT::datatable(
+            logical_columns <- extras[vapply(
+                x[extras], is.logical, logical(1)
+            )]
+            for (column in logical_columns) {
+                values <- x[[column]]
+                display[[column]] <- ifelse(
+                    is.na(values), NA_character_,
+                    ifelse(values, "Yes", "No")
+                )
+            }
+            number_columns <- extras[vapply(
+                x[extras], is.numeric, logical(1)
+            )]
+            table <- DT::datatable(
                 display,
-                colnames = bam_brief_call_labels(columns),
+                container = bam_call_table_header(columns),
                 rownames = FALSE,
                 selection = "multiple",
-                options = list(pageLength = 10, scrollX = TRUE)
+                options = list(
+                    pageLength = 10,
+                    scrollX = TRUE,
+                    orderMulti = TRUE,
+                    columnDefs = list(list(
+                        orderSequence = c("asc", "desc", ""),
+                        targets = "_all"
+                    )),
+                    initComplete = DT::JS(
+                        "function(settings) {
+                            var api = this.api();
+                            api.on('order.dt', function() {
+                                var order = api.order();
+                                var unsorted = order.some(function(item) {
+                                    return item[1] === '';
+                                });
+                                if (unsorted) {
+                                    api.order([]).draw();
+                                }
+                            });
+                        }"
+                    )
+                )
             )
+            if (length(number_columns) > 0L) {
+                table <- DT::formatSignif(
+                    table, number_columns, digits = 3
+                )
+            }
+            table
         })
 
         output$download_bundle <- shiny::downloadHandler(
