@@ -187,9 +187,16 @@
 * The **Karyotype** and **Calls** tabs show passing calls by default.
   Turning off **Passing only** reveals calls that failed calibration; no
   class-status or width filter is applied on load.
-* The **Export** tab adds a single ZIP archive containing full and confident
-  call tables, all-call, passing-call and confident BEDPE files, and full,
-  confident and filtered karyotype SVGs. The CSV and BEDPE files use
+* The **Export** tab ZIP is now a diagnostic record. It keeps the full,
+  passing and confident call tables, BEDPE files and karyotype SVGs, and adds
+  call summaries by class, group, review status and copy-number state;
+  next-best recipient candidates; per-window coverage, GC, MAPQ and score
+  tables plus score and residual summaries by group; every mask decision;
+  calibration thresholds; a cohort summary;
+  BED and bedGraph tracks; resolved configuration and provenance JSON; a
+  version table and R session information; assembly, sample and BAM tables;
+  and a manifest with MD5 checksums. A self-contained `report.html` shows the
+  run overview, karyotype and summary tables. The CSV and BEDPE files use
   descriptive column names, README.txt documents every field, and the
   karyotype SVGs use centred headings, safe margins and truncated long labels
   so they are not cropped. The **All calls** action downloads every call in

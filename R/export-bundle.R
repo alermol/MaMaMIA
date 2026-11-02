@@ -883,7 +883,7 @@ bam_bundle_write_bedpe <- function(calls, windows, file, pass_only = FALSE) {
 #' @noRd
 bam_bundle_readme <- function(sample, calls, generated, version,
                               bedpe_columns = character(),
-                              confident_calls = NULL) {
+                              confident_calls = NULL, result = NULL) {
     n <- nrow(calls)
     passing <- if ("passes_calibration" %in% names(calls)) {
         sum(isTRUE_vec(calls$passes_calibration), na.rm = TRUE)
@@ -914,6 +914,7 @@ bam_bundle_readme <- function(sample, calls, generated, version,
             dictionary$description[[i]]
         )
     }, character(1))
+    run_lines <- bam_bundle_run_summary_lines(result, sample)
     c(
         "MaMaMIA results bundle",
         "",
@@ -925,16 +926,68 @@ bam_bundle_readme <- function(sample, calls, generated, version,
             " passing calibration, ", confident_n, " confident"
         ),
         "",
+        if (length(run_lines) > 0L) {
+            c("Run", "---", run_lines, "")
+        } else {
+            character()
+        },
         "Contents",
         "--------",
-        "calls-full.csv       Every call for this sample with every column.",
-        "calls-confident.csv  Passing calls with review_status = confident.",
-        "calls-all.bedpe      Every call for this sample in BEDPE format.",
-        "calls-passing.bedpe  Calibrated calls (pass = TRUE) in BEDPE format.",
+        "Primary results",
+        "calls-full.csv        Every call for this sample with every column.",
+        "calls-passing.csv     Calls that pass calibration.",
+        "calls-confident.csv   Passing calls with review_status = confident.",
+        "calls-review.csv      Every call outside the confident set.",
+        "calls-summary.csv     Calls, passing, confident, width and score by",
+        "                      call class.",
+        "calls-by-group.csv    Calls and masked fraction by chromosome group.",
+        "calls-by-status.csv   Calls by review status.",
+        "calls-by-copy-state.csv Calls by copy-number state.",
+        "assignment-alternatives.csv Next-best recipient candidates, when",
+        "                      present.",
+        "calls-all.bedpe       Every call for this sample in BEDPE format.",
+        "calls-passing.bedpe   Calibrated calls (pass = TRUE) in BEDPE format.",
         "calls-confident.bedpe Confident calls in BEDPE format.",
-        "karyotype-full.svg   Every call for the sample, without display filters.",
+        "karyotype-full.svg    Every call for the sample, without display",
+        "                      filters.",
         "karyotype-current.svg Calls for the sample after the active filters.",
         "karyotype-confident.svg Confident calls only.",
+        "report.html           Self-contained summary with tables and the",
+        "                      full karyotype.",
+        "",
+        "Diagnostics",
+        "-----------",
+        "qc/cohort-summary.csv  One row per sample in the run.",
+        "qc/metrics-summary.csv Coverage, GC and MAPQ by chromosome group and",
+        "                       role.",
+        "qc/contig-summary.csv  Per-contig coverage and GC.",
+        "qc/scores-summary.csv  Score and residual summaries by group.",
+        "qc/metrics-windows.csv.gz Every window metric for this sample.",
+        "qc/scores-windows.csv.gz Every window score for this sample.",
+        "qc/masks-summary.csv   Masked windows by chromosome group.",
+        "qc/masks-windows.csv.gz Every mask decision.",
+        "qc/calibration.csv     Calibration thresholds by mode and length bin.",
+        "",
+        "Genome-browser tracks",
+        "---------------------",
+        "tracks/calls-recipient.bed Calls on assigned recipient contigs.",
+        "tracks/calls-donor.bed     Calls on donor contigs.",
+        "tracks/masks.bed           Masked windows in group coordinates.",
+        "tracks/breadth.bedGraph.gz Window breadth for this sample.",
+        "",
+        "Run and reproducibility",
+        "-----------------------",
+        "run/provenance.json    Full provenance record.",
+        "run/config.yml         Resolved configuration.",
+        "run/parameters.csv     Key analysis parameters.",
+        "run/versions.csv       Software and reference versions.",
+        "run/session-info.txt   R session information.",
+        "run/assembly.csv       Contigs, groups and roles.",
+        "run/reference-indexes.csv Index paths, sizes and timestamps.",
+        "run/samples.csv        Sample metadata.",
+        "run/bams.csv           BAM paths, sizes, timestamps and target counts.",
+        "manifest.json          File sizes and MD5 checksums.",
+        "checksums.md5          MD5 checksums including the manifest.",
         "",
         "Confident set",
         "-------------",
@@ -943,6 +996,24 @@ bam_bundle_readme <- function(sample, calls, generated, version,
         "passing calls by default; turn off Passing only to see every call,",
         "or select a Status to narrow by review class. The full CSV and",
         "BEDPE keep every call.",
+        "",
+        "Diagnostic conventions",
+        "----------------------",
+        "qc/metrics-windows.csv.gz has one row per sample, window and role.",
+        "qc/scores-windows.csv.gz has one row per sample and group window.",
+        "Both files are compressed CSV with a header and descriptive column",
+        "names. qc/masks-windows.csv.gz keeps every mask decision, including",
+        "windows that were not masked.",
+        "",
+        "BED tracks are zero-based, half-open intervals. BED scores are zero",
+        "because the call class and review status are carried in the name",
+        "column. masks.bed uses synthetic contig names group_<group> because",
+        "masks are computed in homology-group coordinates. breadth.bedGraph.gz",
+        "has one value per window for this sample.",
+        "",
+        "manifest.json lists every payload file with its size and MD5",
+        "checksum. checksums.md5 repeats the MD5 sums and also covers the",
+        "manifest. report.html is a self-contained human-readable summary.",
         "",
         "Column conventions",
         "------------------",
@@ -1037,6 +1108,9 @@ bam_write_result_bundle <- function(result, file, sample,
         file.path(bundle, "calls-confident.bedpe"),
         pass_only = FALSE
     )
+    diagnostics <- bam_bundle_write_diagnostics(
+        result, bundle, sample, calls_raw, calls
+    )
     version <- tryCatch(
         as.character(utils::packageVersion("MaMaMIA")),
         error = function(e) ""
@@ -1085,11 +1159,23 @@ bam_write_result_bundle <- function(result, file, sample,
         bam_bundle_readme(
             sample, calls, generated, version,
             bedpe_columns = bedpe_columns,
-            confident_calls = confident_calls
+            confident_calls = confident_calls,
+            result = result
         ),
         file.path(bundle, "README.txt"),
         useBytes = TRUE
     )
+    writeLines(
+        bam_bundle_report_html(
+            result, bundle, sample, calls_raw, diagnostics,
+            generated, version,
+            has_full_svg = !is.null(full_payload)
+        ),
+        file.path(bundle, "report.html"),
+        useBytes = TRUE
+    )
+    bam_bundle_manifest(bundle, sample, generated, version)
+    bam_bundle_checksums(bundle)
 
     if (file.exists(file)) {
         unlink(file)

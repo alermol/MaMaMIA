@@ -306,9 +306,18 @@ other diagnostic field without removing the defaults. Shift-click headings
 to sort by several columns; a third click clears the sort. The **Karyotype**
 and **Calls** tabs show passing calls by default; turn off **Passing only** to
 see every call. The **Status** filter and minimum-width field narrow the
-view further. The **Export** tab downloads one ZIP archive
-containing full and confident call tables, all-call, passing-call and
-confident BEDPE files, and full, confident and filtered karyotype SVGs. The
+view further. The **Export** tab downloads one ZIP archive with three layers.
+Primary results include full, passing and confident call tables, all-call,
+passing-call and confident BEDPE files, and full, confident and filtered
+karyotype SVGs. Diagnostics add per-window coverage, GC and MAPQ metrics,
+per-window scores and per-group score and residual summaries, every mask
+decision, calibration thresholds, call summaries
+by class, chromosome group, review status and copy-number state, and the
+next-best recipient candidates. Reproducibility files record the resolved
+configuration, full provenance, software versions, R session information,
+assembly contigs, samples, BAM paths, and a manifest with MD5 checksums. A
+self-contained `report.html` presents the run overview, karyotype and summary
+tables, and BED, BEDPE and bedGraph tracks support genome browsers. The
 **All calls** action downloads every call in the current run as a single
 BEDPE file, and **Selected calls** downloads only the rows selected in the
 Calls table. The

@@ -155,7 +155,11 @@ test_that("the result bundle contains the table, BEDPE and karyotypes", {
         "README.txt", "calls-full.csv", "calls-confident.csv",
         "calls-all.bedpe", "calls-passing.bedpe",
         "calls-confident.bedpe", "karyotype-current.svg",
-        "karyotype-full.svg", "karyotype-confident.svg"
+        "karyotype-full.svg", "karyotype-confident.svg",
+        "report.html", "manifest.json", "checksums.md5",
+        "calls-passing.csv", "calls-review.csv", "calls-summary.csv",
+        "calls-by-group.csv", "calls-by-status.csv",
+        "calls-by-copy-state.csv", "assignment-alternatives.csv"
     ) %in% names))
     directory <- tempfile("mamamia-bundle-test-")
     dir.create(directory)
@@ -218,4 +222,178 @@ test_that("the result bundle contains the table, BEDPE and karyotypes", {
         file.info(file.path(root, "karyotype-confident.svg"))$size > 0
     )
     expect_true(file.info(file.path(root, "calls-all.bedpe"))$size > 0)
+
+    relative <- sub("^[^/]+/", "", listing$Name)
+    expect_true(all(c(
+        "qc/cohort-summary.csv", "qc/metrics-summary.csv",
+        "qc/contig-summary.csv", "qc/scores-summary.csv",
+        "qc/metrics-windows.csv.gz", "qc/scores-windows.csv.gz",
+        "qc/masks-summary.csv",
+        "qc/masks-windows.csv.gz", "qc/calibration.csv",
+        "run/provenance.json", "run/config.yml", "run/parameters.csv",
+        "run/versions.csv", "run/session-info.txt", "run/assembly.csv",
+        "run/reference-indexes.csv", "run/samples.csv", "run/bams.csv",
+        "tracks/calls-recipient.bed", "tracks/calls-donor.bed",
+        "tracks/masks.bed", "tracks/breadth.bedGraph.gz"
+    ) %in% relative))
+
+    summary <- utils::read.csv(
+        file.path(root, "calls-summary.csv"),
+        check.names = FALSE, stringsAsFactors = FALSE
+    )
+    expect_true(all(c(
+        "call_class", "calls", "passing_calls", "confident_calls",
+        "needs_review_calls", "total_width_bp",
+        "mean_introgression_score"
+    ) %in% names(summary)))
+    expect_identical(sum(summary$calls), nrow(expected))
+    by_group <- utils::read.csv(
+        file.path(root, "calls-by-group.csv"),
+        check.names = FALSE, stringsAsFactors = FALSE
+    )
+    expect_identical(sum(by_group$calls), nrow(expected))
+    passing_csv <- utils::read.csv(
+        file.path(root, "calls-passing.csv"),
+        check.names = FALSE, stringsAsFactors = FALSE
+    )
+    expect_identical(nrow(passing_csv), sum(isTRUE_vec(expected$pass)))
+    expect_true(all(passing_csv$passes_calibration))
+    review_csv <- utils::read.csv(
+        file.path(root, "calls-review.csv"),
+        check.names = FALSE, stringsAsFactors = FALSE
+    )
+    expect_false(any(
+        review_csv$review_status == "confident" &
+            review_csv$passes_calibration
+    ))
+
+    metrics <- utils::read.csv(
+        gzfile(file.path(root, "qc/metrics-windows.csv.gz")),
+        check.names = FALSE, stringsAsFactors = FALSE
+    )
+    expect_identical(
+        nrow(metrics),
+        sum(as.character(result$metrics$sample) == sample)
+    )
+    expect_true(all(c(
+        "contig_id", "breadth", "gc_fraction", "high_mapq_read_fraction"
+    ) %in% names(metrics)))
+    scores <- utils::read.csv(
+        gzfile(file.path(root, "qc/scores-windows.csv.gz")),
+        check.names = FALSE, stringsAsFactors = FALSE
+    )
+    expect_identical(
+        nrow(scores),
+        sum(as.character(result$scores$sample) == sample)
+    )
+    expect_true(all(c(
+        "introgression_score", "donor_residual",
+        "recipient_residual", "total_depth_residual"
+    ) %in% names(scores)))
+    masks <- utils::read.csv(
+        gzfile(file.path(root, "qc/masks-windows.csv.gz")),
+        check.names = FALSE, stringsAsFactors = FALSE
+    )
+    expect_identical(nrow(masks), nrow(result$masks))
+    metrics_summary <- utils::read.csv(
+        file.path(root, "qc/metrics-summary.csv"),
+        check.names = FALSE, stringsAsFactors = FALSE
+    )
+    expect_true(all(c("donor", "recipient") %in% metrics_summary$role))
+    expect_true(all(c(
+        "mean_breadth", "mean_gc_fraction", "mean_expected_breadth"
+    ) %in% names(metrics_summary)))
+    scores_summary <- utils::read.csv(
+        file.path(root, "qc/scores-summary.csv"),
+        check.names = FALSE, stringsAsFactors = FALSE
+    )
+    expect_gt(nrow(scores_summary), 0L)
+    expect_true(all(c(
+        "mean_introgression_score", "mean_donor_residual",
+        "mean_recipient_residual", "mean_total_depth_residual"
+    ) %in% names(scores_summary)))
+    calibration <- utils::read.csv(
+        file.path(root, "qc/calibration.csv"),
+        check.names = FALSE, stringsAsFactors = FALSE
+    )
+    expect_true("calibration_threshold" %in% names(calibration))
+
+    config <- yaml::read_yaml(file.path(root, "run/config.yml"))
+    expect_identical(config$version, result$config$version)
+    provenance <- jsonlite::fromJSON(file.path(root, "run/provenance.json"))
+    expect_identical(provenance$package, "MaMaMIA")
+    expect_identical(provenance$config_hash, result$provenance$config_hash)
+    assembly <- utils::read.csv(
+        file.path(root, "run/assembly.csv"),
+        check.names = FALSE, stringsAsFactors = FALSE
+    )
+    expect_identical(nrow(assembly), 16L)
+    expect_true(all(c("recipient", "donor") %in% assembly$role))
+    versions <- utils::read.csv(
+        file.path(root, "run/versions.csv"),
+        check.names = FALSE, stringsAsFactors = FALSE
+    )
+    expect_true(all(c("MaMaMIA", "R", "htslib") %in% versions$component))
+    bams <- utils::read.csv(
+        file.path(root, "run/bams.csv"),
+        check.names = FALSE, stringsAsFactors = FALSE
+    )
+    expect_true(all(c(
+        "file_size", "mtime", "n_targets", "sample_source"
+    ) %in% names(bams)))
+    indexes <- utils::read.csv(
+        file.path(root, "run/reference-indexes.csv"),
+        check.names = FALSE, stringsAsFactors = FALSE
+    )
+    expect_gt(nrow(indexes), 0L)
+    expect_true(all(c(
+        "index_path", "exists", "bytes", "modified"
+    ) %in% names(indexes)))
+
+    report <- paste(
+        readLines(file.path(root, "report.html")),
+        collapse = "\n"
+    )
+    expect_match(report, "<!DOCTYPE html>", fixed = TRUE)
+    expect_match(report, "Run overview", fixed = TRUE)
+    expect_match(report, "Calls by class", fixed = TRUE)
+    expect_match(report, "Coverage and GC by group", fixed = TRUE)
+    expect_match(report, "Score summary by group", fixed = TRUE)
+    expect_match(report, "manifest.json", fixed = TRUE)
+    expect_match(report, "qc/metrics-summary.csv", fixed = TRUE)
+
+    manifest <- jsonlite::fromJSON(file.path(root, "manifest.json"))
+    expect_identical(manifest$sample, sample)
+    expect_gt(nrow(manifest$files), 25L)
+    expect_true(all(file.exists(
+        file.path(root, manifest$files$path)
+    )))
+    expect_identical(
+        unname(tools::md5sum(file.path(root, manifest$files$path))),
+        manifest$files$md5
+    )
+    checksums <- readLines(file.path(root, "checksums.md5"))
+    expect_true(any(grepl("manifest.json", checksums, fixed = TRUE)))
+    expect_true(any(grepl("report.html", checksums, fixed = TRUE)))
+    first_checksum <- strsplit(checksums[[1L]], "  ", fixed = TRUE)[[1L]]
+    expect_identical(
+        unname(tools::md5sum(file.path(root, first_checksum[[2L]]))),
+        first_checksum[[1L]]
+    )
+
+    recipient_bed <- readLines(
+        file.path(root, "tracks/calls-recipient.bed")
+    )
+    expect_match(recipient_bed[[1L]], "track name=", fixed = TRUE)
+    expect_gt(length(recipient_bed), 1L)
+    breadth_lines <- readLines(
+        gzfile(file.path(root, "tracks/breadth.bedGraph.gz"))
+    )
+    expect_match(breadth_lines[[1L]], "track type=bedGraph", fixed = TRUE)
+    expect_gt(length(breadth_lines), 1L)
+
+    expect_match(readme, "report.html", fixed = TRUE)
+    expect_match(readme, "qc/metrics-windows.csv.gz", fixed = TRUE)
+    expect_match(readme, "manifest.json", fixed = TRUE)
+    expect_match(readme, "Diagnostic conventions", fixed = TRUE)
 })
