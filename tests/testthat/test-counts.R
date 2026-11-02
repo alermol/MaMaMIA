@@ -287,10 +287,10 @@ test_that("countReads() matches the reference tables within boundary effects", {
 
     ## Contig lengths come from the gcrank index metadata, not from the BED.
     wheat <- readContigsTsv(file.path(
-        root, "gcidx", "triticum-aestivum", "index.gcrank", "contigs.tsv"
+        root, "gcidx", "cs_t2t", "index.gcrank", "contigs.tsv"
     ))
     rye <- readContigsTsv(file.path(
-        root, "gcidx", "secale-cereale", "index.gcrank", "contigs.tsv"
+        root, "gcidx", "se_cereale", "index.gcrank", "contigs.tsv"
     ))
     contig_lengths <- stats::setNames(
         c(wheat$length, rye$length), c(wheat$name, rye$name)

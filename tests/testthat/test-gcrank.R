@@ -185,10 +185,10 @@ test_that("real wheat and rye GC values match the reference BED tables", {
         expect_identical(sprintf("%.6f", gc), sprintf("%.6f", expected$gc))
     }
 
-    check("triticum-aestivum", "recipient.w1000.gc.bed")
-    check("secale-cereale", "donor.w1000.gc.bed")
+    check("cs_t2t", "recipient.w1000.gc.bed")
+    check("se_cereale", "donor.w1000.gc.bed")
 
-    wheat <- file.path(root, "gcidx", "triticum-aestivum", "index.gcrank")
+    wheat <- file.path(root, "gcidx", "cs_t2t", "index.gcrank")
     contigs <- gcrankContigs(wheat)
     expect_identical(nrow(contigs), 21L)
     expect_identical(

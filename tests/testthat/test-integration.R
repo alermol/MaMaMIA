@@ -24,7 +24,7 @@ study_contigs <- function(root) {
 real_config <- function(root) {
     contigs <- study_contigs(root)
     speltoides_index <- file.path(
-        root, "gcidx", "speltoides-study.gcrank"
+        root, "gcidx", "ae_speltoides", "index.gcrank"
     )
     if (!dir.exists(speltoides_index)) {
         testthat::skip(
@@ -35,7 +35,7 @@ real_config <- function(root) {
         triticum_aestivum = list(
             label = "Triticum aestivum",
             gc_indexes = file.path(
-                root, "gcidx", "triticum-aestivum", "index.gcrank"
+                root, "gcidx", "cs_t2t", "index.gcrank"
             ),
             contigs = lapply(
                 seq_len(nrow(contigs[contigs$role == "recipient", ])),

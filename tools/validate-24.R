@@ -53,7 +53,7 @@ species <- list(
     triticum_aestivum = list(
         label = "Triticum aestivum",
         gc_indexes = file.path(
-            root, "test_data", "gcidx", "triticum-aestivum", "index.gcrank"
+            root, "test_data", "gcidx", "cs_t2t", "index.gcrank"
         ),
         contigs = lapply(
             seq_len(nrow(contigs[contigs$role == "recipient", ])),
@@ -69,7 +69,7 @@ species <- list(
     aegilops_speltoides = list(
         label = "Aegilops speltoides",
         gc_indexes = file.path(
-            root, "test_data", "gcidx", "speltoides-study.gcrank"
+            root, "test_data", "gcidx", "ae_speltoides", "index.gcrank"
         ),
         contigs = lapply(
             seq_len(nrow(contigs[contigs$role == "donor", ])),

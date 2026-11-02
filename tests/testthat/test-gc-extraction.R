@@ -249,9 +249,9 @@ test_that("real GC windows match the reference BED after rounding", {
         root, "assemblies", "cs_t2t_se_cereale", "donor.w1000.gc.bed"
     )
     wheat_index <- file.path(
-        root, "gcidx", "triticum-aestivum", "index.gcrank"
+        root, "gcidx", "cs_t2t", "index.gcrank"
     )
-    rye_index <- file.path(root, "gcidx", "secale-cereale", "index.gcrank")
+    rye_index <- file.path(root, "gcidx", "se_cereale", "index.gcrank")
     if (!all(file.exists(c(recipient_bed, donor_bed))) ||
         !dir.exists(wheat_index) || !dir.exists(rye_index)) {
         testthat::skip("real GC indexes or reference GC tables are missing")

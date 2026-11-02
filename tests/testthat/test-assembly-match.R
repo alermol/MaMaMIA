@@ -230,7 +230,7 @@ test_that("matchAssembly() matches the real Sq54 BAM exactly", {
             triticum_aestivum = list(
                 label = "Triticum aestivum CS T2T",
                 gc_indexes = list(
-                    file.path(root, "gcidx", "triticum-aestivum", "index.gcrank")
+                    file.path(root, "gcidx", "cs_t2t", "index.gcrank")
                 ),
                 contigs = entries(
                     chromosomes[chromosomes$component != "R", ]
@@ -239,7 +239,7 @@ test_that("matchAssembly() matches the real Sq54 BAM exactly", {
             secale_cereale = list(
                 label = "Secale cereale",
                 gc_indexes = list(
-                    file.path(root, "gcidx", "secale-cereale", "index.gcrank")
+                    file.path(root, "gcidx", "se_cereale", "index.gcrank")
                 ),
                 contigs = entries(
                     chromosomes[chromosomes$component == "R", ]

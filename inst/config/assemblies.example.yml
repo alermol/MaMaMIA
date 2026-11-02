@@ -44,7 +44,7 @@ species:
     description: "Hexaploid wheat reference (A, B, D components)"
     default_component: A
     gc_indexes:
-      - /srv/mamamia/gcidx/triticum-aestivum/index.gcrank
+      - /srv/mamamia/gcidx/cs_t2t/index.gcrank
     contigs:
       - {id: CP155614.1, name: 1A, component: A}
       - {id: CP155613.1, name: 1B, component: B}
@@ -72,7 +72,7 @@ species:
     description: "Rye reference (R component)"
     default_component: R
     gc_indexes:
-      - /srv/mamamia/gcidx/secale-cereale/index.gcrank
+      - /srv/mamamia/gcidx/se_cereale/index.gcrank
     contigs:
       - {id: OZ284382.1, name: 1R}
       - {id: OZ284383.1, name: 2R}
@@ -86,7 +86,7 @@ species:
     description: "Wild wheat relative (S component)"
     default_component: S
     gc_indexes:
-      - /srv/mamamia/gcidx/aegilops-speltoides/index.gcrank
+      - /srv/mamamia/gcidx/ae_speltoides/index.gcrank
     contigs:
       - {id: CH1S, name: 1S}
       - {id: CH2S, name: 2S}

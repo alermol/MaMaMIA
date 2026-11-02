@@ -115,10 +115,10 @@ test_that("readContigsTsv() rejects malformed contig tables", {
 test_that("readContigsTsv() reads the real wheat and rye metadata", {
     root <- skip_if_no_test_data()
     wheat <- file.path(
-        root, "gcidx", "triticum-aestivum", "index.gcrank", "contigs.tsv"
+        root, "gcidx", "cs_t2t", "index.gcrank", "contigs.tsv"
     )
     rye <- file.path(
-        root, "gcidx", "secale-cereale", "index.gcrank", "contigs.tsv"
+        root, "gcidx", "se_cereale", "index.gcrank", "contigs.tsv"
     )
     if (!file.exists(wheat) || !file.exists(rye)) {
         testthat::skip("real gcrank contig tables are missing")
@@ -127,7 +127,7 @@ test_that("readContigsTsv() reads the real wheat and rye metadata", {
     wheat_contigs <- readContigsTsv(wheat)
     rye_contigs <- readContigsTsv(rye)
     expect_identical(nrow(wheat_contigs), 21L)
-    expect_identical(nrow(rye_contigs), 242L)
+    expect_identical(nrow(rye_contigs), 7L)
     expect_identical(
         wheat_contigs$length[wheat_contigs$name == "CP155614.1"],
         603818960

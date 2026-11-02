@@ -73,13 +73,13 @@ server:
 species:
   triticum_aestivum:
     label: "Triticum aestivum CS T2T"
-    gc_indexes: [/srv/mamamia/gcidx/triticum-aestivum/index.gcrank]
+    gc_indexes: [/srv/mamamia/gcidx/cs_t2t/index.gcrank]
     contigs:
       - {id: CP155614.1, name: 1A, component: A}
       # ... 21 wheat contigs
   aegilops_speltoides:
     label: "Aegilops speltoides"
-    gc_indexes: [/srv/mamamia/gcidx/aegilops-speltoides/index.gcrank]
+    gc_indexes: [/srv/mamamia/gcidx/ae_speltoides/index.gcrank]
     contigs:
       - {id: CH1S, name: 1S}
       # ... 7 S contigs
