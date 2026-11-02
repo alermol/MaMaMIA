@@ -192,8 +192,9 @@
   confident and filtered karyotype SVGs. The CSV and BEDPE files use
   descriptive column names, README.txt documents every field, and the
   karyotype SVGs use centred headings, safe margins and truncated long labels
-  so they are not cropped. The separate current-sample BEDPE button is folded
-  into this bundle; a cohort BEDPE remains for multi-sample BAMs.
+  so they are not cropped. The **All calls** action downloads every call in
+  the current run as one BEDPE file without the rest of the bundle, and a
+  cohort BEDPE remains for multi-sample BAMs.
 * The call table drops the inert per-column "All" filter row that server-side
   DT renders disabled. The global search and the pill filters remain.
 * The result filter bar is now a compact row of pill dropdowns for class,

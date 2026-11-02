@@ -2863,6 +2863,36 @@ bam_dashboard_css <- function() {
         grid-template-columns: repeat(auto-fit, minmax(17rem, 1fr));
         gap: .8rem;
     }
+    @media (min-width: 56rem) and (max-width: 74.99rem) {
+        .mamamia-export-actions {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+        .mamamia-export-actions .mamamia-export-card:last-child {
+            display: grid;
+            grid-column: 1 / -1;
+            grid-template-columns: minmax(0, 1fr) auto;
+            align-content: center;
+            align-items: center;
+            column-gap: 1rem;
+            row-gap: .1rem;
+            min-height: 0;
+            padding: .6rem .7rem;
+        }
+        .mamamia-export-actions .mamamia-export-card:last-child h5 {
+            grid-column: 1;
+            margin-bottom: 0;
+        }
+        .mamamia-export-actions .mamamia-export-card:last-child .shiny-text-output {
+            grid-column: 1;
+            margin: 0;
+        }
+        .mamamia-export-actions .mamamia-export-card:last-child .btn {
+            grid-column: 2;
+            grid-row: 1 / span 2;
+            margin: 0;
+            align-self: center;
+        }
+    }
     .mamamia-export-card {
         display: flex;
         flex-direction: column;

@@ -301,6 +301,22 @@ explorer_export_ui <- function(id) {
         ),
         shiny::div(
             class = "mamamia-export-section mamamia-export-card",
+            shiny::h5("All calls"),
+            shiny::p(
+                class = "mamamia-export-lead",
+                paste(
+                    "Download every call in the current run as one BEDPE",
+                    "file, without the rest of the bundle."
+                )
+            ),
+            shiny::downloadButton(
+                ns("download_all_bedpe"),
+                "Download all BEDPE",
+                class = "btn-sm"
+            )
+        ),
+        shiny::div(
+            class = "mamamia-export-section mamamia-export-card",
             shiny::h5("Selected calls"),
             shiny::textOutput(ns("selection_status")),
             shiny::downloadButton(
@@ -1408,6 +1424,40 @@ explorer_server <- function(id, result, sample = NULL) {
                     current_payload = current_payload,
                     full_payload = full_payload,
                     confident_payload = confident_payload
+                )
+            }
+        )
+
+        output$download_all_bedpe <- shiny::downloadHandler(
+            filename = function() {
+                sample <- sample_value()
+                if (is.null(sample)) {
+                    "mamamia-all-calls.bedpe"
+                } else {
+                    paste0(
+                        "mamamia-", bam_bundle_stem(sample),
+                        "-all-calls.bedpe"
+                    )
+                }
+            },
+            content = function(file) {
+                res <- result_value()
+                if (is.null(res)) {
+                    stop(
+                        "Run the analysis before downloading",
+                        call. = FALSE
+                    )
+                }
+                calls <- res$calls
+                sample <- sample_value()
+                if (!is.null(sample)) {
+                    calls <- calls[
+                        as.character(calls$sample) == sample, ,
+                        drop = FALSE
+                    ]
+                }
+                bam_bundle_write_bedpe(
+                    calls, res$windows, file, pass_only = FALSE
                 )
             }
         )
