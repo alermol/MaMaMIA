@@ -2911,8 +2911,12 @@ bam_dashboard_css <- function() {
     }
     .mamamia-main table.dataTable tbody tr.selected > * {
         --bs-table-bg-state: var(--mm-accent-soft);
-        box-shadow: inset 0 0 0 9999px transparent;
-        color: var(--mm-accent);
+        background-color: rgba(var(--mm-accent-rgb), .12) !important;
+        box-shadow: none !important;
+        color: var(--mm-ink) !important;
+    }
+    .mamamia-main table.dataTable tbody tr.selected > td:first-child {
+        box-shadow: inset 3px 0 0 var(--mm-accent) !important;
     }
     .mamamia-main table.dataTable thead tr.filters th {
         padding: .2rem .3rem .35rem;
