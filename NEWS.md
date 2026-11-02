@@ -173,8 +173,9 @@
   state, class status, recipient placement, group coordinates, width and the
   pass flag, plus the sample when a BAM contains several samples. The full
   table with every diagnostic column is in the downloadable result bundle.
-* The **Karyotype** and **Calls** tabs show every call by default, with no
-  class-status, pass or width filter applied on load.
+* The **Karyotype** and **Calls** tabs show passing calls by default.
+  Turning off **Passing only** reveals calls that failed calibration; no
+  class-status or width filter is applied on load.
 * The **Export** tab adds a single ZIP archive containing full and confident
   call tables, all-call, passing-call and confident BEDPE files, and full,
   confident and filtered karyotype SVGs. The CSV and BEDPE files use

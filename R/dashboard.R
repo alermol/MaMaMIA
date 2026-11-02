@@ -200,7 +200,7 @@ explorer_view_filters_ui <- function(id) {
         shiny::div(
             class = "mamamia-filter-switch",
             bslib::input_switch(
-                ns("pass_only"), "Passing only", value = FALSE
+                ns("pass_only"), "Passing only", value = TRUE
             )
         )
     )

@@ -3337,9 +3337,9 @@ bam_results_ui <- function() {
                 shiny::p(
                     class = "mamamia-call-note",
                     paste(
-                        "Brief view of every call. Use the filters to narrow",
-                        "by review status or width. The results bundle adds",
-                        "the full table, BEDPE files and karyotype images."
+                        "Brief view of passing calls. Turn off Passing only",
+                        "to include calls that failed calibration. The results",
+                        "bundle adds the full table, BEDPE files and images."
                     )
                 ),
                 DT::DTOutput(ns("calls"))
