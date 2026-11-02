@@ -177,6 +177,13 @@
   sortable heading cycles ascending, descending and unsorted, and shift-click
   adds secondary sort columns. The full table with every diagnostic column is
   in the downloadable result bundle.
+* The **Export** tab's cohort summary is now a sortable table with descriptive
+  headings, heading tooltips and an **Additional columns** picker. Defaults
+  show windows, donor, recipient and total reads, passing and high-confidence
+  calls, and the masked percentage. Diagnostics add reads per window,
+  contig/group counts, call-class and status counts, pass and confidence
+  rates, call-width totals and scores. Shift-click headings add secondary
+  sorts; a third click clears the sort.
 * The **Karyotype** and **Calls** tabs show passing calls by default.
   Turning off **Passing only** reveals calls that failed calibration; no
   class-status or width filter is applied on load.

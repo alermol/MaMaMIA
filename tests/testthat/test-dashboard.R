@@ -379,14 +379,14 @@ test_that("progress callbacks can update an inline status", {
     )
 })
 
-test_that("cohort summaries and warnings read WindowMetrics", {
-    result <- list(
+cohort_fixture <- function() {
+    list(
         samples = data.frame(
             sample = c("A", "B"),
             n_windows = c(2L, 2L),
             n_calls = c(1L, 0L),
             n_high_confidence = c(1L, 0L),
-            masked_fraction = c(0.1, 0.1),
+            masked_fraction = c(0.1, 0.2),
             mode = c("multi", "multi"),
             stringsAsFactors = FALSE
         ),
@@ -395,14 +395,128 @@ test_that("cohort summaries and warnings read WindowMetrics", {
             role = c("donor", "recipient", "donor", "recipient"),
             count = c(10L, 20L, 0L, 0L),
             stringsAsFactors = FALSE
+        ),
+        windows = list(table = data.frame(
+            chr_id = c("r1", "r2", "d1", "d2"),
+            role = c("recipient", "recipient", "donor", "donor"),
+            group = c("1", "2", "1", "2"),
+            stringsAsFactors = FALSE
+        )),
+        calls = data.frame(
+            sample = c("A", "A", "B"),
+            pass = c(TRUE, FALSE, FALSE),
+            class = c("substitution", "other", "deletion"),
+            class_status = c("confident", "needs_review", "needs_review"),
+            confidence = c("high", "low", "low"),
+            group = c("1", "1", "1"),
+            width_bp = c(1e6, 2e6, 3e6),
+            score_mean = c(1, 2, 3),
+            stringsAsFactors = FALSE
         )
     )
+}
+
+test_that("cohort summaries and warnings read WindowMetrics", {
+    result <- cohort_fixture()
     summary <- bam_cohort_summary(result)
     expect_identical(summary$reads_total, c(30, 0))
     expect_identical(summary$n_calls, c(1L, 0L))
+    expect_equal(summary$reads_total_per_window, c(15, 0))
+    expect_equal(summary$donor_read_share, c(1 / 3, NA))
+    expect_equal(summary$masked_windows, c(0.2, 0.4))
+    expect_identical(summary$n_all_calls, c(2L, 1L))
+    expect_identical(summary$n_substitution, c(1L, 0L))
+    expect_identical(summary$n_class_confident, c(1L, 0L))
+    expect_identical(summary$n_class_needs_review, c(1L, 1L))
+    expect_equal(summary$pass_rate, c(0.5, 0))
+    expect_equal(summary$total_width_mb, c(1, NA))
+    expect_equal(summary$mean_width_mb, c(1, NA))
+    expect_equal(summary$max_width_mb, c(1, NA))
+    expect_identical(summary$n_contigs, c(4L, 4L))
+    expect_identical(summary$n_groups, c(2L, 2L))
+    expect_identical(summary$n_groups_with_calls, c(1L, 0L))
     warnings <- bam_coverage_warnings(result)
     expect_true(any(grepl("Sample 'B' has no reads", warnings)))
     expect_false(any(grepl("Sample 'A' has no reads", warnings)))
+})
+
+test_that("every cohort column has a label, description and format", {
+    summary <- bam_cohort_summary(cohort_fixture())
+    metadata <- bam_cohort_column_metadata(names(summary))
+    expect_identical(nrow(metadata), ncol(summary))
+    expect_identical(anyDuplicated(metadata$column), 0L)
+    expect_identical(anyDuplicated(metadata$label), 0L)
+    expect_false(anyNA(metadata$label))
+    expect_false(any(!nzchar(metadata$label)))
+    expect_false(anyNA(metadata$description))
+    expect_false(any(!nzchar(metadata$description)))
+    expect_true(all(metadata$format %in% c(
+        "text", "integer", "decimal1", "decimal2", "percent", "signif"
+    )))
+    expect_identical(
+        metadata$description[metadata$column == "sample"],
+        "Sample name from the BAM @RG SM tag."
+    )
+    expect_identical(
+        metadata$description[metadata$column == "n_calls"],
+        "Calls that pass calibration filters."
+    )
+    choices <- bam_cohort_extra_column_choices()
+    expect_true(all(nzchar(names(choices))))
+    expect_true("All calls" %in% names(choices))
+    expect_true("n_all_calls" %in% unname(choices))
+    expect_false(any(unname(choices) %in% bam_cohort_brief_columns()))
+    expect_false("sample" %in% unname(choices))
+    header <- as.character(bam_cohort_table_header(c("sample", "n_calls")))
+    expect_match(
+        header, "Sample name from the BAM @RG SM tag.", fixed = TRUE
+    )
+    expect_match(
+        header, "Calls that pass calibration filters.", fixed = TRUE
+    )
+    expect_match(header, 'class="mamamia-call-label"', fixed = TRUE)
+})
+
+test_that("the cohort table supports tooltips, sorting and extra columns", {
+    skip_if_not_installed("DT")
+    summary <- bam_cohort_summary(cohort_fixture())
+    table <- bam_cohort_table(
+        summary, c("n_all_calls", "reads_total_per_window")
+    )
+    expect_s3_class(table, "datatables")
+    expect_true(all(c(
+        "n_all_calls", "reads_total_per_window"
+    ) %in% names(table$x$data)))
+    expect_true(isTRUE(table$x$options$orderMulti))
+    definitions <- Filter(
+        function(x) !is.null(x$orderSequence),
+        table$x$options$columnDefs
+    )
+    expect_length(definitions, 1L)
+    expect_identical(
+        definitions[[1]]$orderSequence, c("asc", "desc", "")
+    )
+    expect_identical(definitions[[1]]$targets, "_all")
+    expect_match(
+        as.character(table$x$options$initComplete), "order([])",
+        fixed = TRUE
+    )
+    header <- as.character(table$x$container)
+    expect_match(header, "Passing calls", fixed = TRUE)
+    expect_match(
+        header, "Calls that pass calibration filters.", fixed = TRUE
+    )
+    expect_match(header, "Reads/window", fixed = TRUE)
+})
+
+test_that("the cohort columns picker is available in the Export tab", {
+    ui <- as.character(bam_cohort_columns_ui())
+    expect_match(ui, "Additional columns", fixed = TRUE)
+    expect_match(ui, "Add columns", fixed = TRUE)
+    expect_match(ui, 'id="cohort_columns"', fixed = TRUE)
+    export <- as.character(bam_results_ui())
+    expect_match(export, "cohort_ui", fixed = TRUE)
+    expect_match(export, "mamamia-export-panel", fixed = TRUE)
 })
 
 test_that("the explorer has no chromosome group selector", {
@@ -458,6 +572,8 @@ test_that("the call table header carries column tooltips", {
 
 test_that("the export panel offers one results bundle", {
     html <- as.character(explorer_export_ui("explorer"))
+    expect_match(html, "mamamia-export-actions", fixed = TRUE)
+    expect_match(html, "mamamia-export-card", fixed = TRUE)
     expect_match(html, "Results bundle", fixed = TRUE)
     expect_match(html, "download_bundle", fixed = TRUE)
     expect_match(html, "Download results bundle", fixed = TRUE)

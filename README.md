@@ -309,7 +309,12 @@ see every call. The **Status** filter and minimum-width field narrow the
 view further. The **Export** tab downloads one ZIP archive
 containing full and confident call tables, all-call, passing-call and
 confident BEDPE files, and full, confident and filtered karyotype SVGs. The
-CSV and BEDPE files use descriptive column names, and the bundled README
+cohort/sample summary is a sortable table: hover any heading for its
+description, and use **Additional columns** to add diagnostics such as reads
+per window, call-class and status counts, pass and confidence rates, call-width
+totals and scores. Shift-click headings to sort by several columns; a third
+click clears the sort. The CSV and BEDPE files use descriptive column names,
+and the bundled README
 contains a dictionary for every column. See
 [`docs-source/karyotype-tooltip.md`](docs-source/karyotype-tooltip.md) for the
 field-by-field tooltip reference. The **Tooltip help** button in the

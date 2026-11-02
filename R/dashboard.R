@@ -238,8 +238,7 @@ explorer_call_filters_ui <- function(id) {
     )
 }
 
-bam_call_table_header <- function(columns) {
-    metadata <- bam_call_column_metadata(columns)
+bam_table_header <- function(metadata) {
     shiny::tags$table(
         class = "display",
         shiny::tags$thead(
@@ -262,6 +261,10 @@ bam_call_table_header <- function(columns) {
     )
 }
 
+bam_call_table_header <- function(columns) {
+    bam_table_header(bam_call_column_metadata(columns))
+}
+
 explorer_selection_ui <- function(id) {
     ns <- shiny::NS(id)
     shiny::div(
@@ -277,9 +280,10 @@ explorer_selection_ui <- function(id) {
 
 explorer_export_ui <- function(id) {
     ns <- shiny::NS(id)
-    shiny::tagList(
+    shiny::div(
+        class = "mamamia-export-actions",
         shiny::div(
-            class = "mamamia-export-section",
+            class = "mamamia-export-section mamamia-export-card",
             shiny::h5("Results bundle"),
             shiny::p(
                 class = "mamamia-export-lead",
@@ -296,7 +300,7 @@ explorer_export_ui <- function(id) {
             )
         ),
         shiny::div(
-            class = "mamamia-export-section",
+            class = "mamamia-export-section mamamia-export-card",
             shiny::h5("Selected calls"),
             shiny::textOutput(ns("selection_status")),
             shiny::downloadButton(
