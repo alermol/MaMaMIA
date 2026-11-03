@@ -8,8 +8,8 @@ mamamia_analysis_profiles()
 }
 \value{
 A named list of profile contracts. Each contract has a \code{label}, a
-\code{description}, a \code{component_panel} flag and a \code{parameters}
-list suitable for \code{\link[=analyzeBamInput]{analyzeBamInput()}}.
+\code{short_description}, a \code{description}, a \code{component_panel} flag and a
+\code{parameters} list suitable for \code{\link[=analyzeBamInput]{analyzeBamInput()}}.
 }
 \description{
 Named analysis profiles

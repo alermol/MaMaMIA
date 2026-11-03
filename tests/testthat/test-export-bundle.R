@@ -68,6 +68,48 @@ test_that("the extra-column picker keeps defaults out of its choices", {
     expect_false("sample" %in% unname(choices))
 })
 
+test_that("the bundle records every effective profile parameter", {
+    provenance <- list(
+        analysis_profile = "custom",
+        analysis_profile_base = "sensitive",
+        analysis_profile_parameters = list(
+            windows_per_chromosome = 1000L,
+            metric = "combined",
+            score = "paired_log_ratio",
+            donor_aggregation = "max",
+            mapq = 30L,
+            mask = list(
+                physical_fallback_mb = 1,
+                recurrence_threshold = 0.4
+            ),
+            calibration = list(
+                fdr = 0.01,
+                floors = c(1.5, 1.2, 1.0, 0.8, 0.4),
+                min_mb = 5,
+                merge_gap = 100
+            )
+        )
+    )
+    table <- bam_bundle_profile_parameters(provenance)
+    expect_true(all(c(
+        "windows_per_chromosome", "metric", "score",
+        "donor_aggregation", "mapq", "mask_physical_fallback_mb",
+        "mask_recurrence_threshold", "calibration_fdr",
+        "calibration_floor_1", "calibration_floor_5",
+        "calibration_min_mb", "calibration_merge_gap"
+    ) %in% table$parameter))
+    expect_identical(unique(table$profile), "custom")
+    expect_identical(unique(table$base_profile), "sensitive")
+    expect_true(all(table$changed[table$parameter == "windows_per_chromosome"]))
+    expect_true(all(table$changed[table$parameter == "mapq"]))
+    expect_false(any(table$changed[table$parameter == "metric"]))
+    expect_equal(
+        table$default[table$parameter == "windows_per_chromosome"],
+        "100"
+    )
+    expect_equal(table$default[table$parameter == "mapq"], "20")
+})
+
 test_that("the bundle filename is safe", {
     expect_identical(
         bam_bundle_filename("Sq 74/7D"), "mamamia-Sq-74-7D-results.zip"
@@ -241,6 +283,7 @@ test_that("the result bundle contains the table, BEDPE and karyotypes", {
         "qc/masks-summary.csv",
         "qc/masks-windows.csv.gz", "qc/calibration.csv",
         "run/provenance.json", "run/config.yml", "run/parameters.csv",
+        "run/profile-parameters.csv",
         "run/versions.csv", "run/session-info.txt", "run/assembly.csv",
         "run/reference-indexes.csv", "run/samples.csv", "run/bams.csv",
         "tracks/calls-recipient.bed", "tracks/calls-donor.bed",
@@ -353,6 +396,21 @@ test_that("the result bundle contains the table, BEDPE and karyotypes", {
     provenance <- jsonlite::fromJSON(file.path(root, "run/provenance.json"))
     expect_identical(provenance$package, "MaMaMIA")
     expect_identical(provenance$config_hash, result$provenance$config_hash)
+    profile_parameters <- utils::read.csv(
+        file.path(root, "run/profile-parameters.csv"),
+        check.names = FALSE, stringsAsFactors = FALSE
+    )
+    expect_true(all(c(
+        "profile", "base_profile", "parameter", "value",
+        "default", "changed"
+    ) %in% names(profile_parameters)))
+    expect_true(all(c(
+        "windows_per_chromosome", "metric", "score",
+        "donor_aggregation", "mapq", "mask_physical_fallback_mb",
+        "mask_recurrence_threshold", "calibration_fdr",
+        "calibration_floor_1", "calibration_floor_5",
+        "calibration_min_mb", "calibration_merge_gap"
+    ) %in% profile_parameters$parameter))
     assembly <- utils::read.csv(
         file.path(root, "run/assembly.csv"),
         check.names = FALSE, stringsAsFactors = FALSE

@@ -79,8 +79,12 @@
   samples keep the empirical-quantile behaviour.
 * **Analysis profiles.** `mamamia_analysis_profiles()` and
   `mamamia_analysis_profile()` expose balanced, sensitive, CNV-robust,
-  complex and component-panel parameter bundles. The dashboard can select a
-  profile, and the chosen profile is recorded in provenance.
+  complex and component-panel parameter bundles. The dashboard keeps profile
+  selection in the Analysis panel; every profile parameter is editable under
+  Advanced, with inline help and a reset-to-defaults button. Defaults stay
+  bold, changed values are highlighted, and any override switches the display
+  name to Custom. The effective parameters and their defaults are recorded in
+  provenance and in `run/profile-parameters.csv` in the results bundle.
 * **Component evidence.** The result bundle now includes a
   per-donor-component diagnostic table (`qc/component-evidence.csv`). It
   reports component rank, relative score, supported-window fraction and the

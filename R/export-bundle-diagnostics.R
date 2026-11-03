@@ -756,6 +756,140 @@ bam_bundle_write_json <- function(x, path) {
     invisible(path)
 }
 
+bam_bundle_flat_profile_parameters <- function(parameters) {
+    if (!is.list(parameters)) {
+        return(NULL)
+    }
+    mask <- parameters$mask
+    if (!is.list(mask)) {
+        mask <- list()
+    }
+    calibration <- parameters$calibration
+    if (!is.list(calibration)) {
+        calibration <- list()
+    }
+    floors <- as.numeric(calibration$floors)
+    floor_values <- stats::setNames(
+        as.list(floors),
+        paste0("calibration_floor_", seq_along(floors))
+    )
+    c(
+        list(
+            windows_per_chromosome = parameters$windows_per_chromosome,
+            metric = parameters$metric,
+            score = parameters$score,
+            donor_aggregation = parameters$donor_aggregation,
+            mapq = parameters$mapq,
+            mask_physical_fallback_mb = mask$physical_fallback_mb,
+            mask_recurrence_threshold = mask$recurrence_threshold,
+            calibration_fdr = calibration$fdr
+        ),
+        floor_values,
+        list(
+            calibration_min_mb = calibration$min_mb,
+            calibration_merge_gap = calibration$merge_gap
+        )
+    )
+}
+
+bam_bundle_profile_parameters <- function(provenance) {
+    parameters <- provenance$analysis_profile_parameters
+    if (is.null(parameters)) {
+        ## Older results predate the nested record. Keep the bundle contract
+        ## and report the scalars that provenance still has.
+        parameters <- list(
+            windows_per_chromosome = provenance$windows_per_chromosome,
+            metric = provenance$metric,
+            score = provenance$score,
+            donor_aggregation = provenance$donor_aggregation,
+            mapq = provenance$mapq,
+            mask = list(
+                physical_fallback_mb = NA_real_,
+                recurrence_threshold = NA_real_
+            ),
+            calibration = list(
+                fdr = provenance$fdr,
+                floors = rep(NA_real_, 5L),
+                min_mb = NA_real_,
+                merge_gap = NA_integer_
+            )
+        )
+    }
+    values <- bam_bundle_flat_profile_parameters(parameters)
+    if (is.null(values) || length(values) == 0L) {
+        return(data.frame(
+            profile = character(), base_profile = character(),
+            parameter = character(), value = character(),
+            default = character(), changed = logical(),
+            stringsAsFactors = FALSE
+        ))
+    }
+    profile <- bam_bundle_text(provenance$analysis_profile)
+    base <- bam_bundle_text(provenance$analysis_profile_base)
+    template <- NULL
+    for (candidate in unique(c(
+        if (!identical(profile, "custom")) profile else NULL,
+        if (!identical(base, "custom")) base else NULL
+    ))) {
+        if (is.null(candidate) || is.na(candidate) || !nzchar(candidate)) {
+            next
+        }
+        spec <- tryCatch(
+            mamamia_analysis_profile(candidate),
+            error = function(e) NULL
+        )
+        if (!is.null(spec)) {
+            template <- bam_bundle_flat_profile_parameters(list(
+                windows_per_chromosome = spec$parameters$windows_per_chromosome,
+                metric = spec$parameters$metric,
+                score = spec$parameters$score,
+                donor_aggregation = spec$parameters$donor_aggregation,
+                mapq = spec$parameters$mapq,
+                mask = spec$parameters$mask,
+                calibration = spec$parameters$calibration
+            ))
+            break
+        }
+    }
+    parameter <- names(values)
+    value <- vapply(values, function(x) {
+        if (is.null(x) || length(x) == 0L) {
+            NA_character_
+        } else {
+            paste(as.character(x), collapse = ";")
+        }
+    }, character(1))
+    default <- rep(NA_character_, length(values))
+    changed <- rep(NA, length(values))
+    if (!is.null(template)) {
+        default <- vapply(parameter, function(name) {
+            x <- template[[name]]
+            if (is.null(x) || length(x) == 0L) {
+                NA_character_
+            } else {
+                paste(as.character(x), collapse = ";")
+            }
+        }, character(1))
+        changed <- vapply(seq_along(values), function(i) {
+            current <- values[[i]]
+            reference <- template[[parameter[[i]]]]
+            if (is.null(current) || is.null(reference)) {
+                return(NA)
+            }
+            bam_profile_value_changed(current, reference)
+        }, logical(1))
+    }
+    data.frame(
+        profile = rep(profile, length(values)),
+        base_profile = rep(base, length(values)),
+        parameter = parameter,
+        value = unname(value),
+        default = unname(default),
+        changed = changed,
+        stringsAsFactors = FALSE
+    )
+}
+
 bam_bundle_run_files <- function(result, bundle, sample) {
     run_dir <- file.path(bundle, "run")
     dir.create(run_dir, showWarnings = FALSE)
@@ -890,6 +1024,10 @@ bam_bundle_run_files <- function(result, bundle, sample) {
     )
     bam_bundle_write_csv(
         parameters, file.path(run_dir, "parameters.csv")
+    )
+    bam_bundle_write_csv(
+        bam_bundle_profile_parameters(provenance),
+        file.path(run_dir, "profile-parameters.csv")
     )
 
     dependency <- provenance$dependency_versions

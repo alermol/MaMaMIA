@@ -12,8 +12,8 @@
 #' Named analysis profiles
 #'
 #' @return A named list of profile contracts. Each contract has a `label`, a
-#'   `description`, a `component_panel` flag and a `parameters` list suitable
-#'   for [analyzeBamInput()].
+#'   `short_description`, a `description`, a `component_panel` flag and a
+#'   `parameters` list suitable for [analyzeBamInput()].
 #' @export
 mamamia_analysis_profiles <- function() {
     balanced <- list(
@@ -48,6 +48,9 @@ mamamia_analysis_profiles <- function() {
     list(
         balanced = list(
             label = "Balanced",
+            short_description = paste(
+                "Default candidate discovery for normal or high coverage."
+            ),
             description = paste(
                 "Default candidate discovery for normal or high coverage;",
                 "breadth, paired donor/recipient log-ratio and max donor",
@@ -58,6 +61,9 @@ mamamia_analysis_profiles <- function() {
         ),
         sensitive = list(
             label = "Sensitive",
+            short_description = paste(
+                "Relaxed, low-resolution discovery for low-coverage samples."
+            ),
             description = paste(
                 "Lower-resolution, combined breadth/count scoring with",
                 "relaxed floors for low-coverage or subtle candidates."
@@ -67,6 +73,9 @@ mamamia_analysis_profiles <- function() {
         ),
         cnv_robust = list(
             label = "CNV robust",
+            short_description = paste(
+                "Donor-only scoring when recipient copy number varies."
+            ),
             description = paste(
                 "Donor-only scoring at low resolution for samples with",
                 "suspected recipient copy-number changes."
@@ -76,6 +85,9 @@ mamamia_analysis_profiles <- function() {
         ),
         complex = list(
             label = "Complex",
+            short_description = paste(
+                "Combined scoring for multi-component donors."
+            ),
             description = paste(
                 "Combined breadth/count scoring for multi-component donors;",
                 "pair with a component-isolation assembly when J/St/V",
@@ -86,6 +98,9 @@ mamamia_analysis_profiles <- function() {
         ),
         component_panel = list(
             label = "Component panel",
+            short_description = paste(
+                "Balanced scoring with per-call component evidence."
+            ),
             description = paste(
                 "Balanced scoring plus the per-call component evidence",
                 "panel. Use the component-isolation assembly to test one",
@@ -121,10 +136,52 @@ mamamia_analysis_profile <- function(name = NULL) {
     profile
 }
 
+#' Flatten one profile's parameters for forms, provenance and bundles
+#'
+#' Keeps every profile parameter in one scalar-or-vector list so the dashboard
+#' can edit each value and the bundle can record exactly what ran.
+#'
+#' @param parameters A `parameters` list from [mamamia_analysis_profiles()].
+#' @return A named list with scalar parameters and a five-value
+#'   `calibration_floors` vector.
+#' @noRd
+mamamia_profile_flat_parameters <- function(parameters) {
+    if (!is.list(parameters)) {
+        .mamamia_profile_error("Profile parameters must be a list")
+    }
+    mask <- parameters$mask
+    calibration <- parameters$calibration
+    if (!is.list(mask)) {
+        mask <- list()
+    }
+    if (!is.list(calibration)) {
+        calibration <- list()
+    }
+    list(
+        windows_per_chromosome = as.integer(
+            parameters$windows_per_chromosome
+        ),
+        metric = as.character(parameters$metric),
+        score = as.character(parameters$score),
+        donor_aggregation = as.character(parameters$donor_aggregation),
+        mapq = as.integer(parameters$mapq),
+        mask_physical_fallback_mb = as.numeric(
+            mask$physical_fallback_mb
+        ),
+        mask_recurrence_threshold = as.numeric(
+            mask$recurrence_threshold
+        ),
+        calibration_fdr = as.numeric(calibration$fdr),
+        calibration_floors = as.numeric(calibration$floors),
+        calibration_min_mb = as.numeric(calibration$min_mb),
+        calibration_merge_gap = as.integer(calibration$merge_gap)
+    )
+}
+
 #' Choices for the dashboard analysis-profile selector
 #' @noRd
 mamamia_analysis_profile_choices <- function() {
     profiles <- mamamia_analysis_profiles()
     labels <- vapply(profiles, `[[`, character(1), "label")
-    c(stats::setNames(labels, names(profiles)), "Custom" = "custom")
+    c(stats::setNames(names(profiles), labels), "Custom" = "custom")
 }

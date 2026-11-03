@@ -19,7 +19,8 @@ analyzeBamInput(
   exclude_flags = NULL,
   cores = 1L,
   progress = NULL,
-  profile = NULL
+  profile = NULL,
+  profile_base = NULL
 )
 }
 \arguments{
@@ -61,6 +62,9 @@ and \code{min_mb}.}
 \item{profile}{Optional analysis-profile name recorded in provenance. It
 does not override the explicit arguments; use
 \code{\link[=mamamia_analysis_profile]{mamamia_analysis_profile()}} to resolve a profile before calling.}
+
+\item{profile_base}{Optional named profile the values were based on when
+\code{profile} is \code{"custom"}. Recorded in provenance and the results bundle.}
 }
 \value{
 A \code{BamAnalysisResult} list with \code{assembly}, \code{config}, \code{bams},

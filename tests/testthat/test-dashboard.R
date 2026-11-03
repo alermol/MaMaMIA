@@ -22,7 +22,8 @@ test_that("bam_run_parameters() resolves the run controls", {
     expect_named(params, c(
         "resolution", "mapq", "exclude_flags", "cores", "metric", "score",
         "donor_aggregation", "mask", "control_samples", "calibration",
-        "profile_name"
+        "profile_name", "profile_base", "profile_parameters",
+        "profile_changed"
     ))
     expect_identical(params$control_samples, character(0))
     expect_null(params$calibration)
@@ -47,7 +48,7 @@ test_that("analysis profiles resolve complete parameter bundles", {
     expect_true(is.list(sensitive$parameters$mask))
     params <- bam_run_parameters(
         list(
-            resolution = 1000, analysis_profile = "sensitive",
+            analysis_profile = "sensitive",
             control_samples = character(0)
         ),
         config, samples = "demo-sample"
@@ -55,11 +56,149 @@ test_that("analysis profiles resolve complete parameter bundles", {
     expect_identical(params$resolution, 100L)
     expect_identical(params$metric, "combined")
     expect_identical(params$profile_name, "sensitive")
+    expect_identical(params$profile_base, "sensitive")
     expect_identical(params$mask$recurrence_threshold, 0.4)
+    choices <- mamamia_analysis_profile_choices()
+    expect_identical(
+        unname(choices[c("Balanced", "Sensitive", "Custom")]),
+        c("balanced", "sensitive", "custom")
+    )
     expect_null(mamamia_analysis_profile("custom"))
     expect_error(mamamia_analysis_profile("not-a-profile"), "Unknown analysis profile")
     html <- as.character(bam_sidebar_details_ui(config))
     expect_match(html, 'id="analysis_profile_ui"', fixed = TRUE)
+    expect_match(html, 'id="advanced_parameters_ui"', fixed = TRUE)
+
+    changed <- bam_run_parameters(
+        list(
+            analysis_profile = "sensitive",
+            metric = "breadth",
+            control_samples = character(0)
+        ),
+        config, samples = "demo-sample",
+        profile_base = "sensitive"
+    )
+    expect_identical(changed$profile_name, "custom")
+    expect_identical(changed$profile_base, "sensitive")
+    expect_identical(changed$metric, "breadth")
+    expect_identical(changed$profile_changed, "metric")
+    expect_identical(changed$resolution, 100L)
+})
+
+test_that("Advanced exposes every profile parameter and marks defaults", {
+    config <- readMaMaMIAConfig(
+        system.file("extdata", "bam-demo", "assemblies.yml",
+            package = "MaMaMIA")
+    )
+    defaults <- bam_profile_default_parameters(config, "sensitive")
+    html <- as.character(bam_advanced_parameters_ui(config, defaults))
+    ids <- c(
+        "resolution_ui", "metric", "score", "donor_aggregation", "mapq",
+        "mask_physical_fallback_mb", "mask_recurrence_threshold",
+        "calibration_fdr", paste0("calibration_floor_", 1:5),
+        "calibration_min_mb", "calibration_merge_gap"
+    )
+    for (id in ids) {
+        expect_match(html, sprintf('id="%s"', id), fixed = TRUE)
+    }
+    expect_match(html, "mamamia-param-floors", fixed = TRUE)
+    expect_match(html, "mamamia-param-legend", fixed = TRUE)
+    expect_match(html, "reset_profile_parameters", fixed = TRUE)
+    expect_match(html, "mamamia-param-actions", fixed = TRUE)
+    help_label <- as.character(bam_profile_parameter_label(
+        "mapq", "Minimum MAPQ", FALSE,
+        help = bam_parameter_help("mapq")
+    ))
+    expect_match(help_label, "bslib-tooltip", fixed = TRUE)
+    expect_match(help_label, "mamamia-param-help", fixed = TRUE)
+    help_ids <- c(
+        "resolution", "metric", "score", "donor_aggregation", "mapq",
+        "mask_physical_fallback_mb", "mask_recurrence_threshold",
+        "calibration_fdr", "calibration_min_mb",
+        "calibration_merge_gap", "control_samples"
+    )
+    for (id in help_ids) {
+        expect_true(nzchar(bam_parameter_help(id)))
+    }
+    expect_match(
+        bam_parameter_help("calibration_floor_2", "Floor 10-25 Mb"),
+        "10-25",
+        fixed = TRUE
+    )
+
+    default_label <- as.character(
+        bam_profile_parameter_label("mapq", "Minimum MAPQ", FALSE)
+    )
+    expect_match(default_label, "mamamia-param-default", fixed = TRUE)
+    expect_false(grepl("mamamia-param-changed", default_label, fixed = TRUE))
+    changed_label <- as.character(
+        bam_profile_parameter_label("mapq", "Minimum MAPQ", TRUE)
+    )
+    expect_match(changed_label, "mamamia-param-changed", fixed = TRUE)
+
+    current <- defaults
+    current$mapq <- 30L
+    current$calibration_floors[[2L]] <- 1.1
+    expect_identical(
+        bam_profile_changed_parameters(current, defaults),
+        c("mapq", "calibration_floors")
+    )
+})
+
+test_that("every profile parameter can be overridden into a Custom run", {
+    config <- readMaMaMIAConfig(
+        system.file("extdata", "bam-demo", "assemblies.yml",
+            package = "MaMaMIA")
+    )
+    params <- bam_run_parameters(
+        list(
+            analysis_profile = "sensitive",
+            resolution = 1000,
+            metric = "count",
+            score = "donor_only",
+            donor_aggregation = "mean",
+            mapq = 30,
+            mask_physical_fallback_mb = 2,
+            mask_recurrence_threshold = 0.5,
+            calibration_fdr = 0.02,
+            calibration_floor_1 = 1.4,
+            calibration_floor_2 = 1.1,
+            calibration_floor_3 = 0.9,
+            calibration_floor_4 = 0.7,
+            calibration_floor_5 = 0.3,
+            calibration_min_mb = 7,
+            calibration_merge_gap = 50,
+            control_samples = character(0)
+        ),
+        config, samples = "demo-sample",
+        profile_base = "sensitive"
+    )
+    expect_identical(params$profile_name, "custom")
+    expect_identical(params$profile_base, "sensitive")
+    expect_identical(params$resolution, 1000L)
+    expect_identical(params$metric, "count")
+    expect_identical(params$score, "donor_only")
+    expect_identical(params$donor_aggregation, "mean")
+    expect_identical(params$mapq, 30L)
+    expect_equal(params$mask$physical_fallback_mb, 2)
+    expect_equal(params$mask$recurrence_threshold, 0.5)
+    expect_equal(params$calibration$fdr, 0.02)
+    expect_equal(
+        params$calibration$floors,
+        c(1.4, 1.1, 0.9, 0.7, 0.3)
+    )
+    expect_equal(params$calibration$min_mb, 7)
+    expect_identical(params$calibration$merge_gap, 50L)
+    expect_setequal(
+        params$profile_changed,
+        c(
+            "windows_per_chromosome", "metric", "score",
+            "donor_aggregation", "mapq", "mask_physical_fallback_mb",
+            "mask_recurrence_threshold", "calibration_fdr",
+            "calibration_floors", "calibration_min_mb",
+            "calibration_merge_gap"
+        )
+    )
 })
 
 test_that("the resolution picker is a ten-window slider with three ticks", {
@@ -178,7 +317,7 @@ test_that("donor aggregation defaults from the registry and is set under Advance
         "donor_aggregation"
     )
     html <- as.character(bam_sidebar_details_ui(config))
-    expect_match(html, 'id="donor_aggregation_ui"', fixed = TRUE)
+    expect_match(html, 'id="advanced_parameters_ui"', fixed = TRUE)
     expect_match(html, "Advanced", fixed = TRUE)
 })
 

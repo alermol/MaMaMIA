@@ -432,9 +432,7 @@ bam_resolution_slider_ui <- function(defaults = .config_defaults(),
         class = "mamamia-resolution-slider",
         shiny::div(
             class = "mamamia-resolution-head",
-            shiny::tags$label(
-                class = "control-label", `for` = "resolution", "Resolution"
-            ),
+            shiny::uiOutput("resolution_param_label", inline = TRUE),
             exact
         ),
         shiny::sliderInput(
@@ -1020,76 +1018,456 @@ bam_assembly_summary_ui <- function(assembly, resolutions = NULL) {
 
 ## Run parameters and progress ------------------------------------------------
 
+#' Flat default parameters for the dashboard controls
+#'
+#' A named profile supplies every value. Without a profile the registry
+#' defaults are used, so the Custom form still opens with valid controls.
+#' @noRd
+bam_profile_config_parameters <- function(config) {
+    defaults <- config$defaults
+    mask <- defaults$mask
+    if (!is.list(mask)) {
+        mask <- list()
+    }
+    calibration <- defaults$calibration
+    if (!is.list(calibration)) {
+        calibration <- list()
+    }
+    floors <- calibration$single_sample_floors
+    if (is.null(floors) || length(floors) == 0L) {
+        floors <- c(2.0, 1.5, 1.2, 1.0, 0.5)
+    }
+    list(
+        windows_per_chromosome = as.integer(
+            bam_default_resolution(defaults)
+        ),
+        metric = as.character(defaults$metric %||% "breadth"),
+        score = as.character(defaults$score %||% "paired_log_ratio"),
+        donor_aggregation = as.character(
+            defaults$donor_aggregation %||% "max"
+        ),
+        mapq = as.integer(defaults$mapq %||% 20L),
+        mask_physical_fallback_mb = as.numeric(
+            mask$physical_fallback_mb %||% 1
+        ),
+        mask_recurrence_threshold = as.numeric(
+            mask$recurrence_threshold %||% 0.4
+        ),
+        calibration_fdr = as.numeric(calibration$fdr %||% 0.01),
+        calibration_floors = as.numeric(floors),
+        calibration_min_mb = 5,
+        calibration_merge_gap = 100L
+    )
+}
+
+#' @noRd
+bam_profile_default_parameters <- function(config, profile = NULL) {
+    spec <- mamamia_analysis_profile(profile)
+    if (is.null(spec)) {
+        return(bam_profile_config_parameters(config))
+    }
+    mamamia_profile_flat_parameters(spec$parameters)
+}
+
+#' @noRd
+bam_profile_has_value <- function(value) {
+    if (is.null(value) || length(value) == 0L) {
+        return(FALSE)
+    }
+    !all(is.na(value)) && any(nzchar(as.character(value)))
+}
+
+#' @noRd
+bam_profile_input_value <- function(input, id, fallback) {
+    value <- input[[id]]
+    if (!bam_profile_has_value(value) || length(value) != 1L) {
+        return(fallback)
+    }
+    value
+}
+
+#' @noRd
+bam_profile_input_resolution <- function(input, config, resolution = NULL,
+                                         fallback = NULL) {
+    if (!is.null(resolution) && length(resolution) == 1L &&
+        !is.na(resolution)) {
+        return(as.integer(resolution))
+    }
+    for (id in c("resolution_number", "resolution")) {
+        value <- input[[id]]
+        if (length(value) != 1L || is.na(value)) {
+            next
+        }
+        parsed <- suppressWarnings(as.integer(value))
+        if (!is.na(parsed)) {
+            return(parsed)
+        }
+    }
+    if (!is.null(fallback) && length(fallback) == 1L &&
+        !is.na(fallback)) {
+        return(as.integer(fallback))
+    }
+    as.integer(bam_default_resolution(config$defaults))
+}
+
+#' Current Advanced control values as one flat parameter list
+#' @noRd
+bam_profile_current_parameters <- function(input, config, resolution = NULL,
+                                           fallback = NULL) {
+    if (is.null(fallback)) {
+        fallback <- bam_profile_config_parameters(config)
+    }
+    floors <- as.numeric(fallback$calibration_floors)
+    if (length(floors) != 5L) {
+        floors <- rep(floors, length.out = 5L)
+    }
+    floor_values <- vapply(seq_len(5L), function(i) {
+        as.numeric(bam_profile_input_value(
+            input, paste0("calibration_floor_", i), floors[[i]]
+        ))
+    }, numeric(1))
+    list(
+        windows_per_chromosome = bam_profile_input_resolution(
+            input, config, resolution,
+            fallback = fallback$windows_per_chromosome
+        ),
+        metric = as.character(bam_profile_input_value(
+            input, "metric", fallback$metric
+        )),
+        score = as.character(bam_profile_input_value(
+            input, "score", fallback$score
+        )),
+        donor_aggregation = as.character(bam_profile_input_value(
+            input, "donor_aggregation", fallback$donor_aggregation
+        )),
+        mapq = as.integer(bam_profile_input_value(
+            input, "mapq", fallback$mapq
+        )),
+        mask_physical_fallback_mb = as.numeric(bam_profile_input_value(
+            input, "mask_physical_fallback_mb",
+            fallback$mask_physical_fallback_mb
+        )),
+        mask_recurrence_threshold = as.numeric(bam_profile_input_value(
+            input, "mask_recurrence_threshold",
+            fallback$mask_recurrence_threshold
+        )),
+        calibration_fdr = as.numeric(bam_profile_input_value(
+            input, "calibration_fdr", fallback$calibration_fdr
+        )),
+        calibration_floors = floor_values,
+        calibration_min_mb = as.numeric(bam_profile_input_value(
+            input, "calibration_min_mb", fallback$calibration_min_mb
+        )),
+        calibration_merge_gap = as.integer(bam_profile_input_value(
+            input, "calibration_merge_gap", fallback$calibration_merge_gap
+        ))
+    )
+}
+
+#' @noRd
+bam_profile_value_changed <- function(current, default) {
+    if (is.numeric(current) && is.numeric(default)) {
+        return(!isTRUE(all.equal(
+            as.numeric(current), as.numeric(default), tolerance = 1e-8,
+            check.attributes = FALSE
+        )))
+    }
+    !identical(as.character(current), as.character(default))
+}
+
+#' Parameters that differ between two flat profile lists
+#' @noRd
+bam_profile_changed_parameters <- function(current, defaults) {
+    fields <- names(defaults)
+    fields[vapply(fields, function(field) {
+        bam_profile_value_changed(current[[field]], defaults[[field]])
+    }, logical(1))]
+}
+
+#' Push every profile default into the Advanced controls
+#' @noRd
+bam_update_profile_inputs <- function(session, parameters) {
+    shiny::updateSliderInput(
+        session, "resolution",
+        value = as.integer(parameters$windows_per_chromosome)
+    )
+    shiny::updateNumericInput(
+        session, "resolution_number",
+        value = as.integer(parameters$windows_per_chromosome)
+    )
+    shiny::updateSelectInput(
+        session, "metric", selected = parameters$metric
+    )
+    shiny::updateSelectInput(
+        session, "score", selected = parameters$score
+    )
+    shiny::updateSelectInput(
+        session, "donor_aggregation",
+        selected = parameters$donor_aggregation
+    )
+    shiny::updateNumericInput(
+        session, "mapq", value = as.integer(parameters$mapq)
+    )
+    shiny::updateNumericInput(
+        session, "mask_physical_fallback_mb",
+        value = parameters$mask_physical_fallback_mb
+    )
+    shiny::updateNumericInput(
+        session, "mask_recurrence_threshold",
+        value = parameters$mask_recurrence_threshold
+    )
+    shiny::updateNumericInput(
+        session, "calibration_fdr",
+        value = parameters$calibration_fdr
+    )
+    floors <- as.numeric(parameters$calibration_floors)
+    if (length(floors) != 5L) {
+        floors <- rep(floors, length.out = 5L)
+    }
+    for (i in seq_len(5L)) {
+        shiny::updateNumericInput(
+            session, paste0("calibration_floor_", i),
+            value = floors[[i]]
+        )
+    }
+    shiny::updateNumericInput(
+        session, "calibration_min_mb",
+        value = parameters$calibration_min_mb
+    )
+    shiny::updateNumericInput(
+        session, "calibration_merge_gap",
+        value = as.integer(parameters$calibration_merge_gap)
+    )
+    invisible(NULL)
+}
+
+#' Short help text for every Advanced parameter
+#' @noRd
+bam_parameter_help <- function(id, label = NULL) {
+    if (grepl("^calibration_floor_", id)) {
+        bin <- sub("^Floor ", "", sub(" Mb$", "", label %||% ""))
+        return(sprintf(
+            paste(
+                "Minimum mean score for a call in the %s length bin.",
+                "Raise it to reject weak calls in this size range."
+            ),
+            bin
+        ))
+    }
+    help <- c(
+        resolution = paste(
+            "Windows per chromosome. More windows give finer breakpoints",
+            "but make the run slower."
+        ),
+        metric = paste(
+            "Window metric used by the score. Breadth uses covered bases,",
+            "count uses read depth, and combined uses both."
+        ),
+        score = paste(
+            "Paired log-ratio compares donor and recipient coverage.",
+            "Donor only ignores the recipient and tolerates copy-number",
+            "changes in the recipient."
+        ),
+        donor_aggregation = paste(
+            "How several donor components are combined in one window:",
+            "max, mean, or sum."
+        ),
+        mapq = paste(
+            "Minimum mapping quality for a read to count. Higher values",
+            "exclude more ambiguous alignments."
+        ),
+        mask_physical_fallback_mb = paste(
+            "Extra region around each masked window, in megabases,",
+            "masked when physical coordinates are available."
+        ),
+        mask_recurrence_threshold = paste(
+            "Fraction of cohort samples that must mask a window before",
+            "it becomes a recurrence mask. Lower values mask more."
+        ),
+        calibration_fdr = paste(
+            "Target false discovery rate for segment thresholds.",
+            "Lower values make calls more conservative."
+        ),
+        calibration_min_mb = paste(
+            "Minimum call width in megabases. Shorter segments are",
+            "excluded."
+        ),
+        calibration_merge_gap = paste(
+            "Largest gap, in windows, between positive segments that may",
+            "be merged into one call."
+        ),
+        control_samples = paste(
+            "Samples used only to calibrate thresholds. Leave empty to",
+            "pool every sample in the cohort."
+        )
+    )
+    help[[id]] %||% ""
+}
+
+#' @noRd
+bam_profile_parameter_label <- function(id, label, changed, help = NULL) {
+    shiny::tags$label(
+        class = c(
+            "control-label",
+            if (isTRUE(changed)) {
+                "mamamia-param-changed"
+            } else {
+                "mamamia-param-default"
+            }
+        ),
+        `for` = id,
+        shiny::span(class = "mamamia-param-label-text", label),
+        if (!is.null(help) && length(help) == 1L && nzchar(help)) {
+            bslib::tooltip(
+                shiny::span(
+                    class = "mamamia-param-help",
+                    shiny::icon("circle-question")
+                ),
+                help,
+                placement = "right"
+            )
+        }
+    )
+}
+
+#' @noRd
+bam_number <- function(value, label, minimum, maximum) {
+    if (length(value) != 1L || is.na(value) || !is.numeric(value) ||
+        !is.finite(value) || value < minimum || value > maximum) {
+        .mamamia_error(
+            "MaMaMIAAnalysisError",
+            "%s must be a number between %s and %s",
+            label,
+            format(minimum, scientific = FALSE),
+            format(maximum, scientific = FALSE)
+        )
+    }
+    as.numeric(value)
+}
+
 #' Validate and resolve the run controls
+#'
+#' Advanced controls start from the selected profile and may override every
+#' profile parameter. Any override makes the effective profile Custom.
 #'
 #' @param input The Shiny input list (or a list with the same fields).
 #' @param config A validated configuration.
 #' @param samples Sample names from preflight.
 #' @param resolution Optional resolved resolution; overrides `input$resolution`.
+#' @param profile_base Named profile the Custom values were based on.
 #'
 #' @return A list with the resolved `analyzeBamInput()` arguments.
 #' @noRd
-bam_run_parameters <- function(input, config, samples, resolution = NULL) {
+bam_run_parameters <- function(input, config, samples, resolution = NULL,
+                               profile_base = NULL) {
     if (!is.character(samples) || length(samples) == 0L) {
         .mamamia_error("MaMaMIAAnalysisError", "At least one sample is required")
     }
     defaults <- config$defaults
-    profile_name <- input$analysis_profile
-    if (is.null(profile_name) || length(profile_name) != 1L ||
-        is.na(profile_name) || !nzchar(profile_name)) {
-        profile_name <- "custom"
+    requested <- input$analysis_profile
+    if (is.null(requested) || length(requested) != 1L ||
+        is.na(requested) || !nzchar(requested)) {
+        requested <- "custom"
     }
-    profile_name <- as.character(profile_name)
-    profile <- mamamia_analysis_profile(profile_name)
-    if (is.null(profile)) {
-        profile_name <- "custom"
-    }
-    if (is.null(resolution)) {
-        resolution <- input$resolution
-    }
-    if (!is.null(profile)) {
-        resolution <- profile$parameters$windows_per_chromosome
-    }
-    resolution <- bam_resolution_value(resolution, defaults)
-    mapq_value <- if (!is.null(profile)) {
-        profile$parameters$mapq
+    requested <- as.character(requested)
+    profile <- mamamia_analysis_profile(requested)
+    profile_name <- if (is.null(profile)) "custom" else requested
+    template <- if (!is.null(profile)) {
+        profile_name
+    } else if (!is.null(profile_base) && length(profile_base) == 1L &&
+        !is.na(profile_base) && nzchar(profile_base) &&
+        !identical(profile_base, "custom")) {
+        as.character(profile_base)
     } else {
-        defaults$mapq
+        NULL
     }
-    mapq <- bam_integer(mapq_value, "MAPQ", 0L, 255L)
+    fallback <- bam_profile_default_parameters(config, template)
+    current <- bam_profile_current_parameters(
+        input, config, resolution = resolution, fallback = fallback
+    )
+    resolution <- bam_resolution_value(
+        current$windows_per_chromosome, defaults
+    )
+    mapq <- bam_integer(current$mapq, "MAPQ", 0L, 255L)
     exclude_flags <- bam_integer(
         defaults$exclude_flags, "Exclude flags", 0L, 4095L
     )
     cores <- bam_integer(
         min(30L, bam_max_cores()), "Cores", 1L, bam_max_cores()
     )
-    donor_aggregation <- if (!is.null(profile)) {
-        profile$parameters$donor_aggregation
-    } else {
-        input$donor_aggregation
-    }
-    if (is.null(donor_aggregation) || length(donor_aggregation) != 1L ||
-        is.na(donor_aggregation) || !nzchar(donor_aggregation)) {
-        donor_aggregation <- defaults$donor_aggregation
-    }
-    donor_aggregation <- as.character(donor_aggregation)
+    donor_aggregation <- as.character(current$donor_aggregation)
     if (!donor_aggregation %in% c("mean", "max", "sum")) {
         .mamamia_error(
             "MaMaMIAAnalysisError",
             "`donor_aggregation` must be one of: mean, max, sum"
         )
     }
-    metric <- if (!is.null(profile)) {
-        profile$parameters$metric
-    } else {
-        defaults$metric
+    metric <- as.character(current$metric)
+    if (!metric %in% c("breadth", "count", "combined")) {
+        .mamamia_error(
+            "MaMaMIAAnalysisError",
+            "`metric` must be one of: breadth, count, combined"
+        )
     }
-    score <- if (!is.null(profile)) {
-        profile$parameters$score
-    } else {
-        defaults$score
+    score <- as.character(current$score)
+    if (!score %in% c("paired_log_ratio", "donor_only")) {
+        .mamamia_error(
+            "MaMaMIAAnalysisError",
+            "`score` must be one of: paired_log_ratio, donor_only"
+        )
     }
-    mask <- if (!is.null(profile)) profile$parameters$mask else NULL
+    mask_ids <- c(
+        "mask_physical_fallback_mb", "mask_recurrence_threshold"
+    )
+    has_mask <- !is.null(profile) ||
+        any(vapply(mask_ids, function(id) {
+            bam_profile_has_value(input[[id]])
+        }, logical(1)))
+    mask <- if (isTRUE(has_mask)) {
+        list(
+            physical_fallback_mb = bam_number(
+                current$mask_physical_fallback_mb,
+                "Mask physical fallback (Mb)", 0, Inf
+            ),
+            recurrence_threshold = bam_number(
+                current$mask_recurrence_threshold,
+                "Mask recurrence threshold", 0, 1
+            )
+        )
+    } else {
+        NULL
+    }
+    calibration_ids <- c(
+        "calibration_fdr", paste0("calibration_floor_", seq_len(5L)),
+        "calibration_min_mb", "calibration_merge_gap"
+    )
+    has_calibration <- !is.null(profile) ||
+        any(vapply(calibration_ids, function(id) {
+            bam_profile_has_value(input[[id]])
+        }, logical(1)))
+    calibration <- if (isTRUE(has_calibration)) {
+        floors <- as.numeric(current$calibration_floors)
+        if (length(floors) != 5L || anyNA(floors) || any(floors < 0)) {
+            .mamamia_error(
+                "MaMaMIAAnalysisError",
+                "Each calibration floor must be a non-negative number"
+            )
+        }
+        list(
+            fdr = bam_number(current$calibration_fdr, "Calibration FDR", 1e-6, 0.999999),
+            floors = floors,
+            min_mb = bam_number(
+                current$calibration_min_mb,
+                "Calibration minimum length (Mb)", 0, Inf
+            ),
+            merge_gap = bam_integer(
+                current$calibration_merge_gap,
+                "Calibration merge gap (windows)", 0L, 10000L
+            )
+        )
+    } else {
+        list()
+    }
     control_samples <- input$control_samples
     if (is.null(control_samples) || length(control_samples) == 0L ||
         length(samples) < 2L) {
@@ -1105,16 +1483,26 @@ bam_run_parameters <- function(input, config, samples, resolution = NULL) {
             )
         }
     }
-    calibration <- if (!is.null(profile)) {
-        profile$parameters$calibration
-    } else {
-        list()
-    }
     if (length(control_samples) > 0L) {
         calibration$controls <- control_samples
     }
     if (length(calibration) == 0L) {
         calibration <- NULL
+    }
+    changed <- bam_profile_changed_parameters(current, fallback)
+    effective <- if (is.null(profile) || length(changed) > 0L) {
+        "custom"
+    } else {
+        profile_name
+    }
+    base <- if (!is.null(profile)) {
+        profile_name
+    } else if (!is.null(profile_base) && length(profile_base) == 1L &&
+        !is.na(profile_base) && nzchar(profile_base) &&
+        !identical(profile_base, "custom")) {
+        as.character(profile_base)
+    } else {
+        "custom"
     }
     list(
         resolution = resolution,
@@ -1127,7 +1515,10 @@ bam_run_parameters <- function(input, config, samples, resolution = NULL) {
         mask = mask,
         control_samples = control_samples,
         calibration = calibration,
-        profile_name = profile_name
+        profile_name = effective,
+        profile_base = base,
+        profile_parameters = current,
+        profile_changed = changed
     )
 }
 
@@ -1830,7 +2221,8 @@ bam_result_cache <- function(max_entries = 3L) {
 #'
 #' @noRd
 bam_analysis_key <- function(preflight, resolution, donor_aggregation = NULL,
-                             controls = NULL, profile = NULL) {
+                             controls = NULL, profile = NULL,
+                             parameters = NULL) {
     if (!isTRUE(preflight$ok) || is.null(preflight$table) ||
         !all(c("path", "sample") %in% names(preflight$table))) {
         return(NULL)
@@ -1859,9 +2251,26 @@ bam_analysis_key <- function(preflight, resolution, donor_aggregation = NULL,
     if (isTRUE(preflight$example)) {
         profile_name <- "balanced"
         profile_spec <- mamamia_analysis_profile("balanced")
+        parameters <- NULL
         controls <- character(0)
     }
-    if (!is.null(profile_spec)) {
+    if (!is.null(parameters)) {
+        resolution_value <- parameters$windows_per_chromosome
+        metric <- parameters$metric
+        score <- parameters$score
+        donor_aggregation <- parameters$donor_aggregation
+        mapq <- parameters$mapq
+        mask <- list(
+            physical_fallback_mb = parameters$mask_physical_fallback_mb,
+            recurrence_threshold = parameters$mask_recurrence_threshold
+        )
+        calibration <- list(
+            fdr = parameters$calibration_fdr,
+            floors = parameters$calibration_floors,
+            min_mb = parameters$calibration_min_mb,
+            merge_gap = parameters$calibration_merge_gap
+        )
+    } else if (!is.null(profile_spec)) {
         resolution_value <- profile_spec$parameters$windows_per_chromosome
         metric <- profile_spec$parameters$metric
         score <- profile_spec$parameters$score
@@ -2420,6 +2829,108 @@ bam_dashboard_css <- function() {
         font-weight: 650;
         letter-spacing: .03em;
         line-height: 1.25;
+    }
+    .mamamia-sidebar .mamamia-profile-caption {
+        margin: -.1rem 0 .45rem;
+        color: var(--mm-muted);
+        font-size: .67rem;
+        line-height: 1.4;
+    }
+    .mamamia-sidebar .mamamia-param-heading {
+        margin: .7rem 0 .35rem;
+        color: var(--mm-muted);
+        font-size: .6rem;
+        font-weight: 750;
+        letter-spacing: .12em;
+        text-transform: uppercase;
+    }
+    .mamamia-sidebar .mamamia-param-heading:first-child {
+        margin-top: .1rem;
+    }
+    .mamamia-sidebar .mamamia-param-actions {
+        margin: .1rem 0 .55rem;
+    }
+    .mamamia-sidebar .mamamia-param-actions .btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: .35rem;
+        width: 100%;
+        height: 1.9rem;
+        font-size: .72rem;
+    }
+    .mamamia-sidebar .mamamia-param-help {
+        display: inline-flex;
+        align-items: center;
+        margin-left: .28rem;
+        color: var(--mm-muted);
+        font-size: .66rem;
+        line-height: 1;
+        cursor: help;
+        vertical-align: baseline;
+    }
+    .mamamia-sidebar .mamamia-param-help:hover,
+    .mamamia-sidebar .mamamia-param-help:focus {
+        color: var(--mm-accent);
+    }
+    .mamamia-sidebar .mamamia-param-control {
+        margin-bottom: .5rem;
+    }
+    .mamamia-sidebar .mamamia-param-control > .shiny-html-output {
+        display: block;
+        margin-bottom: .12rem;
+    }
+    .mamamia-sidebar .mamamia-param-control .shiny-label-null {
+        display: none;
+    }
+    .mamamia-sidebar .mamamia-param-control > .form-group {
+        margin-bottom: 0;
+    }
+    .mamamia-sidebar .control-label.mamamia-param-default {
+        display: inline-block;
+        color: var(--mm-ink);
+        font-weight: 750;
+    }
+    .mamamia-sidebar .control-label.mamamia-param-changed {
+        display: inline-block;
+        padding: 0 .2rem;
+        border-radius: .25rem;
+        background: #f4e4c6;
+        color: #7a4f0b;
+        font-weight: 750;
+    }
+    .mamamia-sidebar .mamamia-param-control:has(.mamamia-param-changed) .form-control,
+    .mamamia-sidebar .mamamia-param-control:has(.mamamia-param-changed) .form-select,
+    .mamamia-sidebar .mamamia-param-control:has(.mamamia-param-changed) .shiny-input-select,
+    .mamamia-sidebar .mamamia-resolution-slider:has(.mamamia-param-changed) .form-control {
+        border-color: #d9a441;
+        background-color: #fffaf0;
+    }
+    .mamamia-sidebar .mamamia-param-floors {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: .1rem .5rem;
+        margin-bottom: .35rem;
+    }
+    .mamamia-sidebar .mamamia-param-floor {
+        min-width: 0;
+        margin-bottom: .1rem;
+    }
+    .mamamia-sidebar .mamamia-param-floor .control-label {
+        letter-spacing: 0;
+    }
+    .mamamia-sidebar .mamamia-param-legend {
+        margin: .55rem 0 0;
+        color: var(--mm-muted);
+        font-size: .62rem;
+        line-height: 1.38;
+    }
+    .mamamia-sidebar .mamamia-param-legend .mamamia-param-changed {
+        padding: 0 .16rem;
+        border-radius: .2rem;
+        background: #f4e4c6;
+        color: #7a4f0b;
+        font-weight: 750;
     }
     .mamamia-sidebar .form-control,
     .mamamia-sidebar .form-select {
@@ -3530,8 +4041,11 @@ bam_dashboard_css <- function() {
         gap: .45rem;
         margin-bottom: .1rem;
     }
-    .mamamia-resolution-head > .control-label {
+    .mamamia-resolution-head > .shiny-html-output {
         flex: 0 0 auto;
+    }
+    .mamamia-resolution-head .control-label {
+        display: inline-block;
         margin: 0;
         color: var(--mm-muted);
         font-size: .61rem;
@@ -4088,12 +4602,11 @@ bam_sidebar_details_ui <- function(config) {
     shiny::tagList(
         bslib::accordion(
             id = "bam_sidebar_accordion",
-            multiple = FALSE,
+            multiple = TRUE,
             open = "Analysis",
             bslib::accordion_panel(
                 "Analysis",
-                shiny::uiOutput("analysis_profile_ui"),
-                shiny::uiOutput("resolution_ui"),
+                shiny::uiOutput("analysis_profile_ui")
             ),
             bslib::accordion_panel(
                 "Assembly",
@@ -4101,13 +4614,187 @@ bam_sidebar_details_ui <- function(config) {
             ),
             bslib::accordion_panel(
                 "Advanced",
-                shiny::uiOutput("donor_aggregation_ui"),
+                shiny::uiOutput("advanced_parameters_ui"),
                 shiny::uiOutput("control_samples_ui")
             )
         ),
         shiny::div(
             class = "mamamia-run-panel",
             shiny::uiOutput("run_ui")
+        )
+    )
+}
+
+#' Wrapper for one Advanced parameter so its label can be restyled alone
+#' @noRd
+bam_parameter_control_ui <- function(id, input, extra_class = NULL) {
+    shiny::div(
+        class = c("mamamia-param-control", extra_class),
+        shiny::uiOutput(
+            paste0("param_label_", id),
+            inline = TRUE
+        ),
+        input
+    )
+}
+
+#' @noRd
+bam_calibration_floor_labels <- function(config) {
+    bins <- config$defaults$calibration$length_bins_mb
+    if (is.null(bins) || length(bins) < 2L) {
+        bins <- c(5, 10, 25, 50, 100, Inf)
+    }
+    labels <- .calibration_bins(bins)$labels
+    paste0("Floor ", labels, " Mb")
+}
+
+#' Every profile parameter is editable under Advanced
+#' @noRd
+bam_advanced_parameters_ui <- function(config, defaults, locked = FALSE) {
+    if (isTRUE(locked)) {
+        return(shiny::tagList(
+            shiny::p(
+                class = "mamamia-fixed-note",
+                paste(
+                    "Analysis parameters are fixed for the bundled example.",
+                    "Upload a BAM to edit every profile parameter."
+                )
+            )
+        ))
+    }
+    floor_labels <- bam_calibration_floor_labels(config)
+    floor_values <- as.numeric(defaults$calibration_floors)
+    if (length(floor_values) != 5L) {
+        floor_values <- rep(floor_values, length.out = 5L)
+    }
+    floor_controls <- lapply(seq_len(5L), function(i) {
+        id <- paste0("calibration_floor_", i)
+        bam_parameter_control_ui(
+            id,
+            shiny::numericInput(
+                id, NULL,
+                value = floor_values[[i]],
+                min = 0,
+                step = 0.1,
+                width = "100%"
+            ),
+            extra_class = "mamamia-param-floor"
+        )
+    })
+    shiny::tagList(
+        shiny::div(
+            class = "mamamia-param-actions",
+            shiny::actionButton(
+                "reset_profile_parameters",
+                "Reset all to defaults",
+                icon = shiny::icon("rotate-left"),
+                class = "btn-sm btn-outline-secondary",
+                title = paste(
+                    "Restore every profile parameter and control sample",
+                    "to the selected profile's defaults"
+                )
+            )
+        ),
+        shiny::div(class = "mamamia-param-heading", "Resolution"),
+        shiny::uiOutput("resolution_ui"),
+        shiny::div(class = "mamamia-param-heading", "Scoring"),
+        bam_parameter_control_ui(
+            "metric",
+            shiny::selectInput(
+                "metric", NULL,
+                choices = c(
+                    "Breadth" = "breadth",
+                    "Count" = "count",
+                    "Combined" = "combined"
+                ),
+                selected = defaults$metric
+            )
+        ),
+        bam_parameter_control_ui(
+            "score",
+            shiny::selectInput(
+                "score", NULL,
+                choices = c(
+                    "Paired log-ratio" = "paired_log_ratio",
+                    "Donor only" = "donor_only"
+                ),
+                selected = defaults$score
+            )
+        ),
+        bam_parameter_control_ui(
+            "donor_aggregation",
+            shiny::selectInput(
+                "donor_aggregation", NULL,
+                choices = c("Max" = "max", "Mean" = "mean", "Sum" = "sum"),
+                selected = defaults$donor_aggregation
+            )
+        ),
+        bam_parameter_control_ui(
+            "mapq",
+            shiny::numericInput(
+                "mapq", NULL,
+                value = defaults$mapq,
+                min = 0, max = 255, step = 1,
+                width = "100%"
+            )
+        ),
+        shiny::div(class = "mamamia-param-heading", "Masking"),
+        bam_parameter_control_ui(
+            "mask_physical_fallback_mb",
+            shiny::numericInput(
+                "mask_physical_fallback_mb", NULL,
+                value = defaults$mask_physical_fallback_mb,
+                min = 0, step = 0.5,
+                width = "100%"
+            )
+        ),
+        bam_parameter_control_ui(
+            "mask_recurrence_threshold",
+            shiny::numericInput(
+                "mask_recurrence_threshold", NULL,
+                value = defaults$mask_recurrence_threshold,
+                min = 0, max = 1, step = 0.05,
+                width = "100%"
+            )
+        ),
+        shiny::div(class = "mamamia-param-heading", "Calibration"),
+        bam_parameter_control_ui(
+            "calibration_fdr",
+            shiny::numericInput(
+                "calibration_fdr", NULL,
+                value = defaults$calibration_fdr,
+                min = 0, max = 1, step = 0.001,
+                width = "100%"
+            )
+        ),
+        shiny::div(
+            class = "mamamia-param-floors",
+            floor_controls
+        ),
+        bam_parameter_control_ui(
+            "calibration_min_mb",
+            shiny::numericInput(
+                "calibration_min_mb", NULL,
+                value = defaults$calibration_min_mb,
+                min = 0, step = 0.5,
+                width = "100%"
+            )
+        ),
+        bam_parameter_control_ui(
+            "calibration_merge_gap",
+            shiny::numericInput(
+                "calibration_merge_gap", NULL,
+                value = defaults$calibration_merge_gap,
+                min = 0, step = 10,
+                width = "100%"
+            )
+        ),
+        shiny::p(
+            class = "mamamia-param-legend",
+            shiny::strong("Bold"),
+            " values are the selected profile's defaults;",
+            shiny::span(class = "mamamia-param-changed", "highlighted"),
+            " values were changed and make the run Custom."
         )
     )
 }
@@ -5059,6 +5746,29 @@ bam_launcher_server <- function(state) {
             bam_sidebar_details_ui(config)
         })
 
+        ## Profile state -------------------------------------------------------
+        ## The named profile is the template. Advanced edits never change the
+        ## template; they only make the effective profile Custom.
+        profile_base <- shiny::reactiveVal("balanced")
+        profile_defaults <- shiny::reactive({
+            bam_profile_default_parameters(config, profile_base())
+        })
+        profile_current <- shiny::reactive({
+            bam_profile_current_parameters(
+                input, config,
+                resolution = resolution_value(),
+                fallback = profile_defaults()
+            )
+        })
+        profile_changed <- shiny::reactive({
+            bam_profile_changed_parameters(
+                profile_current(), profile_defaults()
+            )
+        })
+        profile_custom <- shiny::reactive({
+            length(profile_changed()) > 0L
+        })
+
         output$analysis_profile_ui <- shiny::renderUI({
             if (isTRUE(example_mode())) {
                 return(shiny::tagList(
@@ -5073,12 +5783,22 @@ bam_launcher_server <- function(state) {
                 ))
             }
             choices <- mamamia_analysis_profile_choices()
-            selected <- input$analysis_profile
-            if (is.null(selected) || length(selected) != 1L ||
-                is.na(selected) || !selected %in% unname(choices)) {
-                selected <- "balanced"
+            base <- profile_base()
+            custom <- isTRUE(profile_custom())
+            selected <- if (custom) "custom" else base
+            profile <- mamamia_analysis_profile(base)
+            caption <- if (custom) {
+                paste0(
+                    "Custom settings based on ",
+                    if (is.null(profile)) base else profile$label,
+                    ". Highlighted Advanced values differ from the ",
+                    "profile defaults."
+                )
+            } else if (is.null(profile)) {
+                "Custom analysis settings."
+            } else {
+                profile$short_description
             }
-            profile <- mamamia_analysis_profile(selected)
             shiny::tagList(
                 shiny::selectInput(
                     "analysis_profile", "Analysis profile",
@@ -5086,50 +5806,137 @@ bam_launcher_server <- function(state) {
                     selected = selected
                 ),
                 shiny::p(
-                    class = "text-muted small mb-0",
-                    if (is.null(profile)) {
-                        paste(
-                            "Custom uses the resolution, donor aggregation,",
-                            "mask and calibration controls shown below."
-                        )
-                    } else {
-                        profile$description
-                    }
+                    class = "mamamia-profile-caption",
+                    caption
                 )
             )
         })
+        shiny::outputOptions(
+            output, "analysis_profile_ui", suspendWhenHidden = FALSE
+        )
 
         shiny::observeEvent(input$analysis_profile, {
             if (isTRUE(example_mode())) {
                 return()
             }
+            value <- input$analysis_profile
+            if (is.null(value) || length(value) != 1L ||
+                is.na(value) || !nzchar(value)) {
+                return()
+            }
+            value <- as.character(value)
+            if (identical(value, "custom")) {
+                ## Custom is a status the form switches to when a value
+                ## differs; it is not a template that resets the controls.
+                return()
+            }
             profile <- tryCatch(
-                mamamia_analysis_profile(input$analysis_profile),
+                mamamia_analysis_profile(value),
                 error = function(e) NULL
             )
             if (is.null(profile)) {
                 return()
             }
-            resolution <- as.integer(
-                profile$parameters$windows_per_chromosome
+            if (!identical(profile_base(), value)) {
+                profile_base(value)
+            }
+            bam_update_profile_inputs(
+                session,
+                mamamia_profile_flat_parameters(profile$parameters)
             )
-            shiny::updateSliderInput(
-                session, "resolution", value = resolution
+        }, ignoreInit = FALSE)
+
+        shiny::observeEvent(input$reset_profile_parameters, {
+            if (isTRUE(example_mode())) {
+                return()
+            }
+            defaults <- profile_defaults()
+            bam_update_profile_inputs(session, defaults)
+            shiny::updateSelectizeInput(
+                session, "control_samples", selected = character(0)
             )
-            shiny::updateNumericInput(
-                session, "resolution_number", value = resolution
-            )
-            shiny::updateSelectInput(
-                session, "donor_aggregation",
-                selected = profile$parameters$donor_aggregation
+            profile <- mamamia_analysis_profile(profile_base())
+            label <- if (is.null(profile)) profile_base() else profile$label
+            log_line(sprintf(
+                "Reset every Advanced parameter to the %s defaults.", label
+            ))
+            shiny::showNotification(
+                sprintf("Advanced parameters reset to %s defaults.", label),
+                type = "message", duration = 4
             )
         }, ignoreInit = TRUE)
+
+        output$advanced_parameters_ui <- shiny::renderUI({
+            bam_advanced_parameters_ui(
+                config, profile_defaults(),
+                locked = isTRUE(example_mode())
+            )
+        })
+
+        ## Parameter labels are separate outputs so editing a value never
+        ## rebuilds the input and steals keyboard focus.
+        output$resolution_param_label <- shiny::renderUI({
+            current <- profile_current()$windows_per_chromosome
+            default <- profile_defaults()$windows_per_chromosome
+            bam_profile_parameter_label(
+                "resolution", "Resolution",
+                bam_profile_value_changed(current, default),
+                help = bam_parameter_help("resolution")
+            )
+        })
+        parameter_labels <- list(
+            metric = "Metric",
+            score = "Score",
+            donor_aggregation = "Donor aggregation",
+            mapq = "Minimum MAPQ",
+            mask_physical_fallback_mb = "Mask physical fallback (Mb)",
+            mask_recurrence_threshold = "Mask recurrence threshold",
+            calibration_fdr = "Calibration FDR",
+            calibration_min_mb = "Calibration minimum length (Mb)",
+            calibration_merge_gap = "Calibration merge gap (windows)"
+        )
+        for (parameter_id in names(parameter_labels)) {
+            local({
+                id <- parameter_id
+                label <- parameter_labels[[id]]
+                output[[paste0("param_label_", id)]] <- shiny::renderUI({
+                    bam_profile_parameter_label(
+                        id, label,
+                        bam_profile_value_changed(
+                            profile_current()[[id]],
+                            profile_defaults()[[id]]
+                        ),
+                        help = bam_parameter_help(id, label)
+                    )
+                })
+            })
+        }
+        floor_labels <- bam_calibration_floor_labels(config)
+        for (i in seq_len(5L)) {
+            local({
+                index <- i
+                id <- paste0("calibration_floor_", index)
+                label <- floor_labels[[index]]
+                output[[paste0("param_label_", id)]] <- shiny::renderUI({
+                    current <- profile_current()$calibration_floors[[index]]
+                    default <- profile_defaults()$calibration_floors[[index]]
+                    bam_profile_parameter_label(
+                        id, label,
+                        bam_profile_value_changed(current, default),
+                        help = bam_parameter_help(id, label)
+                    )
+                })
+            })
+        }
 
         output$resolution_ui <- shiny::renderUI({
             if (isTRUE(example_mode())) {
                 return(bam_example_resolution_slider_ui(config$defaults))
             }
-            bam_resolution_slider_ui(config$defaults)
+            display <- config$defaults
+            display$windows_per_chromosome <-
+                profile_defaults()$windows_per_chromosome
+            bam_resolution_slider_ui(display)
         })
 
         ## The slider stays the canonical control, but a valid typed value
@@ -5151,7 +5958,17 @@ bam_launcher_server <- function(state) {
             }
             tryCatch(
                 bam_resolution_value(input$resolution, defaults),
-                error = function(e) bam_default_resolution(defaults)
+                error = function(e) {
+                    fallback <- tryCatch(
+                        profile_defaults()$windows_per_chromosome,
+                        error = function(e) NULL
+                    )
+                    if (is.null(fallback) || length(fallback) != 1L ||
+                        is.na(fallback)) {
+                        fallback <- bam_default_resolution(defaults)
+                    }
+                    as.integer(fallback)
+                }
             )
         })
 
@@ -5255,48 +6072,6 @@ bam_launcher_server <- function(state) {
             }
         }, ignoreInit = TRUE)
 
-        output$donor_aggregation_ui <- shiny::renderUI({
-            if (isTRUE(example_mode())) {
-                value <- bam_example_config()$defaults$donor_aggregation
-                label <- switch(
-                    as.character(value),
-                    max = "Max",
-                    mean = "Mean",
-                    sum = "Sum",
-                    as.character(value)
-                )
-                return(shiny::tagList(
-                    bam_fixed_control_ui("Donor aggregation", label),
-                    shiny::p(
-                        class = "mamamia-fixed-note",
-                        "Fixed for the bundled example."
-                    )
-                ))
-            }
-            defaults <- config$defaults
-            shiny::tagList(
-                shiny::selectInput(
-                    "donor_aggregation", "Donor aggregation",
-                    choices = c(
-                        "Max" = "max",
-                        "Mean" = "mean",
-                        "Sum" = "sum"
-                    ),
-                    selected = defaults$donor_aggregation
-                ),
-                shiny::p(
-                    class = "text-muted small mb-0",
-                    sprintf(
-                        paste(
-                            "How donor components are combined per window.",
-                            "Registry default: %s."
-                        ),
-                        defaults$donor_aggregation
-                    )
-                )
-            )
-        })
-
         output$control_samples_ui <- shiny::renderUI({
             pf <- preflight_state()
             if (!isTRUE(pf$ok) || is.null(pf$table) ||
@@ -5315,7 +6090,18 @@ bam_launcher_server <- function(state) {
             selected <- intersect(as.character(selected), samples)
             shiny::tagList(
                 shiny::selectizeInput(
-                    "control_samples", "Calibration controls",
+                    "control_samples",
+                    shiny::tagList(
+                        "Calibration controls",
+                        bslib::tooltip(
+                            shiny::span(
+                                class = "mamamia-param-help",
+                                shiny::icon("circle-question")
+                            ),
+                            bam_parameter_help("control_samples"),
+                            placement = "right"
+                        )
+                    ),
                     choices = samples,
                     selected = selected,
                     multiple = TRUE,
@@ -5542,7 +6328,8 @@ bam_launcher_server <- function(state) {
                 resolution_value(),
                 input$donor_aggregation,
                 input$control_samples,
-                input$analysis_profile
+                input$analysis_profile,
+                parameters = profile_current()
             )
         })
 
@@ -5641,7 +6428,8 @@ bam_launcher_server <- function(state) {
             params <- tryCatch(
                 bam_run_parameters(
                     input, pf$config, samples,
-                    resolution = resolution_value()
+                    resolution = resolution_value(),
+                    profile_base = profile_base()
                 ),
                 error = function(e) e
             )
@@ -5760,7 +6548,8 @@ bam_launcher_server <- function(state) {
                     exclude_flags = params$exclude_flags,
                     cores = params$cores,
                     progress = progress,
-                    profile = params$profile_name
+                    profile = params$profile_name,
+                    profile_base = params$profile_base
                 )
             }
             progress_for <- function(prefix = "") {

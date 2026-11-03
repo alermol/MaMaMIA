@@ -36,7 +36,7 @@ BAM-first Shiny application. The app reads BAM headers, matches them to the
 configured species registry, stages the file in session temporary storage,
 and runs \code{\link[=analyzeBamInput]{analyzeBamInput()}} before handing the \code{BamAnalysisResult} to the
 introgression explorer of \code{\link[=exploreIntrogressions]{exploreIntrogressions()}}. The dashboard accepts
-one BAM per run; a multi-sample BAM is read through its \code{@RG SM} tags.
+one BAM per run; a multi-sample BAM is read through its \verb{@RG SM} tags.
 }
 \details{
 The app reads its assembly registry from \code{config} or, when that is \code{NULL},

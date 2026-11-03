@@ -217,7 +217,9 @@
                                  n_per, mapq, exclude_flags, metric, score,
                                  donor_aggregation, sample_composition,
                                  mask, calibration, started_at,
-                                 analysis_profile = NULL) {
+                                 analysis_profile = NULL,
+                                 analysis_profile_base = NULL,
+                                 analysis_profile_parameters = NULL) {
     config_path <- .pipeline_config_path(config)
     config_hash <- if (!is.na(config_path) && file.exists(config_path)) {
         unname(tools::md5sum(config_path))
@@ -263,6 +265,12 @@
         } else {
             as.character(analysis_profile)[[1L]]
         },
+        analysis_profile_base = if (is.null(analysis_profile_base)) {
+            NA_character_
+        } else {
+            as.character(analysis_profile_base)[[1L]]
+        },
+        analysis_profile_parameters = analysis_profile_parameters,
         assembly = preflight$assembly[[1L]],
         bams = bams,
         staged = indexed$staged,
@@ -411,6 +419,8 @@
 #' @param profile Optional analysis-profile name recorded in provenance. It
 #'   does not override the explicit arguments; use
 #'   [mamamia_analysis_profile()] to resolve a profile before calling.
+#' @param profile_base Optional named profile the values were based on when
+#'   `profile` is `"custom"`. Recorded in provenance and the results bundle.
 #'
 #' @return A `BamAnalysisResult` list with `assembly`, `config`, `bams`,
 #'   `samples`, `windows`, `gc`, `metrics`, `scores`, `masks`, `calibration`,
@@ -446,7 +456,8 @@ analyzeBamInput <- function(bam_paths,
                             exclude_flags = NULL,
                             cores = 1L,
                             progress = NULL,
-                            profile = NULL) {
+                            profile = NULL,
+                            profile_base = NULL) {
     started_at <- Sys.time()
     config <- .pipeline_config(config)
     .validate_progress(progress)
@@ -703,6 +714,23 @@ analyzeBamInput <- function(bam_paths,
         n_targets = preflight$n_targets,
         stringsAsFactors = FALSE
     )
+    profile_parameters <- list(
+        windows_per_chromosome = n_per,
+        metric = metric,
+        score = score,
+        donor_aggregation = donor_aggregation,
+        mapq = mapq,
+        mask = list(
+            physical_fallback_mb = mask_spec$physical_fallback_mb,
+            recurrence_threshold = mask_spec$recurrence_threshold
+        ),
+        calibration = list(
+            fdr = cal$fdr,
+            floors = as.numeric(cal_floors),
+            min_mb = segment_args$min_mb,
+            merge_gap = segment_args$merge_gap
+        )
+    )
     provenance <- .pipeline_provenance(
         config = config,
         preflight = preflight,
@@ -719,7 +747,9 @@ analyzeBamInput <- function(bam_paths,
         mask = masks,
         calibration = calibrated$calibration,
         started_at = started_at,
-        analysis_profile = profile
+        analysis_profile = profile,
+        analysis_profile_base = profile_base,
+        analysis_profile_parameters = profile_parameters
     )
 
     result <- structure(
