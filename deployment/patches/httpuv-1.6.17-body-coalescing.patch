@@ -1,0 +1,86 @@
+--- a/src/httprequest.h
++++ b/src/httprequest.h
+@@ -74,6 +74,7 @@
+   // For buffering the incoming HTTP request when data comes in while waiting
+   // for R to process headers.
+   std::vector<char> _requestBuffer;
++  std::vector<char> _bodyAccum;
+ 
+   // Most of the methods in HttpRequest run on a background thread. Some
+   // methods run on the main thread. This is used by the main-thread methods
+@@ -183,6 +184,7 @@
+   virtual int _on_header_value(http_parser* pParser, const char* pAt, size_t length);
+   virtual int _on_headers_complete(http_parser* pParser);
+   virtual int _on_body(http_parser* pParser, const char* pAt, size_t length);
++  void _schedule_body_data(std::shared_ptr<std::vector<char> > buf);
+   virtual int _on_message_complete(http_parser* pParser);
+ 
+   virtual void onWSMessage(bool binary, const char* data, size_t len);
+--- a/src/httprequest.cpp
++++ b/src/httprequest.cpp
+@@ -434,20 +434,13 @@
+ // Message body (for POST)
+ // ============================================================================
+ 
+-int HttpRequest::_on_body(http_parser* pParser, const char* pAt, size_t length) {
++void HttpRequest::_schedule_body_data(
++    std::shared_ptr<std::vector<char> > buf) {
+   ASSERT_BACKGROUND_THREAD()
+-  debug_log("HttpRequest::_on_body", LOG_DEBUG);
+-
+-  // Copy pAt because the source data is deleted right after calling this
+-  // function.
+-  std::shared_ptr<std::vector<char> > buf = std::make_shared<std::vector<char> >(pAt, pAt + length);
+-
+   std::function<void(std::shared_ptr<HttpResponse>)> schedule_bg_callback(
+-    std::bind(&HttpRequest::_schedule_on_body_error, shared_from_this(), std::placeholders::_1)
++    std::bind(&HttpRequest::_schedule_on_body_error, shared_from_this(),
++              std::placeholders::_1)
+   );
+-
+-  // Schedule on main thread:
+-  // _pWebApplication->onBodyData(this, pAt, length, schedule_bg_callback);
+   invoke_later(
+     std::bind(
+       &WebApplication::onBodyData,
+@@ -457,6 +450,23 @@
+       schedule_bg_callback
+     )
+   );
++}
++
++int HttpRequest::_on_body(http_parser* pParser, const char* pAt, size_t length) {
++  ASSERT_BACKGROUND_THREAD()
++  debug_log("HttpRequest::_on_body", LOG_DEBUG);
++
++  // Accumulate body bytes in C++ and hand R larger blocks. The default path
++  // calls back into R once per socket read (often 16-64 KiB), which dominates
++  // upload time for large files.
++  _bodyAccum.insert(_bodyAccum.end(), pAt, pAt + length);
++
++  if (_bodyAccum.size() >= (1024 * 1024)) {
++    std::shared_ptr<std::vector<char> > buf =
++      std::make_shared<std::vector<char> >();
++    buf->swap(_bodyAccum);
++    _schedule_body_data(buf);
++  }
+ 
+   return 0;
+ }
+@@ -503,6 +513,16 @@
+     std::bind(&HttpRequest::_schedule_on_message_complete_complete, shared_from_this(), std::placeholders::_1)
+   );
+ 
++  // Flush any remaining body bytes before scheduling the response. Both
++  // callbacks run on the main thread in submission order, so R sees the tail
++  // of the body before onRequest()/handleRequest() runs.
++  if (!_bodyAccum.empty()) {
++    std::shared_ptr<std::vector<char> > buf =
++      std::make_shared<std::vector<char> >();
++    buf->swap(_bodyAccum);
++    _schedule_body_data(buf);
++  }
++
+   // Use later to schedule _pWebApplication->getResponse(this, schedule_bg_callback)
+   // to run on the main thread. That function in turn calls
+   // this->_schedule_on_message_complete_complete.

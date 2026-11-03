@@ -90,6 +90,7 @@ ENV HOME=/home/mamamia \
 WORKDIR /app
 
 COPY --chown=mamamia:mamamia uvr.toml uvr.lock .r-version ./
+COPY --chown=mamamia:mamamia deployment/patches /tmp/mamamia-patches
 
 USER mamamia
 
@@ -103,6 +104,24 @@ RUN if [ -n "${BIOC_MIRROR}" ]; then \
     && uvr r install "${R_VERSION}" --unattended \
     && uvr sync --frozen --unattended --jobs 4 \
     && uvr doctor --unattended
+
+# httpuv 1.6.17 invokes an R callback for every 16-64 KiB request-body read.
+# A multi-GB BAM upload therefore spends most of its time in tens of thousands
+# of R calls before Shiny sees the file. Rebuild the pinned httpuv from source
+# with the coalescing patch (1 MiB blocks); the version and uvr.lock entry are
+# unchanged. Remove this block and deployment/patches/httpuv-* together.
+RUN uvr activate --write-shim \
+    && . .uvr/activate \
+    && curl -fsSL -o /tmp/httpuv.tar.gz \
+        "https://cran.r-project.org/src/contrib/httpuv_1.6.17.tar.gz" \
+    && echo "50763765704e547c15aac4be97cec437  /tmp/httpuv.tar.gz" | md5sum -c - \
+    && mkdir -p /tmp/httpuv-src \
+    && tar -xzf /tmp/httpuv.tar.gz -C /tmp/httpuv-src --strip-components=1 \
+    && cd /tmp/httpuv-src \
+    && git apply -p1 /tmp/mamamia-patches/httpuv-1.6.17-body-coalescing.patch \
+    && R CMD INSTALL --no-multiarch . \
+    && cd / \
+    && rm -rf /tmp/httpuv.tar.gz /tmp/httpuv-src
 
 # uvr's R bundles cairo and fontconfig libraries, but not the system
 # fontconfig configuration or any fonts. Without /etc/fonts/fonts.conf, the

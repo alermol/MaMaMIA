@@ -1,5 +1,13 @@
 # MaMaMIA 0.1.0
 
+## Deployment
+
+* **Faster uploads.** The container rebuilds the pinned httpuv 1.6.17 with a
+  1 MiB request-body coalescing patch. A 1 GiB upload drops from about 22 s to
+  about 9 s on the validation host; a real 814 MB BAM uploads in about 6.6 s.
+  The package dependency version and `uvr.lock` are unchanged. See
+  `deployment/patches/README.md`.
+
 ## Breaking changes
 
 * **One pipeline.** `analyzeBamInput()` now runs the breadth-based pipeline. The
