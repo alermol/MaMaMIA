@@ -2886,7 +2886,7 @@ bam_dashboard_css <- function() {
             grid-column: 1;
             margin: 0;
         }
-        .mamamia-export-actions .mamamia-export-card:last-child .btn {
+        .mamamia-export-actions .mamamia-export-card:last-child .mamamia-download-row {
             grid-column: 2;
             grid-row: 1 / span 2;
             margin: 0;
@@ -2911,6 +2911,58 @@ bam_dashboard_css <- function() {
     .mamamia-export-actions .mamamia-export-card .btn {
         margin-top: auto;
         align-self: flex-start;
+    }
+    .mamamia-download-row {
+        display: flex;
+        align-items: center;
+        gap: .55rem;
+        flex-wrap: wrap;
+    }
+    .mamamia-export-actions .mamamia-export-card .mamamia-download-row {
+        margin-top: auto;
+    }
+    .mamamia-export-actions .mamamia-export-card .mamamia-download-row .btn {
+        margin-top: 0;
+        align-self: center;
+    }
+    .mamamia-download-row.is-busy .btn {
+        opacity: .7;
+        cursor: progress;
+        pointer-events: none;
+    }
+    .mamamia-download-status {
+        display: none;
+        align-items: center;
+        gap: .42rem;
+        color: var(--mm-muted);
+        font-size: .68rem;
+        line-height: 1.25;
+    }
+    .mamamia-download-status.is-visible {
+        display: inline-flex;
+    }
+    .mamamia-download-status.is-error {
+        color: #a13a2f;
+    }
+    .mamamia-download-spinner {
+        width: .8rem;
+        height: .8rem;
+        flex: 0 0 auto;
+        border: .12rem solid var(--mm-line);
+        border-top-color: var(--mm-accent);
+        border-radius: 50%;
+        animation: mamamia-download-spin .8s linear infinite;
+    }
+    .mamamia-download-status.is-error .mamamia-download-spinner {
+        display: none;
+    }
+    @keyframes mamamia-download-spin {
+        to { transform: rotate(360deg); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .mamamia-download-spinner {
+            animation-duration: 2.4s;
+        }
     }
     .mamamia-export-card-head {
         display: flex;
@@ -4260,6 +4312,116 @@ bam_launcher_ui <- function(state) {
                     "  }, true);",
                     "})();"
                 )
+            )),
+            shiny::tags$script(shiny::HTML(
+                paste(
+                    "(function() {",
+                    "  function filenameFromHeader(header, fallback) {",
+                    "    if (!header) return fallback;",
+                    "    var match = /filename\\*?=(?:UTF-8'')?[\"']?([^\"';]+)[\"']?/i.exec(header);",
+                    "    if (!match) return fallback;",
+                    "    try { return decodeURIComponent(match[1]); }",
+                    "    catch (error) { return match[1]; }",
+                    "  }",
+                    "  function statusNode(row) {",
+                    "    return row.querySelector('.mamamia-download-status');",
+                    "  }",
+                    "  function setBusy(row) {",
+                    "    var status = statusNode(row);",
+                    "    row.classList.add('is-busy');",
+                    "    row.setAttribute('aria-busy', 'true');",
+                    "    if (!status) return;",
+                    "    status.classList.remove('is-error');",
+                    "    status.classList.add('is-visible');",
+                    "    status.setAttribute('aria-hidden', 'false');",
+                    "    var text = status.querySelector('.mamamia-download-status-text');",
+                    "    if (text) {",
+                    "      text.textContent = row.getAttribute('data-busy-text') ||",
+                    "        'Preparing download...';",
+                    "    }",
+                    "  }",
+                    "  function setIdle(row) {",
+                    "    var status = statusNode(row);",
+                    "    row.classList.remove('is-busy');",
+                    "    row.removeAttribute('aria-busy');",
+                    "    if (!status) return;",
+                    "    status.classList.remove('is-visible', 'is-error');",
+                    "    status.setAttribute('aria-hidden', 'true');",
+                    "  }",
+                    "  function setError(row) {",
+                    "    var status = statusNode(row);",
+                    "    row.classList.remove('is-busy');",
+                    "    row.removeAttribute('aria-busy');",
+                    "    if (!status) return;",
+                    "    status.classList.add('is-visible', 'is-error');",
+                    "    status.setAttribute('aria-hidden', 'false');",
+                    "    var text = status.querySelector('.mamamia-download-status-text');",
+                    "    if (text) text.textContent = 'Download failed. Try again.';",
+                    "  }",
+                    "  function saveBlob(blob, filename) {",
+                    "    var url = URL.createObjectURL(blob);",
+                    "    var link = document.createElement('a');",
+                    "    link.href = url;",
+                    "    link.download = filename || 'mamamia-download';",
+                    "    link.style.display = 'none';",
+                    "    document.body.appendChild(link);",
+                    "    link.click();",
+                    "    setTimeout(function() {",
+                    "      link.remove();",
+                    "      URL.revokeObjectURL(url);",
+                    "    }, 1500);",
+                    "  }",
+                    "  document.addEventListener('click', function(event) {",
+                    "    var link = event.target.closest ?",
+                    "      event.target.closest('.mamamia-download-row .shiny-download-link') :",
+                    "      null;",
+                    "    if (!link) return;",
+                    "    if (event.button !== 0 || event.metaKey || event.ctrlKey ||",
+                    "        event.shiftKey || event.altKey) return;",
+                    "    var row = link.closest('.mamamia-download-row');",
+                    "    if (!row || row.getAttribute('data-mamamia-busy') === 'true') {",
+                    "      event.preventDefault();",
+                    "      return;",
+                    "    }",
+                    "    var href = link.getAttribute('href');",
+                    "    if (!href || href === '#' || /^javascript:/i.test(href)) return;",
+                    "    if (typeof window.fetch !== 'function') return;",
+                    "    event.preventDefault();",
+                    "    event.stopPropagation();",
+                    "    row.setAttribute('data-mamamia-busy', 'true');",
+                    "    var timer = setTimeout(function() { setBusy(row); }, 120);",
+                    "    fetch(href, { credentials: 'same-origin' })",
+                    "      .then(function(response) {",
+                    "        if (!response.ok) {",
+                    "          throw new Error('Download failed with ' + response.status);",
+                    "        }",
+                    "        var header = response.headers.get('Content-Disposition') || '';",
+                    "        var fallback = link.getAttribute('download') ||",
+                    "          'mamamia-download';",
+                    "        var filename = filenameFromHeader(header, fallback);",
+                    "        return response.blob().then(function(blob) {",
+                    "          return { blob: blob, filename: filename };",
+                    "        });",
+                    "      })",
+                    "      .then(function(result) {",
+                    "        clearTimeout(timer);",
+                    "        if (!result.blob || result.blob.size < 1) {",
+                    "          throw new Error('Empty download');",
+                    "        }",
+                    "        saveBlob(result.blob, result.filename);",
+                    "        setIdle(row);",
+                    "      })",
+                    "      .catch(function() {",
+                    "        clearTimeout(timer);",
+                    "        setError(row);",
+                    "        setTimeout(function() { setIdle(row); }, 6000);",
+                    "      })",
+                    "      .finally(function() {",
+                    "        row.setAttribute('data-mamamia-busy', 'false');",
+                    "      });",
+                    "  }, true);",
+                    "})();"
+                )
             ))
         ),
         gridlayout::grid_container(
@@ -5586,10 +5748,11 @@ bam_launcher_server <- function(state) {
                         }
                     ),
                     if (multiple_samples) {
-                        shiny::downloadButton(
+                        explorer_download_button(
                             "download_cohort",
                             "Download all samples (BEDPE)",
-                            class = "btn-sm"
+                            class = "btn-sm",
+                            busy = "Preparing cohort BEDPE..."
                         )
                     }
                 )

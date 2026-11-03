@@ -311,16 +311,18 @@ Primary results include full, passing and confident call tables, all-call,
 passing-call and confident BEDPE files, and full, confident and filtered
 karyotype SVGs. Diagnostics add per-window coverage, GC and MAPQ metrics,
 per-window scores and per-group score and residual summaries, every mask
-decision, calibration thresholds, call summaries
-by class, chromosome group, review status and copy-number state, and the
-next-best recipient candidates. Reproducibility files record the resolved
-configuration, full provenance, software versions, R session information,
-assembly contigs, samples, BAM paths, and a manifest with MD5 checksums. A
-self-contained `report.html` presents the run overview, karyotype and summary
-tables, and BED, BEDPE and bedGraph tracks support genome browsers. The
-**All calls** action downloads every call in the current run as a single
-BEDPE file, and **Selected calls** downloads only the rows selected in the
-Calls table. The
+decision, calibration thresholds, call summaries by class, chromosome group,
+review status and copy-number state, and the next-best recipient candidates.
+Diagnostic plots for coverage, scores, residuals, masks, calls and the cohort
+are written as PNG files under `qc/plots/` and embedded in `report.html`.
+Reproducibility files record the resolved configuration, full provenance,
+software versions, R session information, assembly contigs, samples, BAM paths,
+and a manifest with MD5 checksums. A self-contained `report.html` presents the
+run overview, karyotype, plots and summary tables, and BED, BEDPE and bedGraph
+tracks support genome browsers. The **All calls** action downloads every call
+in the current run as a single BEDPE file, and **Selected calls** downloads
+only the rows selected in the Calls table. Each download button shows an inline
+spinner while the server prepares the file. The
 cohort/sample summary is a sortable table: hover any heading for its
 description, and use **Additional columns** to add diagnostics such as reads
 per window, call-class and status counts, pass and confidence rates, call-width

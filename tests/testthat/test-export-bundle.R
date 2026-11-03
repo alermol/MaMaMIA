@@ -237,6 +237,26 @@ test_that("the result bundle contains the table, BEDPE and karyotypes", {
         "tracks/masks.bed", "tracks/breadth.bedGraph.gz"
     ) %in% relative))
 
+    plot_files <- c(
+        "qc/plots/coverage-by-group.png",
+        "qc/plots/score-by-group.png",
+        "qc/plots/score-profile.png",
+        "qc/plots/depth-residuals.png",
+        "qc/plots/masked-fraction-by-group.png",
+        "qc/plots/calls-by-class.png"
+    )
+    expect_true(all(plot_files %in% relative))
+    png_signature <- as.raw(c(
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a
+    ))
+    for (plot_file in plot_files) {
+        plot_path <- file.path(root, plot_file)
+        expect_true(file.info(plot_path)$size > 0)
+        expect_identical(
+            readBin(plot_path, "raw", n = 8L), png_signature
+        )
+    }
+
     summary <- utils::read.csv(
         file.path(root, "calls-summary.csv"),
         check.names = FALSE, stringsAsFactors = FALSE
@@ -359,6 +379,10 @@ test_that("the result bundle contains the table, BEDPE and karyotypes", {
     expect_match(report, "Calls by class", fixed = TRUE)
     expect_match(report, "Coverage and GC by group", fixed = TRUE)
     expect_match(report, "Score summary by group", fixed = TRUE)
+    expect_match(report, "Score profile", fixed = TRUE)
+    expect_match(report, "Depth residuals", fixed = TRUE)
+    expect_match(report, "Coverage breadth by chromosome group", fixed = TRUE)
+    expect_match(report, "data:image/png;base64,", fixed = TRUE)
     expect_match(report, "manifest.json", fixed = TRUE)
     expect_match(report, "qc/metrics-summary.csv", fixed = TRUE)
 
@@ -394,6 +418,34 @@ test_that("the result bundle contains the table, BEDPE and karyotypes", {
 
     expect_match(readme, "report.html", fixed = TRUE)
     expect_match(readme, "qc/metrics-windows.csv.gz", fixed = TRUE)
+    expect_match(readme, "qc/plots/", fixed = TRUE)
     expect_match(readme, "manifest.json", fixed = TRUE)
     expect_match(readme, "Diagnostic conventions", fixed = TRUE)
+})
+
+test_that("diagnostic plots handle empty inputs and multi-sample cohorts", {
+    expect_null(bam_bundle_plot_coverage(NULL))
+    expect_null(bam_bundle_plot_scores(data.frame()))
+    expect_null(bam_bundle_plot_score_profile(data.frame()))
+    expect_null(bam_bundle_plot_residuals(data.frame()))
+    expect_null(bam_bundle_plot_masks(data.frame()))
+    expect_null(bam_bundle_plot_calls(data.frame()))
+
+    calls <- data.frame(
+        call_class = c("addition", "deletion"),
+        calls = c(2L, 1L),
+        passing_calls = c(1L, 1L),
+        confident_calls = c(1L, 0L),
+        stringsAsFactors = FALSE
+    )
+    expect_s3_class(bam_bundle_plot_calls(calls), "ggplot")
+
+    cohort <- data.frame(
+        sample = c("A", "B"),
+        n_all_calls = c(3L, 5L),
+        n_class_confident = c(1L, 2L),
+        stringsAsFactors = FALSE
+    )
+    expect_s3_class(bam_bundle_plot_cohort(cohort), "ggplot")
+    expect_null(bam_bundle_plot_cohort(cohort[1L, , drop = FALSE]))
 })

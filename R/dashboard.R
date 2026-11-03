@@ -278,6 +278,28 @@ explorer_selection_ui <- function(id) {
     )
 }
 
+explorer_download_button <- function(id, label, class = "btn-sm",
+                                     busy = "Preparing download...") {
+    shiny::div(
+        class = "mamamia-download-row",
+        `data-busy-text` = busy,
+        shiny::downloadButton(id, label, class = class),
+        shiny::tags$span(
+            class = "mamamia-download-status",
+            role = "status",
+            `aria-live` = "polite",
+            `aria-hidden` = "true",
+            shiny::tags$span(
+                class = "mamamia-download-spinner",
+                `aria-hidden` = "true"
+            ),
+            shiny::tags$span(
+                class = "mamamia-download-status-text", busy
+            )
+        )
+    )
+}
+
 explorer_export_ui <- function(id) {
     ns <- shiny::NS(id)
     shiny::div(
@@ -293,10 +315,11 @@ explorer_export_ui <- function(id) {
                     "karyotype SVGs in one ZIP archive."
                 )
             ),
-            shiny::downloadButton(
+            explorer_download_button(
                 ns("download_bundle"),
                 "Download results bundle (.zip)",
-                class = "btn-sm btn-primary"
+                class = "btn-sm btn-primary",
+                busy = "Preparing bundle..."
             )
         ),
         shiny::div(
@@ -309,20 +332,22 @@ explorer_export_ui <- function(id) {
                     "file, without the rest of the bundle."
                 )
             ),
-            shiny::downloadButton(
+            explorer_download_button(
                 ns("download_all_bedpe"),
                 "Download all BEDPE",
-                class = "btn-sm"
+                class = "btn-sm",
+                busy = "Preparing BEDPE..."
             )
         ),
         shiny::div(
             class = "mamamia-export-section mamamia-export-card",
             shiny::h5("Selected calls"),
             shiny::textOutput(ns("selection_status")),
-            shiny::downloadButton(
+            explorer_download_button(
                 ns("download_bedpe"),
                 "Download selected BEDPE",
-                class = "btn-sm"
+                class = "btn-sm",
+                busy = "Preparing BEDPE..."
             )
         )
     )

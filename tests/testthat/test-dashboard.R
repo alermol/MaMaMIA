@@ -574,6 +574,9 @@ test_that("the export panel offers one results bundle", {
     html <- as.character(explorer_export_ui("explorer"))
     expect_match(html, "mamamia-export-actions", fixed = TRUE)
     expect_match(html, "mamamia-export-card", fixed = TRUE)
+    expect_match(html, "mamamia-download-row", fixed = TRUE)
+    expect_match(html, "mamamia-download-spinner", fixed = TRUE)
+    expect_match(html, "Preparing bundle...", fixed = TRUE)
     expect_match(html, "Results bundle", fixed = TRUE)
     expect_match(html, "download_bundle", fixed = TRUE)
     expect_match(html, "Download results bundle", fixed = TRUE)
@@ -582,6 +585,11 @@ test_that("the export panel offers one results bundle", {
     expect_match(html, "Download all BEDPE", fixed = TRUE)
     expect_match(html, "Selected calls", fixed = TRUE)
     expect_match(html, "download_bedpe", fixed = TRUE)
+    css <- bam_dashboard_css()
+    expect_match(css, ".mamamia-download-row", fixed = TRUE)
+    expect_match(css, ".mamamia-download-spinner", fixed = TRUE)
+    expect_match(css, ".mamamia-download-status.is-visible", fixed = TRUE)
+    expect_match(css, "@keyframes mamamia-download-spin", fixed = TRUE)
 })
 
 test_that("the empty sample picker is not hidden from Shiny", {

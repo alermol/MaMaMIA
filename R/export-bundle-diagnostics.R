@@ -1058,6 +1058,7 @@ bam_bundle_write_diagnostics <- function(result, bundle, sample,
     bam_bundle_write_breadth_bedgraph(
         qc$metrics, file.path(tracks_dir, "breadth.bedGraph.gz")
     )
+    plots <- bam_bundle_plot_files(bundle, qc, calls_summary)
 
     list(
         calls_summary = calls_summary,
@@ -1071,7 +1072,8 @@ bam_bundle_write_diagnostics <- function(result, bundle, sample,
         masks_summary = qc$masks_summary,
         cohort = qc$cohort,
         calibration = qc$calibration,
-        versions = versions
+        versions = versions,
+        plots = plots
     )
 }
 
@@ -1286,6 +1288,12 @@ bam_bundle_report_html <- function(result, bundle, sample, calls_raw,
         ".scroll{overflow-x:auto;border:1px solid #dfe5e0;border-radius:6px}",
         "img,.karyotype svg{max-width:100%;height:auto;",
         "border:1px solid #dfe5e0;background:#fff}",
+        "figure{margin:0 0 18px;background:#fff;border:1px solid #dfe5e0;",
+        "border-radius:6px;padding:10px}",
+        "figure img{display:block;width:100%;height:auto;border:0}",
+        "figcaption{font-size:11px;color:#4f5f55;margin-top:6px;",
+        "line-height:1.45}",
+        "figcaption strong{color:#1f2a24}",
         ".muted{color:#65736a}",
         "code{background:#eef3ef;border-radius:3px;padding:1px 4px;",
         "font-size:12px}",
@@ -1350,6 +1358,9 @@ bam_bundle_report_html <- function(result, bundle, sample, calls_raw,
         "</section>",
         karyotype,
         "<section><h2>Calls by class</h2>",
+        bam_bundle_plot_html(
+            diagnostics$plots, bundle, "calls-by-class.png"
+        ),
         bam_bundle_html_table(diagnostics$calls_summary),
         "</section>",
         "<section><h2>Calls by chromosome group</h2>",
@@ -1362,12 +1373,31 @@ bam_bundle_report_html <- function(result, bundle, sample, calls_raw,
         bam_bundle_html_table(diagnostics$calls_by_copy_state),
         "</section>",
         "<section><h2>Coverage and GC by group</h2>",
+        bam_bundle_plot_html(
+            diagnostics$plots, bundle, "coverage-by-group.png"
+        ),
         bam_bundle_html_table(diagnostics$metrics_summary),
         "</section>",
         "<section><h2>Score summary by group</h2>",
+        bam_bundle_plot_html(
+            diagnostics$plots, bundle, "score-by-group.png"
+        ),
         bam_bundle_html_table(diagnostics$scores_summary),
         "</section>",
+        "<section><h2>Score profile</h2>",
+        bam_bundle_plot_html(
+            diagnostics$plots, bundle, "score-profile.png"
+        ),
+        "</section>",
+        "<section><h2>Depth residuals</h2>",
+        bam_bundle_plot_html(
+            diagnostics$plots, bundle, "depth-residuals.png"
+        ),
+        "</section>",
         "<section><h2>Masked windows</h2>",
+        bam_bundle_plot_html(
+            diagnostics$plots, bundle, "masked-fraction-by-group.png"
+        ),
         bam_bundle_html_table(diagnostics$masks_summary),
         "</section>",
         "<section><h2>Calibration</h2>",
@@ -1376,6 +1406,9 @@ bam_bundle_report_html <- function(result, bundle, sample, calls_raw,
         if (is.data.frame(cohort) && nrow(cohort) > 1L) {
             c(
                 "<section><h2>All samples in this run</h2>",
+                bam_bundle_plot_html(
+                    diagnostics$plots, bundle, "cohort-calls.png"
+                ),
                 bam_bundle_html_table(cohort),
                 "</section>"
             )
