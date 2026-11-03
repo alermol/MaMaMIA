@@ -77,6 +77,24 @@ test_that("total depth separates balanced, gain, loss and compound events", {
     expect_identical(out$class_status[[5L]], "ambiguous")
 })
 
+test_that("a strong donor-only addition is confident with a positive total", {
+    calls <- data.frame(
+        sample = "S1",
+        group = "1",
+        start_iid = 1L,
+        donor_mean = 1.2,
+        recipient_mean = 0,
+        total_mean = 0.3,
+        score_mean = 1.2,
+        pass = TRUE,
+        stringsAsFactors = FALSE
+    )
+    out <- classifyCalls(calls)
+    expect_identical(out$class, "addition")
+    expect_identical(out$class_confidence, "high")
+    expect_identical(out$class_status, "confident")
+})
+
 test_that("component heterogeneity downgrades a confident class", {
     calls <- data.frame(
         sample = "S1",

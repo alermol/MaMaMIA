@@ -18,7 +18,8 @@ analyzeBamInput(
   mapq = NULL,
   exclude_flags = NULL,
   cores = 1L,
-  progress = NULL
+  progress = NULL,
+  profile = NULL
 )
 }
 \arguments{
@@ -56,6 +57,10 @@ and \code{min_mb}.}
 \item{cores}{Number of cores for parallel BAM measurement.}
 
 \item{progress}{Optional \verb{function(stage, detail)} progress callback.}
+
+\item{profile}{Optional analysis-profile name recorded in provenance. It
+does not override the explicit arguments; use
+\code{\link[=mamamia_analysis_profile]{mamamia_analysis_profile()}} to resolve a profile before calling.}
 }
 \value{
 A \code{BamAnalysisResult} list with \code{assembly}, \code{config}, \code{bams},

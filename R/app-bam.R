@@ -1034,18 +1034,40 @@ bam_run_parameters <- function(input, config, samples, resolution = NULL) {
         .mamamia_error("MaMaMIAAnalysisError", "At least one sample is required")
     }
     defaults <- config$defaults
+    profile_name <- input$analysis_profile
+    if (is.null(profile_name) || length(profile_name) != 1L ||
+        is.na(profile_name) || !nzchar(profile_name)) {
+        profile_name <- "custom"
+    }
+    profile_name <- as.character(profile_name)
+    profile <- mamamia_analysis_profile(profile_name)
+    if (is.null(profile)) {
+        profile_name <- "custom"
+    }
     if (is.null(resolution)) {
         resolution <- input$resolution
     }
+    if (!is.null(profile)) {
+        resolution <- profile$parameters$windows_per_chromosome
+    }
     resolution <- bam_resolution_value(resolution, defaults)
-    mapq <- bam_integer(defaults$mapq, "MAPQ", 0L, 255L)
+    mapq_value <- if (!is.null(profile)) {
+        profile$parameters$mapq
+    } else {
+        defaults$mapq
+    }
+    mapq <- bam_integer(mapq_value, "MAPQ", 0L, 255L)
     exclude_flags <- bam_integer(
         defaults$exclude_flags, "Exclude flags", 0L, 4095L
     )
     cores <- bam_integer(
         min(30L, bam_max_cores()), "Cores", 1L, bam_max_cores()
     )
-    donor_aggregation <- input$donor_aggregation
+    donor_aggregation <- if (!is.null(profile)) {
+        profile$parameters$donor_aggregation
+    } else {
+        input$donor_aggregation
+    }
     if (is.null(donor_aggregation) || length(donor_aggregation) != 1L ||
         is.na(donor_aggregation) || !nzchar(donor_aggregation)) {
         donor_aggregation <- defaults$donor_aggregation
@@ -1057,6 +1079,17 @@ bam_run_parameters <- function(input, config, samples, resolution = NULL) {
             "`donor_aggregation` must be one of: mean, max, sum"
         )
     }
+    metric <- if (!is.null(profile)) {
+        profile$parameters$metric
+    } else {
+        defaults$metric
+    }
+    score <- if (!is.null(profile)) {
+        profile$parameters$score
+    } else {
+        defaults$score
+    }
+    mask <- if (!is.null(profile)) profile$parameters$mask else NULL
     control_samples <- input$control_samples
     if (is.null(control_samples) || length(control_samples) == 0L ||
         length(samples) < 2L) {
@@ -1072,21 +1105,29 @@ bam_run_parameters <- function(input, config, samples, resolution = NULL) {
             )
         }
     }
-    calibration <- if (length(control_samples) == 0L) {
-        NULL
+    calibration <- if (!is.null(profile)) {
+        profile$parameters$calibration
     } else {
-        list(controls = control_samples)
+        list()
+    }
+    if (length(control_samples) > 0L) {
+        calibration$controls <- control_samples
+    }
+    if (length(calibration) == 0L) {
+        calibration <- NULL
     }
     list(
         resolution = resolution,
         mapq = mapq,
         exclude_flags = exclude_flags,
         cores = cores,
-        metric = defaults$metric,
-        score = defaults$score,
+        metric = metric,
+        score = score,
         donor_aggregation = donor_aggregation,
+        mask = mask,
         control_samples = control_samples,
-        calibration = calibration
+        calibration = calibration,
+        profile_name = profile_name
     )
 }
 
@@ -1789,7 +1830,7 @@ bam_result_cache <- function(max_entries = 3L) {
 #'
 #' @noRd
 bam_analysis_key <- function(preflight, resolution, donor_aggregation = NULL,
-                             controls = NULL) {
+                             controls = NULL, profile = NULL) {
     if (!isTRUE(preflight$ok) || is.null(preflight$table) ||
         !all(c("path", "sample") %in% names(preflight$table))) {
         return(NULL)
@@ -1798,9 +1839,15 @@ bam_analysis_key <- function(preflight, resolution, donor_aggregation = NULL,
     if (is.null(defaults)) {
         defaults <- list()
     }
-    if (is.null(donor_aggregation) || length(donor_aggregation) != 1L ||
-        is.na(donor_aggregation) || !nzchar(donor_aggregation)) {
-        donor_aggregation <- defaults$donor_aggregation
+    profile_name <- profile
+    if (is.null(profile_name) || length(profile_name) != 1L ||
+        is.na(profile_name) || !nzchar(profile_name)) {
+        profile_name <- "custom"
+    }
+    profile_name <- as.character(profile_name)
+    profile_spec <- mamamia_analysis_profile(profile_name)
+    if (is.null(profile_spec)) {
+        profile_name <- "custom"
     }
     samples <- unique(as.character(preflight$table$sample))
     controls <- unique(as.character(controls))
@@ -1810,15 +1857,42 @@ bam_analysis_key <- function(preflight, resolution, donor_aggregation = NULL,
         controls <- character(0)
     }
     if (isTRUE(preflight$example)) {
-        donor_aggregation <- defaults$donor_aggregation
+        profile_name <- "balanced"
+        profile_spec <- mamamia_analysis_profile("balanced")
         controls <- character(0)
+    }
+    if (!is.null(profile_spec)) {
+        resolution_value <- profile_spec$parameters$windows_per_chromosome
+        metric <- profile_spec$parameters$metric
+        score <- profile_spec$parameters$score
+        donor_aggregation <- profile_spec$parameters$donor_aggregation
+        mapq <- profile_spec$parameters$mapq
+        mask <- profile_spec$parameters$mask
+        calibration <- profile_spec$parameters$calibration
+    } else {
+        resolution_value <- resolution
+        metric <- defaults$metric
+        score <- defaults$score
+        mapq <- defaults$mapq
+        mask <- NULL
+        calibration <- list()
+    }
+    if (is.null(donor_aggregation) || length(donor_aggregation) != 1L ||
+        is.na(donor_aggregation) || !nzchar(donor_aggregation)) {
+        donor_aggregation <- defaults$donor_aggregation
+    }
+    if (length(controls) > 0L) {
+        calibration$controls <- controls
+    }
+    if (length(calibration) == 0L) {
+        calibration <- NULL
     }
     resolution_key <- if (isTRUE(preflight$example)) {
         as.character(bam_example_default_resolution())
     } else {
         tryCatch(
-            as.character(bam_resolution_value(resolution, defaults)),
-            error = function(e) as.character(resolution)
+            as.character(bam_resolution_value(resolution_value, defaults)),
+            error = function(e) as.character(resolution_value)
         )
     }
     hash_object(list(
@@ -1826,12 +1900,15 @@ bam_analysis_key <- function(preflight, resolution, donor_aggregation = NULL,
         paths = unique(as.character(preflight$table$path)),
         samples = samples,
         assembly = as.character(preflight$assembly),
+        profile = profile_name,
         resolution = resolution_key,
-        mapq = as.integer(defaults$mapq),
+        mapq = as.integer(mapq),
         exclude_flags = as.integer(defaults$exclude_flags),
-        metric = as.character(defaults$metric),
-        score = as.character(defaults$score),
+        metric = as.character(metric),
+        score = as.character(score),
         donor_aggregation = as.character(donor_aggregation),
+        mask = mask,
+        calibration = calibration,
         controls = controls
     ))
 }
@@ -2213,6 +2290,13 @@ bam_dashboard_css <- function() {
         height: 100%;
         padding: .65rem .7rem !important;
         overflow: auto;
+    }
+    /* DT is an html-fill-item: in the flex card body it can shrink to its
+       control row while its table body overflows over following content. */
+    .mamamia-main .card-body > .datatables.html-widget {
+        flex: 0 0 auto !important;
+        height: auto !important;
+        min-height: 0;
     }
     .mamamia-main .nav-tabs {
         gap: .1rem;
@@ -4008,6 +4092,7 @@ bam_sidebar_details_ui <- function(config) {
             open = "Analysis",
             bslib::accordion_panel(
                 "Analysis",
+                shiny::uiOutput("analysis_profile_ui"),
                 shiny::uiOutput("resolution_ui"),
             ),
             bslib::accordion_panel(
@@ -4974,6 +5059,72 @@ bam_launcher_server <- function(state) {
             bam_sidebar_details_ui(config)
         })
 
+        output$analysis_profile_ui <- shiny::renderUI({
+            if (isTRUE(example_mode())) {
+                return(shiny::tagList(
+                    bam_fixed_control_ui(
+                        "Analysis profile",
+                        mamamia_analysis_profiles()$balanced$label
+                    ),
+                    shiny::p(
+                        class = "mamamia-fixed-note",
+                        "Fixed for the bundled example."
+                    )
+                ))
+            }
+            choices <- mamamia_analysis_profile_choices()
+            selected <- input$analysis_profile
+            if (is.null(selected) || length(selected) != 1L ||
+                is.na(selected) || !selected %in% unname(choices)) {
+                selected <- "balanced"
+            }
+            profile <- mamamia_analysis_profile(selected)
+            shiny::tagList(
+                shiny::selectInput(
+                    "analysis_profile", "Analysis profile",
+                    choices = choices,
+                    selected = selected
+                ),
+                shiny::p(
+                    class = "text-muted small mb-0",
+                    if (is.null(profile)) {
+                        paste(
+                            "Custom uses the resolution, donor aggregation,",
+                            "mask and calibration controls shown below."
+                        )
+                    } else {
+                        profile$description
+                    }
+                )
+            )
+        })
+
+        shiny::observeEvent(input$analysis_profile, {
+            if (isTRUE(example_mode())) {
+                return()
+            }
+            profile <- tryCatch(
+                mamamia_analysis_profile(input$analysis_profile),
+                error = function(e) NULL
+            )
+            if (is.null(profile)) {
+                return()
+            }
+            resolution <- as.integer(
+                profile$parameters$windows_per_chromosome
+            )
+            shiny::updateSliderInput(
+                session, "resolution", value = resolution
+            )
+            shiny::updateNumericInput(
+                session, "resolution_number", value = resolution
+            )
+            shiny::updateSelectInput(
+                session, "donor_aggregation",
+                selected = profile$parameters$donor_aggregation
+            )
+        }, ignoreInit = TRUE)
+
         output$resolution_ui <- shiny::renderUI({
             if (isTRUE(example_mode())) {
                 return(bam_example_resolution_slider_ui(config$defaults))
@@ -5390,7 +5541,8 @@ bam_launcher_server <- function(state) {
                 preflight_state(),
                 resolution_value(),
                 input$donor_aggregation,
-                input$control_samples
+                input$control_samples,
+                input$analysis_profile
             )
         })
 
@@ -5517,6 +5669,8 @@ bam_launcher_server <- function(state) {
                     pf$config$defaults$donor_aggregation
                 params$control_samples <- character(0)
                 params$calibration <- NULL
+                params$profile_name <- "balanced"
+                params$mask <- NULL
             }
 
             resolution_problem <- bam_resolution_problem(
@@ -5600,11 +5754,13 @@ bam_launcher_server <- function(state) {
                     metric = params$metric,
                     score = params$score,
                     donor_aggregation = params$donor_aggregation,
+                    mask = params$mask,
                     calibration = params$calibration,
                     mapq = params$mapq,
                     exclude_flags = params$exclude_flags,
                     cores = params$cores,
-                    progress = progress
+                    progress = progress,
+                    profile = params$profile_name
                 )
             }
             progress_for <- function(prefix = "") {

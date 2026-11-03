@@ -416,7 +416,7 @@ classifyCalls <- function(calls, controls = NULL, thresholds = NULL,
     high_ok <- (both & !compound & calls$donor_mean >= donor_high &
         calls$recipient_mean <= loss_mod & total_neutral) |
         (donor_only & !compound & calls$donor_mean >= donor_high &
-            (total_mean >= total_high | !total_known)) |
+            (total_mean >= total_high | !total_known | total_mean >= 0)) |
         (loss_only & !compound & calls$recipient_mean <= loss_high &
             (total_mean <= -total_high | !total_known))
     moderate_ok <- (both & !compound & calls$donor_mean >= donor_mod &

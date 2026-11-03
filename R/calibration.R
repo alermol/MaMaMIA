@@ -45,9 +45,10 @@
     stats::setNames(as.numeric(floors), labels)
 }
 
-.calibration_q99 <- function(values, fdr, mode, has_controls) {
+.calibration_q99 <- function(values, fdr, mode, has_controls,
+                              fallback = NULL) {
     if (length(values) < 5L) {
-        return(NA_real_)
+        return(if (is.null(fallback)) NA_real_ else fallback)
     }
     if (identical(mode, "single") && !isTRUE(has_controls)) {
         ## A single sample can contain several real events, so the upper tail
@@ -63,11 +64,11 @@
         }
         return(stats::qnorm(1 - fdr, fit$mu[[1L]], max(fit$sd[[1L]], 1e-6)))
     }
-    if (identical(mode, "multi") && !isTRUE(has_controls) &&
-        length(values) >= 20L) {
+    if (identical(mode, "multi") && !isTRUE(has_controls)) {
         ## A positive-enriched cohort contaminates the pooled upper tail.
-        ## Estimate the null component first, as in the single-sample path,
-        ## rather than trimming only the top 5% of all segments.
+        ## Estimate the null component first. Sparse bins borrow the same
+        ## mixture-null quantile from the mode-wide pool; there is no separate
+        ## all-sample empirical-quantile path for no-control cohorts.
         fit <- .mask_em2(values)
         posterior_upper <- .mask_posterior(values, fit)
         null_values <- values[posterior_upper < 0.5]
@@ -76,15 +77,15 @@
                 null_values, probs = 1 - fdr, na.rm = TRUE, names = FALSE
             )))
         }
+        return(if (is.null(fallback)) NA_real_ else fallback)
     }
-    ## Cohort calibration is robust when a few positives are present: trim
-    ## the upper 5% before taking the empirical quantile.
+    ## Explicitly supplied controls keep the empirical-quantile path.
     cutoff <- as.numeric(stats::quantile(
         values, 0.95, na.rm = TRUE, names = FALSE
     ))
     values <- values[values <= cutoff]
     if (length(values) == 0L) {
-        return(NA_real_)
+        return(if (is.null(fallback)) NA_real_ else fallback)
     }
     as.numeric(stats::quantile(
         values, probs = 1 - fdr, na.rm = TRUE, names = FALSE
@@ -159,6 +160,18 @@ calibrateSegments <- function(
     if (!is.null(mode)) {
         modes <- intersect(modes, as.character(mode))
     }
+    fallback <- list()
+    if (is.null(controls)) {
+        for (current_mode in modes) {
+            mode_values <- calls$score_mean[
+                calls$mode == current_mode & is.finite(calls$score_mean)
+            ]
+            fallback[[current_mode]] <- .calibration_q99(
+                mode_values, fdr = fdr, mode = current_mode,
+                has_controls = FALSE
+            )
+        }
+    }
     rows <- list()
     for (current_mode in modes) {
         floor_values <- .calibration_floor(floors, bins$labels, current_mode)
@@ -173,7 +186,8 @@ calibrateSegments <- function(
             values <- pool$score_mean[is.finite(pool$score_mean)]
             q99 <- .calibration_q99(
                 values, fdr = fdr, mode = current_mode,
-                has_controls = !is.null(controls)
+                has_controls = !is.null(controls),
+                fallback = fallback[[current_mode]]
             )
             threshold <- max(floor_values[[label]], q99, na.rm = TRUE)
             if (!is.finite(threshold)) {

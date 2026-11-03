@@ -64,12 +64,23 @@
   the breadth and count depth scales. The previous implementation returned
   log-lambda values that the scorer logged a second time, producing all-NA
   scores on real low-coverage windows.
-* **Pooled cohort calibration.** With `controls = NULL` and at least 20
-  segments in a length bin, cohort calibration now estimates the null
-  component with the same two-component mixture used by the single-sample
-  path. This prevents positive-enriched cohorts from inflating the threshold.
-  Explicitly supplied control samples keep the existing empirical-quantile
-  behaviour.
+* **Pooled cohort calibration.** With `controls = NULL`, cohort calibration
+  now estimates the null component with the same two-component mixture used
+  by the single-sample path. Sparse bins borrow the mode-wide mixture null;
+  there is no separate all-sample q95-trim path. Explicitly supplied control
+  samples keep the empirical-quantile behaviour.
+* **Analysis profiles.** `mamamia_analysis_profiles()` and
+  `mamamia_analysis_profile()` expose balanced, sensitive, CNV-robust,
+  complex and component-panel parameter bundles. The dashboard can select a
+  profile, and the chosen profile is recorded in provenance.
+* **Component evidence.** The result bundle now includes a
+  per-donor-component diagnostic table (`qc/component-evidence.csv`). It
+  reports component rank, relative score, supported-window fraction and the
+  component selected by the group-level call. It is intentionally bundle-only,
+  not a dashboard table.
+* **Class confidence.** A strong donor-only addition with a non-negative
+  total-depth shift can now reach `class_status = confident`; complex events
+  remain conservative.
 
 ## New method
 

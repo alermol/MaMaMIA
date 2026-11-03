@@ -21,10 +21,45 @@ test_that("bam_run_parameters() resolves the run controls", {
     )
     expect_named(params, c(
         "resolution", "mapq", "exclude_flags", "cores", "metric", "score",
-        "donor_aggregation", "control_samples", "calibration"
+        "donor_aggregation", "mask", "control_samples", "calibration",
+        "profile_name"
     ))
     expect_identical(params$control_samples, character(0))
     expect_null(params$calibration)
+    expect_identical(params$profile_name, "custom")
+    expect_null(params$mask)
+})
+
+test_that("analysis profiles resolve complete parameter bundles", {
+    config <- readMaMaMIAConfig(
+        system.file("extdata", "bam-demo", "assemblies.yml",
+            package = "MaMaMIA")
+    )
+    sensitive <- mamamia_analysis_profile("sensitive")
+    expect_identical(sensitive$parameters$windows_per_chromosome, 100L)
+    expect_identical(sensitive$parameters$metric, "combined")
+    expect_identical(sensitive$parameters$score, "paired_log_ratio")
+    expect_identical(sensitive$parameters$donor_aggregation, "max")
+    expect_equal(
+        sensitive$parameters$calibration$floors,
+        c(1.5, 1.2, 1.0, 0.8, 0.4)
+    )
+    expect_true(is.list(sensitive$parameters$mask))
+    params <- bam_run_parameters(
+        list(
+            resolution = 1000, analysis_profile = "sensitive",
+            control_samples = character(0)
+        ),
+        config, samples = "demo-sample"
+    )
+    expect_identical(params$resolution, 100L)
+    expect_identical(params$metric, "combined")
+    expect_identical(params$profile_name, "sensitive")
+    expect_identical(params$mask$recurrence_threshold, 0.4)
+    expect_null(mamamia_analysis_profile("custom"))
+    expect_error(mamamia_analysis_profile("not-a-profile"), "Unknown analysis profile")
+    html <- as.character(bam_sidebar_details_ui(config))
+    expect_match(html, 'id="analysis_profile_ui"', fixed = TRUE)
 })
 
 test_that("the resolution picker is a ten-window slider with three ticks", {
@@ -74,6 +109,20 @@ test_that("the example resolution slider is locked at its precomputed value", {
         "Fixed at 1,000 windows per chromosome.",
         fixed = TRUE
     )
+})
+
+test_that("component evidence stays in the bundle, not the Calls UI", {
+    html <- as.character(bam_results_ui())
+    expect_false(grepl("Component evidence", html, fixed = TRUE))
+    expect_false(grepl('id="component_evidence"', html, fixed = TRUE))
+    css <- bam_dashboard_css()
+    expect_match(
+        css,
+        ".mamamia-main .card-body > .datatables.html-widget",
+        fixed = TRUE
+    )
+    expect_match(css, "flex: 0 0 auto !important", fixed = TRUE)
+    expect_false(grepl(".mamamia-component-evidence", css, fixed = TRUE))
 })
 
 test_that("the BAM chooser accepts exactly one file", {

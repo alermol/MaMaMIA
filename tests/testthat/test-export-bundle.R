@@ -159,7 +159,8 @@ test_that("the result bundle contains the table, BEDPE and karyotypes", {
         "report.html", "manifest.json", "checksums.md5",
         "calls-passing.csv", "calls-review.csv", "calls-summary.csv",
         "calls-by-group.csv", "calls-by-status.csv",
-        "calls-by-copy-state.csv", "assignment-alternatives.csv"
+        "calls-by-copy-state.csv", "assignment-alternatives.csv",
+        "component-evidence.csv"
     ) %in% names))
     directory <- tempfile("mamamia-bundle-test-")
     dir.create(directory)
@@ -192,6 +193,15 @@ test_that("the result bundle contains the table, BEDPE and karyotypes", {
         "call_class", "passes_calibration"
     ) %in% names(bedpe)))
     expect_true(all(names(bedpe) %in% dictionary$name))
+    component_evidence <- utils::read.csv(
+        file.path(root, "qc", "component-evidence.csv"),
+        check.names = FALSE, stringsAsFactors = FALSE
+    )
+    expect_true(all(c(
+        "call_number", "chromosome_group", "donor_component",
+        "component_rank", "component_selected", "mean_component_score",
+        "supported_fraction", "component_supported"
+    ) %in% names(component_evidence)))
     confident_csv <- utils::read.csv(
         file.path(root, "calls-confident.csv"),
         check.names = FALSE, stringsAsFactors = FALSE

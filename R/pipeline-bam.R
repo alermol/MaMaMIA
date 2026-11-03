@@ -216,7 +216,8 @@
 .pipeline_provenance <- function(config, preflight, indexed, windows, gc,
                                  n_per, mapq, exclude_flags, metric, score,
                                  donor_aggregation, sample_composition,
-                                 mask, calibration, started_at) {
+                                 mask, calibration, started_at,
+                                 analysis_profile = NULL) {
     config_path <- .pipeline_config_path(config)
     config_hash <- if (!is.na(config_path) && file.exists(config_path)) {
         unname(tools::md5sum(config_path))
@@ -257,6 +258,11 @@
         },
         config_path = config_path,
         config_hash = config_hash,
+        analysis_profile = if (is.null(analysis_profile)) {
+            NA_character_
+        } else {
+            as.character(analysis_profile)[[1L]]
+        },
         assembly = preflight$assembly[[1L]],
         bams = bams,
         staged = indexed$staged,
@@ -402,6 +408,9 @@
 #' @param exclude_flags SAM flag mask; a read is excluded when any bit is set.
 #' @param cores Number of cores for parallel BAM measurement.
 #' @param progress Optional `function(stage, detail)` progress callback.
+#' @param profile Optional analysis-profile name recorded in provenance. It
+#'   does not override the explicit arguments; use
+#'   [mamamia_analysis_profile()] to resolve a profile before calling.
 #'
 #' @return A `BamAnalysisResult` list with `assembly`, `config`, `bams`,
 #'   `samples`, `windows`, `gc`, `metrics`, `scores`, `masks`, `calibration`,
@@ -436,7 +445,8 @@ analyzeBamInput <- function(bam_paths,
                             mapq = NULL,
                             exclude_flags = NULL,
                             cores = 1L,
-                            progress = NULL) {
+                            progress = NULL,
+                            profile = NULL) {
     started_at <- Sys.time()
     config <- .pipeline_config(config)
     .validate_progress(progress)
@@ -708,7 +718,8 @@ analyzeBamInput <- function(bam_paths,
         sample_composition = composition,
         mask = masks,
         calibration = calibrated$calibration,
-        started_at = started_at
+        started_at = started_at,
+        analysis_profile = profile
     )
 
     result <- structure(

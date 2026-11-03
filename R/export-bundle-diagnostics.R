@@ -151,6 +151,14 @@ bam_bundle_run_summary_lines <- function(result, sample) {
     c(
         paste0("Assembly: ", assembly),
         paste0("BAM: ", bam_path),
+        if (!is.null(provenance$analysis_profile) &&
+            length(provenance$analysis_profile) == 1L &&
+            !is.na(provenance$analysis_profile) &&
+            nzchar(provenance$analysis_profile)) {
+            paste0("Profile: ", provenance$analysis_profile)
+        } else {
+            character()
+        },
         paste0(
             "Windows: ", format(n_windows, big.mark = ",", trim = TRUE)
         ),
@@ -1025,6 +1033,9 @@ bam_bundle_write_diagnostics <- function(result, bundle, sample,
         calls_raw, masks_summary
     )
     alternatives <- bam_bundle_assignment_alternatives(calls_desc)
+    component_evidence <- componentEvidence(
+        result, sample = sample, calls = calls_raw
+    )
 
     bam_bundle_write_csv(
         calls_summary, file.path(bundle, "calls-summary.csv")
@@ -1040,6 +1051,10 @@ bam_bundle_write_diagnostics <- function(result, bundle, sample,
     )
     bam_bundle_write_csv(
         alternatives, file.path(bundle, "assignment-alternatives.csv")
+    )
+    bam_bundle_write_csv(
+        component_evidence,
+        file.path(qc_dir, "component-evidence.csv")
     )
 
     versions <- bam_bundle_run_files(result, bundle, sample)
@@ -1066,6 +1081,7 @@ bam_bundle_write_diagnostics <- function(result, bundle, sample,
         calls_by_status = calls_by_status,
         calls_by_copy_state = calls_by_copy_state,
         alternatives = alternatives,
+        component_evidence = component_evidence,
         metrics_summary = qc$metrics_summary,
         contig_summary = qc$contig_summary,
         scores_summary = qc$scores_summary,
@@ -1210,8 +1226,8 @@ bam_bundle_report_html <- function(result, bundle, sample, calls_raw,
     }
     overview <- data.frame(
         Item = c(
-            "Sample", "Assembly", "BAM", "Analysis mode", "Windows",
-            "Calls", "Passing calibration", "Confident calls",
+            "Sample", "Assembly", "BAM", "Analysis mode", "Analysis profile",
+            "Windows", "Calls", "Passing calibration", "Confident calls",
             "Masked windows", "Duration", "Config hash",
             "Calibration version", "Generated", "MaMaMIA"
         ),
@@ -1220,6 +1236,14 @@ bam_bundle_report_html <- function(result, bundle, sample, calls_raw,
             assembly_label,
             bam_path,
             mode,
+            if (!is.null(provenance$analysis_profile) &&
+                length(provenance$analysis_profile) == 1L &&
+                !is.na(provenance$analysis_profile) &&
+                nzchar(provenance$analysis_profile)) {
+                provenance$analysis_profile
+            } else {
+                NA_character_
+            },
             format(n_windows, big.mark = ",", trim = TRUE),
             format(nrow(calls_raw), big.mark = ",", trim = TRUE),
             format(passing, big.mark = ",", trim = TRUE),
@@ -1372,6 +1396,19 @@ bam_bundle_report_html <- function(result, bundle, sample, calls_raw,
         "<section><h2>Copy-number state</h2>",
         bam_bundle_html_table(diagnostics$calls_by_copy_state),
         "</section>",
+        if (is.data.frame(diagnostics$component_evidence) &&
+            nrow(diagnostics$component_evidence) > 0L) {
+            c(
+                "<section><h2>Component evidence</h2>",
+                "<p class=\"muted\">One row per call and donor component. ",
+                "The selected component is the one used by the group-level ",
+                "call; other rows show the relative component support.</p>",
+                bam_bundle_html_table(diagnostics$component_evidence),
+                "</section>"
+            )
+        } else {
+            character()
+        },
         "<section><h2>Coverage and GC by group</h2>",
         bam_bundle_plot_html(
             diagnostics$plots, bundle, "coverage-by-group.png"
