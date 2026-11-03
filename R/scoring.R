@@ -29,8 +29,12 @@
     if (identical(metric, "count")) {
         return(as.numeric(metrics$lambda_count))
     }
-    0.5 * (log(as.numeric(metrics$lambda_breadth) + eps) +
-        log(as.numeric(metrics$lambda_count) + eps))
+    ## `combined` is a geometric mean of the two per-window depth scales.
+    ## The downstream score takes one log of the returned lambda, so this
+    ## function must return lambda-space values, not log-lambda values.
+    breadth <- pmax(as.numeric(metrics$lambda_breadth), 0)
+    count <- pmax(as.numeric(metrics$lambda_count), 0)
+    sqrt((breadth + eps) * (count + eps))
 }
 
 .validate_score_metrics <- function(metrics) {

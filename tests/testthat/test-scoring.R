@@ -93,6 +93,27 @@ test_that("medianPolish() handles missing values", {
     expect_true(is.na(polished$residuals[1, 2]))
 })
 
+test_that("combined metric stays in lambda space and produces finite scores", {
+    set.seed(7)
+    metrics <- score_metrics(
+        n = 80L, donor_lambda = 0.01, recipient_lambda = 0.005
+    )
+    metrics <- add_donor_event(metrics, from = 20L, to = 40L, multiplier = 3)
+    scored <- scoreIntrogression(
+        metrics, mode = "single", metric = "combined"
+    )
+    expect_true(all(is.finite(scored$score)))
+    expect_gt(mean(scored$score[
+        scored$group == "1" & scored$iid >= 20 & scored$iid <= 40
+    ]), 0)
+    lambda <- MaMaMIA:::.scoring_lambda(metrics, "combined")
+    expected <- sqrt(
+        (metrics$lambda_breadth + MaMaMIA:::.scoring_eps) *
+            (metrics$lambda_count + MaMaMIA:::.scoring_eps)
+    )
+    expect_equal(lambda, expected)
+})
+
 test_that("a diploid substitution gives a positive score", {
     set.seed(2)
     metrics <- score_metrics(recipient_components = "A")

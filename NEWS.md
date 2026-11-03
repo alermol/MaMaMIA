@@ -58,6 +58,19 @@
   a score profile and call table. `exploreIntrogressions()` now accepts a
   `BamAnalysisResult`.
 
+## Validation fixes
+
+* **Combined metric.** `metric = "combined"` now returns a geometric mean of
+  the breadth and count depth scales. The previous implementation returned
+  log-lambda values that the scorer logged a second time, producing all-NA
+  scores on real low-coverage windows.
+* **Pooled cohort calibration.** With `controls = NULL` and at least 20
+  segments in a length bin, cohort calibration now estimates the null
+  component with the same two-component mixture used by the single-sample
+  path. This prevents positive-enriched cohorts from inflating the threshold.
+  Explicitly supplied control samples keep the existing empirical-quantile
+  behaviour.
+
 ## New method
 
 * **Breadth and counts in one pass.** `bam_metrics_rg_cpp()` returns both the

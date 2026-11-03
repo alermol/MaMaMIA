@@ -51,6 +51,41 @@ test_that("controls restrict the empirical null", {
     expect_true(all(calibrated$calibration$n_control <= 2L))
 })
 
+test_that("pooled cohort null resists positive enrichment", {
+    n_null <- 5L
+    n_pos <- 11L
+    n_seg <- 8L
+    samples <- c(paste0("C", seq_len(n_null)), paste0("P", seq_len(n_pos)))
+    calls <- do.call(rbind, lapply(seq_along(samples), function(i) {
+        positive <- i > n_null
+        data.frame(
+            sample = samples[[i]],
+            mode = "multi",
+            group = "1",
+            width_bp = 500e6,
+            score_mean = if (positive) {
+                seq(1.8, 2.2, length.out = n_seg)
+            } else {
+                seq(0, 0.1, length.out = n_seg)
+            },
+            donor_mean = if (positive) 2 else 0,
+            recipient_mean = 0,
+            stringsAsFactors = FALSE
+        )
+    }))
+    calibrated <- calibrateSegments(
+        calls, fdr = 0.01, length_bins_mb = c(5, Inf),
+        floors = 0.25
+    )
+    expect_lt(calibrated$calibration$threshold[[1L]], 1)
+    expect_true(all(calibrated$calls$pass[
+        grepl("^P", calibrated$calls$sample)
+    ]))
+    expect_false(any(calibrated$calls$pass[
+        grepl("^C", calibrated$calls$sample)
+    ]))
+})
+
 test_that("a sparse length bin borrows the mode-wide null", {
     calls <- calibration_calls()
     calls <- calls[calls$width_bp < 100e6, , drop = FALSE]

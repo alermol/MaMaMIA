@@ -63,6 +63,20 @@
         }
         return(stats::qnorm(1 - fdr, fit$mu[[1L]], max(fit$sd[[1L]], 1e-6)))
     }
+    if (identical(mode, "multi") && !isTRUE(has_controls) &&
+        length(values) >= 20L) {
+        ## A positive-enriched cohort contaminates the pooled upper tail.
+        ## Estimate the null component first, as in the single-sample path,
+        ## rather than trimming only the top 5% of all segments.
+        fit <- .mask_em2(values)
+        posterior_upper <- .mask_posterior(values, fit)
+        null_values <- values[posterior_upper < 0.5]
+        if (length(null_values) >= 5L) {
+            return(as.numeric(stats::quantile(
+                null_values, probs = 1 - fdr, na.rm = TRUE, names = FALSE
+            )))
+        }
+    }
     ## Cohort calibration is robust when a few positives are present: trim
     ## the upper 5% before taking the empirical quantile.
     cutoff <- as.numeric(stats::quantile(
