@@ -1049,6 +1049,56 @@ bam_profile_default_parameters <- function(config, profile = NULL) {
 }
 
 #' @noRd
+bam_profile_resolution_allowed <- function(parameters,
+                                           defaults = .config_defaults()) {
+    value <- suppressWarnings(as.integer(parameters$windows_per_chromosome))
+    if (length(value) != 1L || is.na(value)) {
+        return(FALSE)
+    }
+    range <- bam_resolution_range(defaults)
+    value >= range$min && value <= range$max &&
+        (value - range$min) %% range$step == 0L
+}
+
+#' @noRd
+bam_analysis_profile_choices <- function(config) {
+    choices <- mamamia_analysis_profile_choices()
+    ids <- unname(choices)
+    labels <- names(choices)
+    keep <- ids == "custom"
+    for (i in seq_along(ids)) {
+        if (keep[[i]]) {
+            next
+        }
+        profile <- mamamia_analysis_profile(ids[[i]])
+        keep[[i]] <- !is.null(profile) &&
+            bam_profile_resolution_allowed(profile$parameters, config$defaults)
+    }
+    if (any(keep & ids != "custom")) {
+        choices <- choices[keep]
+        names(choices) <- labels[keep]
+    } else {
+        ## No named profile fits this registry; Advanced is still usable.
+        choices <- c("Custom" = "custom")
+    }
+    choices
+}
+
+#' @noRd
+bam_default_profile <- function(config) {
+    choices <- bam_analysis_profile_choices(config)
+    ids <- unname(choices)
+    ids <- ids[ids != "custom"]
+    if ("balanced" %in% ids) {
+        "balanced"
+    } else if (length(ids) > 0L) {
+        ids[[1L]]
+    } else {
+        "custom"
+    }
+}
+
+#' @noRd
 bam_profile_has_value <- function(value) {
     if (is.null(value) || length(value) == 0L) {
         return(FALSE)
@@ -1350,6 +1400,22 @@ bam_run_parameters <- function(input, config, samples, resolution = NULL,
     }
     requested <- as.character(requested)
     profile <- mamamia_analysis_profile(requested)
+    if (!is.null(profile) &&
+        !bam_profile_resolution_allowed(profile$parameters, defaults)) {
+        range <- bam_resolution_range(defaults)
+        .mamamia_error(
+            "MaMaMIAProfileError",
+            paste0(
+                "Analysis profile '%s' uses %s windows per chromosome; ",
+                "this configuration allows %s-%s in steps of %s"
+            ),
+            profile$label,
+            as.integer(profile$parameters$windows_per_chromosome),
+            format(range$min, big.mark = ",", scientific = FALSE),
+            format(range$max, big.mark = ",", scientific = FALSE),
+            range$step
+        )
+    }
     profile_name <- if (is.null(profile)) "custom" else requested
     template <- if (!is.null(profile)) {
         profile_name
@@ -5717,7 +5783,7 @@ bam_launcher_server <- function(state) {
         ## Profile state -------------------------------------------------------
         ## The named profile is the template. Advanced edits never change the
         ## template; they only make the effective profile Custom.
-        profile_base <- shiny::reactiveVal("balanced")
+        profile_base <- shiny::reactiveVal(bam_default_profile(config))
         profile_defaults <- shiny::reactive({
             bam_profile_default_parameters(config, profile_base())
         })
@@ -5750,7 +5816,7 @@ bam_launcher_server <- function(state) {
                     )
                 ))
             }
-            choices <- mamamia_analysis_profile_choices()
+            choices <- bam_analysis_profile_choices(config)
             base <- profile_base()
             custom <- isTRUE(profile_custom())
             selected <- if (custom) "custom" else base

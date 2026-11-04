@@ -27,6 +27,14 @@
 * **Cohort class counts are passing-only**, matching their labels.
 * **Validation covers the calibrated call columns** (`pass`, `n_windows`,
   `metric`, `length_bin`, `threshold`) plus `copy_number` and `score_type`.
+* **Bundled example paths are portable.** Example results and preflight data
+  now reference `example/example.bam`, `example/demo.gcrank` and
+  `example/assemblies.yml` instead of the build host's temporary directory.
+* **`allowed_windows` can define the default resolution.** A registry that
+  lists only `allowed_windows` no longer inherits an out-of-range default.
+* **Incompatible analysis profiles are hidden.** The picker omits profiles
+  whose resolution the configuration does not allow, starts on a compatible
+  profile, and direct use reports the allowed range.
 
 ## Performance
 
@@ -42,6 +50,9 @@
   computed once.
 * BAM counting no longer zero-fills its result matrices twice, and long
   counts respond to interrupts.
+* BAM reading can use htslib worker threads. The pipeline splits its core
+  budget across input BAMs; on a 644 MB BAM, 8 threads cut a 2,000-window
+  count from 25.0 s to 5.8 s with identical counts.
 
 ## Deployment
 

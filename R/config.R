@@ -833,6 +833,22 @@ chr_number <- function(chr_name) {
         }
         out$allowed_windows <- sort(as.integer(allowed))
     }
+    if (!is.null(defaults$allowed_windows) &&
+        is.null(defaults$windows_per_chromosome)) {
+        ## A registry that lists only `allowed_windows` should not inherit a
+        ## default resolution outside that list.
+        aligned <- out$allowed_windows[
+            (out$allowed_windows - min(out$allowed_windows)) %% 10L == 0L
+        ]
+        candidates <- if (length(aligned) > 0L) {
+            aligned
+        } else {
+            out$allowed_windows
+        }
+        out$windows_per_chromosome <- candidates[[
+            which.min(abs(candidates - out$windows_per_chromosome))
+        ]]
+    }
     if (!is.null(defaults$windows_per_chromosome)) {
         out$windows_per_chromosome <- .config_integer(
             defaults$windows_per_chromosome,

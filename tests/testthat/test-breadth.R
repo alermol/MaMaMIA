@@ -52,6 +52,24 @@ test_that("countWindowMetrics() matches samtools depth on the tiny fixture", {
     }
 })
 
+test_that("htslib worker threads do not change counts", {
+    skip_if_no_tiny_fixtures()
+    skip_if_no_samtools()
+    windows <- breadth_windows()
+    header <- bamHeaderInfo(tiny_bam_path())
+    old <- options(MaMaMIA.htslib_threads = 1L)
+    on.exit(options(old), add = TRUE)
+    serial <- countWindowMetrics(
+        tiny_bam_path(), windows, "tiny-sample", header$read_groups
+    )
+    options(MaMaMIA.htslib_threads = 2L)
+    threaded <- countWindowMetrics(
+        tiny_bam_path(), windows, "tiny-sample", header$read_groups
+    )
+    expect_identical(serial$counts, threaded$counts)
+    expect_identical(serial$covered, threaded$covered)
+})
+
 test_that("countWindowMetrics() matches bedtools coverage counts", {
     skip_if_no_tiny_fixtures()
     skip_if_no_samtools()

@@ -41,6 +41,63 @@ bam_example_available <- function() {
 .bam_example_cache <- new.env(parent = emptyenv())
 
 #' @noRd
+.bam_example_sanitize_paths <- function(data) {
+    bam <- "example/example.bam"
+    index <- "example/example.bam.csi"
+    rewrite_bam <- function(x) {
+        if (is.data.frame(x)) {
+            if ("path" %in% names(x)) {
+                x$path <- rep(bam, nrow(x))
+            }
+            if ("index_path" %in% names(x)) {
+                x$index_path <- rep(index, nrow(x))
+            }
+        }
+        x
+    }
+    rewrite_assembly <- function(assembly) {
+        if (!is.list(assembly) || !is.list(assembly$contigs)) {
+            return(assembly)
+        }
+        for (role in names(assembly$contigs)) {
+            contig <- assembly$contigs[[role]]
+            if (is.data.frame(contig) && "index_path" %in% names(contig)) {
+                contig$index_path <- rep("example/demo.gcrank", nrow(contig))
+                assembly$contigs[[role]] <- contig
+            }
+        }
+        assembly
+    }
+    if (is.data.frame(data$preflight)) {
+        data$preflight <- rewrite_bam(data$preflight)
+    }
+    if (is.list(data$results)) {
+        for (key in names(data$results)) {
+            result <- data$results[[key]]
+            if (!is.list(result)) {
+                next
+            }
+            result$bams <- rewrite_bam(result$bams)
+            result$samples <- rewrite_bam(result$samples)
+            result$assembly <- rewrite_assembly(result$assembly)
+            provenance <- result$provenance
+            if (is.list(provenance)) {
+                provenance$bams <- rewrite_bam(provenance$bams)
+                if ("config_path" %in% names(provenance)) {
+                    provenance$config_path <- "example/assemblies.yml"
+                }
+                if ("uvr_lock" %in% names(provenance)) {
+                    provenance$uvr_lock <- "uvr.lock"
+                }
+                result$provenance <- provenance
+            }
+            data$results[[key]] <- result
+        }
+    }
+    data
+}
+
+#' @noRd
 bam_example_data <- function() {
     if (!is.null(.bam_example_cache$data)) {
         return(.bam_example_cache$data)
@@ -56,7 +113,7 @@ bam_example_data <- function() {
             )
         )
     }
-    data <- readRDS(path)
+    data <- .bam_example_sanitize_paths(readRDS(path))
     .bam_example_cache$data <- data
     data
 }

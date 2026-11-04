@@ -23,6 +23,16 @@
     as.integer(x)
 }
 
+## htslib worker threads for BAM reading. The pipeline sets this per BAM so
+## forked workers do not oversubscribe the machine; direct callers can set
+## options(MaMaMIA.htslib_threads = n).
+.bam_htslib_threads <- function() {
+    value <- suppressWarnings(as.integer(
+        getOption("MaMaMIA.htslib_threads", 1L)
+    ))
+    if (length(value) != 1L || is.na(value) || value < 1L) 1L else value
+}
+
 .validate_metric_windows <- function(windows) {
     if (!is.list(windows) || is.null(windows$table) ||
         !is.data.frame(windows$table) || is.null(windows$n_per_chromosome)) {
@@ -184,7 +194,8 @@ countWindowMetrics <- function(bam_path, windows, samples, read_groups,
             mapq = mapq,
             exclude_flags = exclude_flags,
             read_length = read_length,
-            count_deletions = count_deletions
+            count_deletions = count_deletions,
+            threads = .bam_htslib_threads()
         ),
         error = function(e) {
             .window_metrics_error(

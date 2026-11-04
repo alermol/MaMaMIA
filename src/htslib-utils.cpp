@@ -210,10 +210,14 @@ Rcpp::List bam_metrics_rg_cpp(
     int mapq,
     int exclude_flags,
     int read_length,
-    bool count_deletions) {
+    bool count_deletions,
+    int threads) {
   const int n_contigs = contig_names.size();
   const int n_samples = sample_names.size();
   const bool map_read_groups = read_group_ids.size() > 0;
+  if (threads < 1) {
+    Rcpp::stop("threads must be at least 1");
+  }
   if (n_contigs < 1) {
     Rcpp::stop("At least one contig is required for read counting");
   }
@@ -251,6 +255,10 @@ Rcpp::List bam_metrics_rg_cpp(
   if (!fp) {
     Rcpp::stop("Could not open BAM file '%s': %s", path,
                errno != 0 ? std::strerror(errno) : "unknown htslib error");
+  }
+  if (threads > 1 && hts_set_threads(fp.get(), threads) != 0) {
+    Rcpp::stop("Could not enable %d htslib worker thread(s) for '%s'", threads,
+               path);
   }
   HeaderPtr hdr(sam_hdr_read(fp.get()));
   if (!hdr) {
@@ -497,9 +505,13 @@ Rcpp::IntegerVector bam_count_ranges_cpp(
     Rcpp::NumericVector range_start,
     Rcpp::NumericVector range_end,
     int mapq,
-    int exclude_flags) {
+    int exclude_flags,
+    int threads) {
   const int n_contigs = contig_names.size();
   const R_xlen_t n_ranges = range_contig.size();
+  if (threads < 1) {
+    Rcpp::stop("threads must be at least 1");
+  }
   if (n_contigs < 1) {
     Rcpp::stop("At least one contig is required for read counting");
   }
@@ -517,6 +529,10 @@ Rcpp::IntegerVector bam_count_ranges_cpp(
   if (!fp) {
     Rcpp::stop("Could not open BAM file '%s': %s", path,
                errno != 0 ? std::strerror(errno) : "unknown htslib error");
+  }
+  if (threads > 1 && hts_set_threads(fp.get(), threads) != 0) {
+    Rcpp::stop("Could not enable %d htslib worker thread(s) for '%s'", threads,
+               path);
   }
   HeaderPtr hdr(sam_hdr_read(fp.get()));
   if (!hdr) {

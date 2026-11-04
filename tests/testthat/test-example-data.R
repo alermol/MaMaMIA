@@ -10,6 +10,24 @@ test_that("the bundled example is available", {
     expect_identical(bam_example_default_resolution(), "1000")
 })
 
+test_that("the bundled example uses portable paths", {
+    skip_if_not(bam_example_available(), "bundled example is not installed")
+    result <- bam_example_result(1000)
+    preflight <- bam_example_preflight()
+    paths <- c(
+        result$bams$path, result$bams$index_path,
+        result$samples$path, result$samples$index_path,
+        result$assembly$contigs$recipient$index_path,
+        result$provenance$bams$path,
+        result$provenance$config_path,
+        result$provenance$uvr_lock,
+        preflight$path, preflight$index_path
+    )
+    paths <- as.character(paths[!is.na(paths)])
+    expect_true(length(paths) > 0L)
+    expect_true(all(grepl("^(example/|uvr\\.lock$)", paths)))
+})
+
 test_that("the bundled example replays a result and progress", {
     skip_if_not(bam_example_available(), "bundled example is not installed")
     result <- bam_example_result(1000)

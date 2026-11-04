@@ -85,6 +85,57 @@ test_that("analysis profiles resolve complete parameter bundles", {
     expect_identical(changed$resolution, 100L)
 })
 
+test_that("profile choices follow the configured resolutions", {
+    config <- readMaMaMIAConfig(
+        system.file("extdata", "bam-demo", "assemblies.yml",
+            package = "MaMaMIA")
+    )
+    choices <- bam_analysis_profile_choices(config)
+    expect_identical(
+        unname(choices[c("Balanced", "Sensitive")]),
+        c("balanced", "sensitive")
+    )
+    expect_identical(bam_default_profile(config), "balanced")
+
+    narrow <- config
+    narrow$defaults$allowed_windows <- 1000L
+    narrow$defaults$windows_per_chromosome <- 1000L
+    expect_identical(
+        unname(bam_analysis_profile_choices(narrow)),
+        c("balanced", "complex", "component_panel", "custom")
+    )
+    expect_error(
+        bam_run_parameters(
+            list(analysis_profile = "sensitive"),
+            narrow, samples = "demo-sample"
+        ),
+        "this configuration allows"
+    )
+
+    only100 <- config
+    only100$defaults$allowed_windows <- 100L
+    only100$defaults$windows_per_chromosome <- 100L
+    expect_identical(
+        unname(bam_analysis_profile_choices(only100)),
+        c("sensitive", "cnv_robust", "custom")
+    )
+    expect_identical(bam_default_profile(only100), "sensitive")
+
+    none <- config
+    none$defaults$allowed_windows <- 200L
+    none$defaults$windows_per_chromosome <- 200L
+    expect_identical(
+        unname(bam_analysis_profile_choices(none)),
+        "custom"
+    )
+    expect_identical(bam_default_profile(none), "custom")
+    params <- bam_run_parameters(
+        list(control_samples = character(0)), none, samples = "demo-sample"
+    )
+    expect_identical(params$resolution, 200L)
+    expect_identical(params$profile_name, "custom")
+})
+
 test_that("Advanced exposes every profile parameter and marks defaults", {
     config <- readMaMaMIAConfig(
         system.file("extdata", "bam-demo", "assemblies.yml",

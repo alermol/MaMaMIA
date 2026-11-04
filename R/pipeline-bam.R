@@ -316,6 +316,14 @@
                               samples, mapq, exclude_flags) {
     paths <- as.character(indexed$original_path)
     selected_paths <- as.character(preflight$path)
+    n_bams <- length(paths)
+    cores <- min(30L, max(1L, getOption("MaMaMIA.cores", 1L)))
+    ## Split the core budget across BAMs and give each reader a few htslib
+    ## decode threads. `mclapply()` forks inherit this option.
+    threads_per_bam <- max(1L, min(8L, cores %/% max(1L, n_bams)))
+    old_threads <- getOption("MaMaMIA.htslib_threads")
+    options(MaMaMIA.htslib_threads = threads_per_bam)
+    on.exit(options(MaMaMIA.htslib_threads = old_threads), add = TRUE)
     count_one <- function(bam_index) tryCatch({
         rows <- which(selected_paths == paths[[bam_index]])
         if (length(rows) == 0L) {
@@ -359,7 +367,6 @@
     }, error = function(e) e)
 
     n_bams <- length(paths)
-    cores <- min(30L, max(1L, getOption("MaMaMIA.cores", 1L)))
     if (.Platform$OS.type == "unix" && cores > 1L && n_bams > 1L) {
         pieces <- parallel::mclapply(
             seq_len(n_bams), count_one,

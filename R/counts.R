@@ -120,7 +120,8 @@
             range_start = as.numeric(IRanges::start(gr)) - 1,
             range_end = as.numeric(IRanges::end(gr)),
             mapq = mapq,
-            exclude_flags = exclude_flags
+            exclude_flags = exclude_flags,
+            threads = .bam_htslib_threads()
         ),
         error = function(e) {
             message <- conditionMessage(e)

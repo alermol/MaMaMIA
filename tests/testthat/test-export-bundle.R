@@ -211,6 +211,16 @@ test_that("the result bundle contains the table, BEDPE and karyotypes", {
     root <- file.path(
         directory, paste0("mamamia-", sample, "-results")
     )
+    bams <- utils::read.csv(
+        file.path(root, "run", "bams.csv"),
+        check.names = FALSE, stringsAsFactors = FALSE
+    )
+    expect_false(any(grepl("Rtmp|/root/", bams$path)))
+    indexes <- utils::read.csv(
+        file.path(root, "run", "reference-indexes.csv"),
+        check.names = FALSE, stringsAsFactors = FALSE
+    )
+    expect_false(any(grepl("Rtmp|/root/", indexes$index_path)))
     calls <- utils::read.csv(
         file.path(root, "calls-full.csv"),
         check.names = FALSE, stringsAsFactors = FALSE

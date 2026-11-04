@@ -160,6 +160,18 @@ test_that("single-sample floors match the length bins", {
     )
 })
 
+test_that("allowed_windows supplies a compatible default resolution", {
+    config <- tiny_species_config()
+    config$defaults$windows_per_chromosome <- NULL
+    config$defaults$allowed_windows <- c(200, 400)
+    validated <- validateMaMaMIAConfig(config)
+    expect_identical(validated$defaults$windows_per_chromosome, 400L)
+
+    config$defaults$windows_per_chromosome <- 200L
+    validated <- validateMaMaMIAConfig(config)
+    expect_identical(validated$defaults$windows_per_chromosome, 200L)
+})
+
 test_that("version 1 is rejected with migration guidance", {
     config <- list(version = 1L, species = list())
     expect_error(
