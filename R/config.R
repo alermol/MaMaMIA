@@ -641,13 +641,17 @@ chr_number <- function(chr_name) {
     unused <- recipient$id[!recipient$id %in% used]
     for (id in unused) {
         group <- recipient$group[match(id, recipient$id)]
+        reason <- if (is.na(group) || !nzchar(group)) {
+            "no chromosome group"
+        } else if (!any(!is.na(donor_group) & donor_group == group)) {
+            sprintf("no donor contig in group %s", group)
+        } else {
+            ## Another contig in this group is the one-to-one representative;
+            ## group-level scoring still uses this homoeolog.
+            next
+        }
         unpaired <- rbind(unpaired, data.frame(
-            role = "recipient", contig = id,
-            reason = if (is.na(group) || !nzchar(group)) {
-                "no chromosome group"
-            } else {
-                sprintf("no donor contig in group %s", group)
-            },
+            role = "recipient", contig = id, reason = reason,
             stringsAsFactors = FALSE
         ))
     }

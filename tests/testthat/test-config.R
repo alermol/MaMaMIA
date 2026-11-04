@@ -383,6 +383,22 @@ test_that("zero-padded chromosome groups normalise to bare numbers", {
     expect_identical(entries$group, c("1", "2", "3"))
 })
 
+test_that("group-matched homoeologs are not reported unpaired", {
+    derived <- .species_derived_pairs(
+        data.frame(id = "d1", group = "1", stringsAsFactors = FALSE),
+        data.frame(
+            id = c("r1", "r2", "r3"),
+            group = c("1", "1", "2"),
+            stringsAsFactors = FALSE
+        )
+    )
+    expect_identical(derived$pairs[["d1"]], "r1")
+    expect_identical(derived$unpaired$contig, "r3")
+    expect_identical(
+        derived$unpaired$reason, "no donor contig in group 2"
+    )
+})
+
 test_that("declared assemblies are rejected by the registry schema", {
     config <- tiny_species_config()
     config$assemblies <- list(tiny = list(label = "tiny"))
