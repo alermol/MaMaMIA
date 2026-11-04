@@ -38,10 +38,6 @@ preflightBams()
   -> classifyCalls()                substitution / addition / other
 ```
 
-This release is not backward compatible with version 0.99. The configuration
-schema, the result object and the function surface all changed; see
-`MIGRATION.md`.
-
 # Configuration
 
 A version 2 registry declares species, their contigs and components, and one or

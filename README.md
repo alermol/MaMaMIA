@@ -20,9 +20,7 @@ reference into windows, reads GC from a `gcrank` index, measures breadth and
 counts in one htslib pass, and runs the cohort pipeline. The dashboard is the
 main entry point; the same pipeline is available from R.
 
-**Version 0.1.0.** This release is not backward compatible with 0.99.x: the
-configuration schema, result object, and function surface changed. See
-[`NEWS.md`](NEWS.md).
+**Version 0.1.0.** First public release.
 
 ## Requirements
 
