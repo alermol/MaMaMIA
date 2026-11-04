@@ -346,14 +346,12 @@ five of the six reference events on recipient contigs (Sq74 7D; Sq75
 loss and receives no host. Synthetic copy-neutral events are never marked
 `assigned`. This validation is a programmatic cohort run and raises
 `server.max_bams` explicitly; the dashboard still accepts one BAM file. The
-reproducible check is:
+reproducible check is the gated 24-BAM integration test:
 
 ```sh
-Rscript tools/validate-24.R --out test_data/introgression-study/results/validation_24bam.rds
+MAMAMIA_TEST_DATA=1 MAMAMIA_SLOW_TESTS=1 \
+  Rscript -e 'testthat::test_local(filter = "integration")'
 ```
-
-Set `MAMAMIA_TEST_DATA=1` and `MAMAMIA_SLOW_TESTS=1` to run the gated real-data
-tests.
 
 ## Testing
 
