@@ -71,6 +71,8 @@
   instead of walking every sample bitmap.
 * The karyotype widget payload no longer duplicates every full-view call
   in `full_calls`; `full_chromosomes` is the single source.
+* Example progress totals are precomputed once instead of rescanning the
+  metrics and calls tables for every sample.
 
 ## Deployment
 

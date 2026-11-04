@@ -308,8 +308,16 @@ bam_example_progress <- function(result, progress, pause = 0) {
         n_windows = nrow(result$gc),
         n_indexes = length(result$assembly$gc_indexes)
     ))
+    metric_totals <- tapply(
+        as.numeric(result$metrics$count),
+        as.character(result$metrics$sample),
+        sum, na.rm = TRUE
+    )
     for (sample in samples) {
-        total <- sum(result$metrics$count[result$metrics$sample == sample])
+        total <- unname(metric_totals[sample])
+        if (length(total) == 0L || is.na(total)) {
+            total <- 0
+        }
         report("metrics", list(sample = sample, total = total))
     }
     report("score", list(
@@ -322,10 +330,15 @@ bam_example_progress <- function(result, progress, pause = 0) {
         masked_fraction = mean(result$masks$mask, na.rm = TRUE),
         source = unique(result$masks$source[result$masks$mask])
     ))
+    call_counts <- table(as.character(result$calls$sample))
     for (sample in samples) {
+        n_segments <- unname(call_counts[sample])
+        if (length(n_segments) == 0L || is.na(n_segments)) {
+            n_segments <- 0L
+        }
         report("segmentation", list(
             sample = sample,
-            n_segments = sum(result$calls$sample == sample, na.rm = TRUE)
+            n_segments = n_segments
         ))
     }
     report("calibration", list(
