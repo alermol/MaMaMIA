@@ -35,6 +35,10 @@
 * **Incompatible analysis profiles are hidden.** The picker omits profiles
   whose resolution the configuration does not allow, starts on a compatible
   profile, and direct use reports the allowed range.
+* **Bundle file inventories match the files written.** README entries for
+  optional karyotype images and QC plots appear only when those files exist,
+  and `report.html` no longer claims to list the manifest and checksums
+  generated after it.
 
 ## Performance
 

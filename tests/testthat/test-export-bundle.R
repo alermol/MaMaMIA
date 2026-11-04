@@ -547,4 +547,15 @@ test_that("a relative bundle path is written to the caller's directory", {
     }, add = TRUE)
     bam_write_result_bundle(result, "relative-bundle.zip", sample = sample)
     expect_true(file.exists(file.path(directory, "relative-bundle.zip")))
+    unpacked <- file.path(directory, "unpacked")
+    dir.create(unpacked)
+    utils::unzip(
+        file.path(directory, "relative-bundle.zip"), exdir = unpacked
+    )
+    root <- file.path(
+        unpacked, paste0("mamamia-", sample, "-results")
+    )
+    readme <- readLines(file.path(root, "README.txt"))
+    expect_false(any(grepl("karyotype-full.svg", readme, fixed = TRUE)))
+    expect_true(any(grepl("report.html", readme, fixed = TRUE)))
 })

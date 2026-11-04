@@ -877,7 +877,8 @@ bam_bundle_write_bedpe <- function(calls, windows, file, pass_only = FALSE) {
 #' @noRd
 bam_bundle_readme <- function(sample, calls, generated, version,
                               bedpe_columns = character(),
-                              confident_calls = NULL, result = NULL) {
+                              confident_calls = NULL, result = NULL,
+                              bundle = NULL) {
     n <- nrow(calls)
     passing <- if ("passes_calibration" %in% names(calls)) {
         sum(isTRUE_vec(calls$passes_calibration), na.rm = TRUE)
@@ -909,6 +910,33 @@ bam_bundle_readme <- function(sample, calls, generated, version,
         )
     }, character(1))
     run_lines <- bam_bundle_run_summary_lines(result, sample)
+    has_file <- function(relative) {
+        is.null(bundle) || file.exists(file.path(bundle, relative))
+    }
+    has_plots <- is.null(bundle) ||
+        dir.exists(file.path(bundle, "qc", "plots"))
+    karyotype_lines <- c(
+        if (has_file("karyotype-full.svg")) {
+            c(
+                "karyotype-full.svg    Every call for the sample, without display",
+                "                      filters."
+            )
+        },
+        if (has_file("karyotype-current.svg")) {
+            "karyotype-current.svg Calls for the sample after the active filters."
+        },
+        if (has_file("karyotype-confident.svg")) {
+            "karyotype-confident.svg Confident calls only."
+        }
+    )
+    plot_lines <- if (has_plots) {
+        c(
+            "qc/plots/              PNG diagnostics for coverage, scores, residuals,",
+            "                       masks, calls and the cohort."
+        )
+    } else {
+        character()
+    }
     c(
         "MaMaMIA results bundle",
         "",
@@ -942,10 +970,7 @@ bam_bundle_readme <- function(sample, calls, generated, version,
         "calls-all.bedpe       Every call for this sample in BEDPE format.",
         "calls-passing.bedpe   Calibrated calls (pass = TRUE) in BEDPE format.",
         "calls-confident.bedpe Confident calls in BEDPE format.",
-        "karyotype-full.svg    Every call for the sample, without display",
-        "                      filters.",
-        "karyotype-current.svg Calls for the sample after the active filters.",
-        "karyotype-confident.svg Confident calls only.",
+        karyotype_lines,
         "report.html           Self-contained summary with tables and the",
         "                      full karyotype.",
         "",
@@ -962,8 +987,7 @@ bam_bundle_readme <- function(sample, calls, generated, version,
         "qc/masks-windows.csv.gz Every mask decision.",
         "qc/calibration.csv     Calibration thresholds by mode and length bin.",
         "qc/component-evidence.csv Per-call evidence for every donor component.",
-        "qc/plots/              PNG diagnostics for coverage, scores, residuals,",
-        "                       masks, calls and the cohort.",
+        plot_lines,
         "",
         "Genome-browser tracks",
         "---------------------",
@@ -1013,8 +1037,9 @@ bam_bundle_readme <- function(sample, calls, generated, version,
         "manifest.json lists every payload file with its size and MD5",
         "checksum. checksums.md5 repeats the MD5 sums and also covers the",
         "manifest. report.html is a self-contained human-readable summary.",
-        "qc/plots/ holds the same diagnostic figures as PNG files; each plot",
-        "is generated from the raw table named in its caption.",
+        "qc/plots/, when present, holds the same diagnostic figures as PNG",
+        "files; each plot is generated from the raw table named in its",
+        "caption.",
         "",
         "Column conventions",
         "------------------",
@@ -1177,7 +1202,8 @@ bam_write_result_bundle <- function(result, file, sample,
             sample, calls, generated, version,
             bedpe_columns = bedpe_columns,
             confident_calls = confident_calls,
-            result = result
+            result = result,
+            bundle = bundle
         ),
         file.path(bundle, "README.txt"),
         useBytes = TRUE
