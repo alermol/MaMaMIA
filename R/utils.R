@@ -6,10 +6,7 @@
 #' provenance and mask/calibration versions.
 #' @noRd
 hash_object <- function(x) {
-    path <- tempfile()
-    on.exit(unlink(path), add = TRUE)
-    saveRDS(x, path, version = 2)
-    unname(tools::md5sum(path))
+    rlang::hash(x)
 }
 
 #' Null-coalescing helper

@@ -85,6 +85,8 @@
   bounded.
 * BEDPE export builds the descriptive table in memory instead of writing
   and re-reading a temporary file for each output.
+* Hash-based version keys and the analysis cache key are computed in
+  memory with `rlang::hash()` instead of serialising to a temp file.
 
 ## Deployment
 
