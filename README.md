@@ -6,90 +6,111 @@
 
 <p align="center">
   <strong>Max Mapping for Meticulous Introgression Analysis</strong><br>
-  Version 0.1.0 (first public release) · GPL (>= 3) · R 4.6+
+  Version 0.1.0 (first public release) · GPL (>= 3)
 </p>
 
-MaMaMIA detects interspecific introgressions from Genotyping-by-Sequencing
-(GBS) coverage. It measures breadth and read counts in exact windows, compares
-donor and recipient depth with a paired log-ratio across any number of genome
-components, corrects GC bias, masks unreliable windows, segments with CBS, and
-calibrates calls by segment length. The method is ploidy-agnostic and BAM-first:
-the same pipeline powers the Shiny dashboard and the R API.
+MaMaMIA is an interactive dashboard for detecting interspecific introgressions
+from Genotyping-by-Sequencing (GBS) coverage. Upload a coordinate-sorted BAM,
+select a donor and recipient species, run the analysis, and explore the results
+as an interactive karyotype, sortable call table, and downloadable report
+bundle. The method is ploidy-agnostic and supports any number of donor and
+recipient components.
+
+<p align="center">
+  <img src="man/figures/mamamia-karyotype.png" alt="MaMaMIA karyotype with a call detail card" width="100%">
+</p>
+<p align="center"><em>Interactive karyotype with per-call evidence and dosage. Screens use the bundled example data.</em></p>
 
 ## Highlights
 
-- Calls substitutions, additions, deletions, complex, and other events.
-- Supports diploid through hexaploid designs, multi-donor samples, and
-  overlapping component labels.
-- Single-sample or cohort analysis with GC correction, recurrence/blacklist
-  masks, and length-stratified empirical calibration.
-- Interactive karyotype, sortable call table, and single-archive export bundle.
-- Reproducible R 4.6.1 environment via `uvr`.
-- Paired and donor-only scoring both recover 6/6 reference events on the
-  24-BAM *Aegilops speltoides* validation set.
+- One BAM per run; multi-sample BAMs are read through their `@RG SM` tags.
+- Donor and recipient species selected from a configurable registry.
+- Vertical, group-aware karyotype with score-heatmap and call-map modes.
+- Hover cards for class, status, placement, evidence, confidence, and dosage.
+- Sortable, filterable call table and single-archive export bundle.
+- Browser-side upload limit with [bamhusk](https://github.com/alermol/bamhusk)
+  guidance for oversized BAMs.
 
-## Requirements
+## Workflow
 
-- R 4.6 or newer and a C++23 compiler (for Rhtslib and the vendored gcrank).
-- `uvr` for the pinned package set.
-- `samtools` and `gcrank-build` only for preparing BAMs and GC indexes.
+1. **Upload a BAM.** Coordinate-sorted; the dashboard creates the CSI index.
+   Oversized files can be slimmed with
+   [bamhusk](https://github.com/alermol/bamhusk) first.
+2. **Choose the species pair.** Select one donor and one recipient.
+3. **Pick a profile.** Start with Balanced, or choose Sensitive, CNV-robust, or
+   Complex. Advanced controls expose resolution, scoring, masking, and
+   calibration.
+4. **Run.** Follow stage-by-stage progress.
+5. **Explore and export.** Inspect the karyotype and calls, then download the
+   bundle.
 
-## Install
+## Analysis profiles
+
+| Profile | Best for |
+| --- | --- |
+| Balanced | Default; normal or high coverage |
+| Sensitive | Low coverage or subtle candidates |
+| CNV-robust | Recipient copy-number variation |
+| Complex | Multi-component donors |
+
+## Interface
+
+<p align="center">
+  <img src="man/figures/mamamia-calls.png" alt="MaMaMIA calls table" width="100%">
+</p>
+<p align="center"><em>Sortable call table with configurable columns.</em></p>
+
+<p align="center">
+  <img src="man/figures/mamamia-export.png" alt="MaMaMIA export bundle" width="100%">
+</p>
+<p align="center"><em>Results bundle and sample summary.</em></p>
+
+## Input requirements
+
+- Coordinate-sorted BAM. SAM and CRAM are not accepted.
+- One BAM per run; a multi-sample BAM is one file.
+- The BAM must match the selected species assembly.
+- The default upload limit is 5 GiB, configurable by the deployment.
+
+## Oversized BAMs
+
+If a BAM exceeds the dashboard upload limit, use
+[bamhusk](https://github.com/alermol/bamhusk) locally before uploading. It
+rewrites the BAM with the alignment fields MaMaMIA reads and removes base
+qualities, read names, and optional tags; `--drop-seq` also removes the read
+sequence while preserving read length through the CIGAR.
 
 ```sh
-git clone https://github.com/alermol/MaMaMIA.git
-cd MaMaMIA
-uvr sync --frozen
-uvr activate --write-shim
-. .uvr/activate
-R CMD INSTALL .
+husk --drop-seq -@ 8 input.bam output.bam
 ```
 
-## Quick start
+Upload the resulting `output.bam` through the normal control.
 
-Create a version 2 assembly registry. Start from
-[`inst/config/assemblies.example.yml`](inst/config/assemblies.example.yml), or
-locate the installed copy with
-`system.file("config/assemblies.example.yml", package = "MaMaMIA")`.
+## Export bundle
 
-Input BAMs must be coordinate-sorted; MaMaMIA creates missing CSI indexes.
-Then analyze a BAM:
+The **Export** tab downloads one ZIP archive with:
 
-```r
-library(MaMaMIA)
+- full, passing, and confident call tables;
+- BEDPE, BED, and bedGraph tracks;
+- karyotype SVGs;
+- per-window coverage, GC, MAPQ, score, and mask diagnostics;
+- calibration thresholds and call summaries;
+- QC plots and a self-contained `report.html`;
+- provenance, session information, and checksums.
 
-config <- readMaMaMIAConfig("assemblies.yml")
-pair <- resolveSpeciesAssembly(
-    config, donor = "aegilops_speltoides", recipient = "triticum_aestivum"
-)
-result <- analyzeBamInput(
-    "sample.bam", pair$config,
-    assembly = pair$key,
-    windows_per_chromosome = 1000L,
-    cores = 8L
-)
+## Get started
 
-writeCallsToBedpe(result, "calls.bedpe")
-```
-
-Launch the dashboard with:
-
-```r
-runMaMaMIA(config = "assemblies.yml")
-```
-
-The dashboard accepts one BAM per run; a multi-sample BAM is one file read
-through its `@RG SM` tags. Oversized BAMs can be slimmed locally with
-[bamhusk](https://github.com/alermol/bamhusk) before upload.
+Open the MaMaMIA dashboard provided by your deployment, upload a BAM, and
+follow the workflow above. For container and server setup, see the
+[deployment notes](docs-source/shinyproxy.md). The bundled **Example data**
+button opens a complete tour without uploading a BAM.
 
 ## Documentation
 
-Detailed configuration, method, result-field, and deployment guides will be
-maintained in the [MaMaMIA wiki](https://github.com/alermol/MaMaMIA/wiki).
+Detailed configuration, method, result-field, and deployment guides live in the
+[MaMaMIA wiki](https://github.com/alermol/MaMaMIA/wiki).
 
-- `vignette("Overview", package = "MaMaMIA")` — end-to-end workflow.
-- `?analyzeBamInput`, `?runMaMaMIA` — function reference.
-- [`docs-source/shinyproxy.md`](docs-source/shinyproxy.md) — deployment notes.
+- [Karyotype tooltip guide](docs-source/karyotype-tooltip.md)
 
 ## License
 
