@@ -312,6 +312,17 @@ Rcpp::List bam_metrics_rg_cpp(
       Rcpp::stop("Contig '%s' in BAM '%s' has no length", name, path);
     }
 
+    // Allocate one bitmap per sample for this contig, then zero and popcount
+    // only the words a read actually touched. Windows are sparse, so the
+    // previous per-window full-width clearing dominated runtime at scale.
+    const size_t max_words =
+        static_cast<size_t>((header_length + 63) / 64);
+    for (int sample = 0; sample < n_samples; ++sample) {
+      bits[sample].assign(max_words, 0);
+    }
+    std::vector<size_t> first_word(n_samples, max_words);
+    std::vector<size_t> last_word(n_samples, 0);
+
     for (int window = 0; window < n_per_chromosome; ++window) {
       if ((window & 0x3F) == 0) {
         Rcpp::checkUserInterrupt();
@@ -327,10 +338,9 @@ Rcpp::List bam_metrics_rg_cpp(
       if (stop <= start) {
         continue;
       }
-      const size_t n_words =
-          static_cast<size_t>((stop - start + 63) / 64);
       for (int sample = 0; sample < n_samples; ++sample) {
-        bits[sample].assign(n_words, 0);
+        first_word[sample] = max_words;
+        last_word[sample] = 0;
       }
 
       ItrPtr itr(sam_itr_queryi(idx.get(), tid, start, stop));
@@ -412,6 +422,12 @@ Rcpp::List bam_metrics_rg_cpp(
               const size_t tail_shift =
                   63 - static_cast<size_t>(clipped_stop - start - 1) % 64;
               const uint64_t tail = ~uint64_t{0} >> tail_shift;
+              if (first < first_word[sample]) {
+                first_word[sample] = first;
+              }
+              if (last > last_word[sample]) {
+                last_word[sample] = last;
+              }
               if (first == last) {
                 bits[sample][first] |=
                     head & tail;
@@ -463,10 +479,20 @@ Rcpp::List bam_metrics_rg_cpp(
 
       for (int sample = 0; sample < n_samples; ++sample) {
         uint64_t observed = 0;
-        for (size_t w = 0; w < bits[sample].size(); ++w) {
-          observed += static_cast<uint64_t>(
-              __builtin_popcountll(bits[sample][w]));
+        const size_t first = first_word[sample];
+        const size_t last = last_word[sample];
+        if (first <= last) {
+          for (size_t w = first; w <= last; ++w) {
+            observed += static_cast<uint64_t>(
+                __builtin_popcountll(bits[sample][w]));
+          }
+          std::fill(
+              bits[sample].begin() + first,
+              bits[sample].begin() + last + 1,
+              0);
         }
+        first_word[sample] = max_words;
+        last_word[sample] = 0;
         const hts_pos_t column =
             static_cast<hts_pos_t>(contig) * n_per_chromosome + window;
         if (observed > INT32_MAX) {

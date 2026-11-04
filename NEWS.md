@@ -59,6 +59,9 @@
 * Component evidence pre-aggregates donor components once and matches
   windows by index instead of subsetting and merging the full tables for
   every call and component.
+* BAM coverage bitmaps are cleared and popcounted only for the words a
+  read actually touched; windows with no reads skip the scan entirely
+  instead of walking every sample bitmap.
 
 ## Deployment
 
