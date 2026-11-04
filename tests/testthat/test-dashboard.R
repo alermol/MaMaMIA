@@ -61,6 +61,13 @@ test_that("analysis profiles resolve complete parameter bundles", {
         system.file("extdata", "bam-demo", "assemblies.yml",
             package = "MaMaMIA")
     )
+    profiles <- mamamia_analysis_profiles()
+    expect_false("component_panel" %in% names(profiles))
+    expect_false(any(vapply(
+        profiles,
+        function(profile) "component_panel" %in% names(profile),
+        logical(1)
+    )))
     sensitive <- mamamia_analysis_profile("sensitive")
     expect_identical(sensitive$parameters$windows_per_chromosome, 100L)
     expect_identical(sensitive$parameters$metric, "combined")
@@ -127,7 +134,7 @@ test_that("profile choices follow the configured resolutions", {
     narrow$defaults$windows_per_chromosome <- 1000L
     expect_identical(
         unname(bam_analysis_profile_choices(narrow)),
-        c("balanced", "complex", "component_panel", "custom")
+        c("balanced", "complex", "custom")
     )
     expect_error(
         bam_run_parameters(

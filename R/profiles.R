@@ -12,8 +12,8 @@
 #' Named analysis profiles
 #'
 #' @return A named list of profile contracts. Each contract has a `label`, a
-#'   `short_description`, a `description`, a `component_panel` flag and a
-#'   `parameters` list suitable for [analyzeBamInput()].
+#'   `short_description`, a `description` and a `parameters` list suitable for
+#'   [analyzeBamInput()].
 #' @export
 mamamia_analysis_profiles <- function() {
     balanced <- list(
@@ -43,7 +43,6 @@ mamamia_analysis_profiles <- function() {
     cnv_robust$calibration$floors <- c(1.5, 1.2, 1.0, 0.8, 0.4)
     complex <- balanced
     complex$metric <- "combined"
-    component_panel <- balanced
 
     list(
         balanced = list(
@@ -56,7 +55,6 @@ mamamia_analysis_profiles <- function() {
                 "breadth, paired donor/recipient log-ratio and max donor",
                 "aggregation."
             ),
-            component_panel = FALSE,
             parameters = balanced
         ),
         sensitive = list(
@@ -68,7 +66,6 @@ mamamia_analysis_profiles <- function() {
                 "Lower-resolution, combined breadth/count scoring with",
                 "relaxed floors for low-coverage or subtle candidates."
             ),
-            component_panel = FALSE,
             parameters = sensitive
         ),
         cnv_robust = list(
@@ -80,7 +77,6 @@ mamamia_analysis_profiles <- function() {
                 "Donor-only scoring at low resolution for samples with",
                 "suspected recipient copy-number changes."
             ),
-            component_panel = FALSE,
             parameters = cnv_robust
         ),
         complex = list(
@@ -93,21 +89,7 @@ mamamia_analysis_profiles <- function() {
                 "pair with a component-isolation assembly when J/St/V",
                 "resolution matters."
             ),
-            component_panel = FALSE,
             parameters = complex
-        ),
-        component_panel = list(
-            label = "Component panel",
-            short_description = paste(
-                "Balanced scoring with per-call component evidence."
-            ),
-            description = paste(
-                "Balanced scoring plus the per-call component evidence",
-                "panel. Use the component-isolation assembly to test one",
-                "donor component at a time."
-            ),
-            component_panel = TRUE,
-            parameters = component_panel
         )
     )
 }

@@ -42,6 +42,9 @@
 * **Fractional Advanced integers are rejected.** MAPQ and the calibration
   merge gap are validated before coercion, so `20.9` no longer silently
   runs as 20.
+* **The duplicate `component_panel` profile is removed.** Its parameters
+  were identical to `balanced`, its flag was never read, and component
+  evidence is written to every bundle regardless of profile.
 
 ## Performance
 
