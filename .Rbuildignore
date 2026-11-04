@@ -1,7 +1,6 @@
 ^tmp$
 ^.*\.Rproj$
 ^\.Rproj\.user$
-^\.posit/assistant$
 ^test_data$
 ^test_data/
 ^uvr\.toml$
@@ -11,12 +10,10 @@
 ^\.Rprofile$
 ^docs-source$
 ^deployment$
-^graphify-out$
 ^\.dockerignore$
 ^tools$
 ^src/gcrank/src/.*[.]o$
 ^src/gcrank/src/.*[.]so$
-^\.opencode$
 ^\.zed$
 ^\.git$
 ^src/Makevars$
