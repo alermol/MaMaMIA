@@ -22,7 +22,7 @@ test_that("the brief call table keeps the inspection columns", {
             "start_bp", "end_bp", "width_bp", "pass"
         )
     )
-    labels <- bam_brief_call_labels(bam_brief_call_columns(one))
+    labels <- bam_call_column_labels(bam_brief_call_columns(one))
     expect_identical(labels[[1L]], "Group")
     expect_identical(labels[[5L]], "Recipient")
     expect_identical(labels[[6L]], "Donor")

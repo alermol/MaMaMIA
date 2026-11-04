@@ -339,12 +339,6 @@ bam_call_column_labels <- function(columns = NULL) {
     out
 }
 
-#' Human-readable labels for the brief call table
-#' @noRd
-bam_brief_call_labels <- function(columns) {
-    bam_call_column_labels(columns)
-}
-
 #' Column metadata for the Calls tab
 #'
 #' Combines short display labels with the bundle dictionary descriptions.

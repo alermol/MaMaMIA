@@ -350,27 +350,6 @@ bam_resolve_species_pair <- function(config, recipient, donor) {
 ## Sidebar choices -----------------------------------------------------------
 
 #' @noRd
-bam_resolution_choices <- function(defaults = .config_defaults()) {
-    allowed <- sort(unique(as.integer(defaults$allowed_windows)))
-    if (length(allowed) == 0L) {
-        allowed <- 1000L
-    }
-    labels <- vapply(allowed, function(n) {
-        switch(as.character(n),
-            `100` = "Low (100 per chromosome)",
-            `1000` = "Medium (1,000 per chromosome)",
-            `5000` = "High (5,000 per chromosome)",
-            `10000` = "Extra high (10,000 per chromosome)",
-            sprintf(
-                "%s per chromosome",
-                format(n, big.mark = ",", scientific = FALSE)
-            )
-        )
-    }, character(1))
-    stats::setNames(as.character(allowed), labels)
-}
-
-#' @noRd
 bam_resolution_range <- function(defaults = .config_defaults(),
                                  step = 10L) {
     allowed <- sort(unique(as.integer(defaults$allowed_windows)))
@@ -4662,7 +4641,6 @@ bam_advanced_parameters_ui <- function(config, defaults, locked = FALSE) {
             )
         ))
     }
-    floor_labels <- bam_calibration_floor_labels(config)
     floor_values <- as.numeric(defaults$calibration_floors)
     if (length(floor_values) != 5L) {
         floor_values <- rep(floor_values, length.out = 5L)

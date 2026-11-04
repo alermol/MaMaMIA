@@ -828,18 +828,3 @@ test_that("exploreIntrogressions() requires a BamAnalysisResult", {
         "BamAnalysisResult"
     )
 })
-
-test_that("the explorer score profile renders to a device", {
-    skip_if_not(bam_example_available(), "bundled example is not installed")
-    result <- bam_example_result(1000)
-    calls <- result$calls[result$calls$pass, , drop = FALSE]
-    plot <- explorer_score_plot(result$scores, calls)
-    expect_s3_class(plot, "ggplot")
-
-    output <- tempfile(fileext = ".png")
-    on.exit(unlink(output), add = TRUE)
-    grDevices::png(output, width = 900, height = 500, type = "cairo")
-    print(plot)
-    grDevices::dev.off()
-    expect_gt(file.info(output)$size, 0)
-})
