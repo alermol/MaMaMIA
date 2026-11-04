@@ -76,6 +76,8 @@
 * The Calls table uses DT server-side processing, so only the current page
   is sent to the browser; selection indices remain relative to the filtered
   table.
+* Karyotype tooltips reuse cached HTML while the pointer stays inside the
+  same call instead of rebuilding the tooltip on every mousemove.
 
 ## Deployment
 

@@ -425,6 +425,11 @@ HTMLWidgets.widget({
     }
 
     function describe(chromosome, fraction, calls) {
+      var cache = calls && calls.__tipCache;
+      if (cache && cache.call &&
+          fraction >= cache.call.start && fraction <= cache.call.end) {
+        return cache.html;
+      }
       var matched = null;
       (calls || []).forEach(function (call) {
         if (fraction >= call.start && fraction <= call.end) {
@@ -676,6 +681,9 @@ HTMLWidgets.widget({
 
       html += '<div class="mamamia-tip-footer">' +
         "Click to filter this group</div></div>";
+      if (matched && calls) {
+        calls.__tipCache = {call: matched, html: html};
+      }
       return html;
     }
 
