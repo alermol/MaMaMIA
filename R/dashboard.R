@@ -942,8 +942,8 @@ explorer_karyotype_ui <- function(id, height = "calc(100vh - 360px)") {
 #' @param calls Calls to overlay; defaults to every call in the result.
 #' @param selected_groups Groups currently selected in the explorer.
 #'
-#' @return A karyotype payload with `full_chromosomes` and `full_calls`
-#'   entries for the unfiltered export.
+#' @return A karyotype payload with a `full_chromosomes` entry for the
+#'   unfiltered export.
 #' @noRd
 karyotype_export_payload <- function(result, sample = NULL,
                                      mode = c("heatmap", "calls"),
@@ -972,10 +972,6 @@ karyotype_export_payload <- function(result, sample = NULL,
             chromosome$scores <- numeric()
             chromosome
         }
-    )
-    payload$full_calls <- lapply(
-        full$chromosomes,
-        function(chromosome) chromosome$calls
     )
     payload
 }

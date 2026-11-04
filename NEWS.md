@@ -69,6 +69,8 @@
 * BAM coverage bitmaps are cleared and popcounted only for the words a
   read actually touched; windows with no reads skip the scan entirely
   instead of walking every sample bitmap.
+* The karyotype widget payload no longer duplicates every full-view call
+  in `full_calls`; `full_chromosomes` is the single source.
 
 ## Deployment
 

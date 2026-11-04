@@ -165,6 +165,8 @@ test_that("the result bundle contains the table, BEDPE and karyotypes", {
         selected_groups = NULL
     )
     full <- bam_full_karyotype_payload(current)
+    expect_null(current$full_calls)
+    expect_true(length(current$full_chromosomes) > 0L)
     confident_payload <- karyotype_payload(
         result, sample = sample, mode = "calls",
         calls = confident_calls, selected_groups = NULL
