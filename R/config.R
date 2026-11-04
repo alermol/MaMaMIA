@@ -1085,6 +1085,54 @@ chr_number <- function(chr_name) {
     out
 }
 
+## Validated configurations are expensive to rebuild: each read re-parses the
+## YAML and every gcrank manifest/contigs.tsv. Cache by normalized path and
+## invalidate on mtime or size change.
+.MaMaMIAconfigCache <- new.env(parent = emptyenv())
+.MaMaMIAconfigCacheMax <- 8L
+
+.config_cache_get <- function(path) {
+    if (!isTRUE(getOption("MaMaMIA.config_cache", TRUE))) {
+        return(NULL)
+    }
+    if (!exists(path, envir = .MaMaMIAconfigCache, inherits = FALSE)) {
+        return(NULL)
+    }
+    entry <- get(path, envir = .MaMaMIAconfigCache, inherits = FALSE)
+    info <- file.info(path)
+    if (is.na(info$mtime) || is.na(info$size) ||
+        as.numeric(info$mtime) != entry$mtime ||
+        as.numeric(info$size) != entry$size) {
+        return(NULL)
+    }
+    entry$config
+}
+
+.config_cache_set <- function(path, config) {
+    if (!isTRUE(getOption("MaMaMIA.config_cache", TRUE))) {
+        return(invisible(NULL))
+    }
+    info <- file.info(path)
+    if (is.na(info$mtime) || is.na(info$size)) {
+        return(invisible(NULL))
+    }
+    assign(
+        path,
+        list(
+            mtime = as.numeric(info$mtime),
+            size = as.numeric(info$size),
+            config = config
+        ),
+        envir = .MaMaMIAconfigCache
+    )
+    keys <- ls(envir = .MaMaMIAconfigCache, all.names = TRUE)
+    while (length(keys) > .MaMaMIAconfigCacheMax) {
+        rm(list = keys[[1L]], envir = .MaMaMIAconfigCache)
+        keys <- keys[-1L]
+    }
+    invisible(NULL)
+}
+
 #' Read and validate a MaMaMIA assembly registry
 #'
 #' Reads the YAML configuration, resolves relative paths against the directory
@@ -1115,6 +1163,10 @@ readMaMaMIAConfig <- function(path) {
         .config_error("MaMaMIA config file does not exist: %s", path)
     }
     path <- normalizePath(path, winslash = "/", mustWork = TRUE)
+    cached <- .config_cache_get(path)
+    if (!is.null(cached)) {
+        return(cached)
+    }
     config <- tryCatch(
         yaml::read_yaml(
             path,
@@ -1134,7 +1186,9 @@ readMaMaMIAConfig <- function(path) {
         .config_error("MaMaMIA config '%s' must contain a YAML mapping", path)
     }
     attr(config, "config_path") <- path
-    validateMaMaMIAConfig(config)
+    config <- validateMaMaMIAConfig(config)
+    .config_cache_set(path, config)
+    config
 }
 
 #' Validate a MaMaMIA configuration

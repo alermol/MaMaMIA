@@ -399,6 +399,29 @@ test_that("group-matched homoeologs are not reported unpaired", {
     )
 })
 
+test_that("readMaMaMIAConfig caches by path and invalidates on change", {
+    source <- dirname(tiny_config_path())
+    target <- tempfile("config-cache-")
+    dir.create(target)
+    file.copy(
+        list.files(source, full.names = TRUE), target, recursive = TRUE
+    )
+    on.exit(unlink(target, recursive = TRUE), add = TRUE)
+    path <- file.path(target, "assemblies.yml")
+
+    first <- readMaMaMIAConfig(path)
+    first$defaults$mapq <- 1L
+    second <- readMaMaMIAConfig(path)
+    expect_identical(second$defaults$mapq, 20L)
+
+    lines <- readLines(path)
+    lines <- sub("mapq: 20", "mapq: 21", lines, fixed = TRUE)
+    lines <- c(lines, "# cache invalidation")
+    writeLines(lines, path)
+    third <- readMaMaMIAConfig(path)
+    expect_identical(third$defaults$mapq, 21L)
+})
+
 test_that("declared assemblies are rejected by the registry schema", {
     config <- tiny_species_config()
     config$assemblies <- list(tiny = list(label = "tiny"))
