@@ -136,16 +136,45 @@ componentEvidence <- function(result, sample = NULL, calls = NULL,
     )
     score_frame$iid <- as.integer(score_frame$iid)
 
+    donor_agg <- stats::aggregate(
+        component_lambda ~ group + component + iid,
+        data = donor,
+        FUN = mean, na.rm = TRUE
+    )
+    names(donor_agg)[names(donor_agg) == "group"] <- "chromosome_group"
+    donor_by <- split(
+        donor_agg,
+        paste(donor_agg$chromosome_group, donor_agg$component, sep = "\r")
+    )
+    donor_components <- split(
+        as.character(donor$component), as.character(donor$group)
+    )
+    donor_components <- lapply(donor_components, function(x) {
+        sort(unique(x))
+    })
+    recipient_by <- split(
+        recipient_frame, recipient_frame$chromosome_group
+    )
+    score_by <- split(score_frame, score_frame$chromosome_group)
+
     contigs <- result$assembly$contigs$donor
+    contig_table <- if (is.data.frame(contigs) &&
+        all(c("group", "component") %in% names(contigs))) {
+        table(
+            as.character(contigs$group),
+            as.character(contigs$component)
+        )
+    } else {
+        NULL
+    }
     contig_count <- function(group, component) {
-        if (!is.data.frame(contigs) ||
-            !all(c("group", "component") %in% names(contigs))) {
+        if (is.null(contig_table)) {
             return(NA_integer_)
         }
-        sum(
-            as.character(contigs$group) == as.character(group) &
-                as.character(contigs$component) == as.character(component)
-        )
+        value <- contig_table[
+            as.character(group), as.character(component)
+        ]
+        if (length(value) == 0L || is.na(value)) 0L else as.integer(value)
     }
 
     rows <- list()
@@ -154,49 +183,39 @@ componentEvidence <- function(result, sample = NULL, calls = NULL,
         group <- as.character(call$group[[1L]])
         start <- as.integer(call$start_iid[[1L]])
         end <- as.integer(call$end_iid[[1L]])
-        components <- sort(unique(as.character(
-            donor$component[as.character(donor$group) == group]
-        )))
-        if (length(components) == 0L || is.na(start) || is.na(end)) {
+        components <- donor_components[[group]]
+        if (is.null(components) || length(components) == 0L ||
+            is.na(start) || is.na(end)) {
             next
         }
-        rec <- recipient_frame[
-            recipient_frame$chromosome_group == group &
-                recipient_frame$iid >= start &
-                recipient_frame$iid <= end, ,
-            drop = FALSE
-        ]
+        rec <- recipient_by[[group]]
+        if (is.null(rec)) next
+        rec <- rec[rec$iid >= start & rec$iid <= end, , drop = FALSE]
         if (nrow(rec) == 0L) next
+        sc <- score_by[[group]]
+        if (is.null(sc)) next
+        sc <- sc[sc$iid >= start & sc$iid <= end, , drop = FALSE]
+        if (nrow(sc) == 0L) next
         component_rows <- list()
         for (component in components) {
-            d <- donor[
-                as.character(donor$group) == group &
-                    as.character(donor$component) == component &
-                    donor$iid >= start & donor$iid <= end, ,
-                drop = FALSE
-            ]
+            d <- donor_by[[paste(group, component, sep = "\r")]]
+            if (is.null(d)) next
+            d <- d[d$iid >= start & d$iid <= end, , drop = FALSE]
             if (nrow(d) == 0L) next
-            d_lambda <- tapply(d$component_lambda, d$iid, mean, na.rm = TRUE)
-            d_frame <- data.frame(
-                iid = as.integer(names(d_lambda)),
-                component_lambda = as.numeric(d_lambda),
-                stringsAsFactors = FALSE
-            )
-            merged <- merge(
-                d_frame, rec, by = "iid", all = FALSE, sort = TRUE
-            )
-            merged <- merge(
-                merged, score_frame,
-                by = c("chromosome_group", "iid"),
-                all = FALSE, sort = TRUE
-            )
-            if (nrow(merged) == 0L) next
+            rec_index <- match(d$iid, rec$iid)
+            score_index <- match(d$iid, sc$iid)
+            keep <- !is.na(rec_index) & !is.na(score_index)
+            if (!any(keep)) next
+            component_lambda <- d$component_lambda[keep]
+            recipient_lambda <- rec$recipient_lambda[rec_index[keep]]
+            group_score <- sc$group_score[score_index[keep]]
+            group_donor_lambda <- sc$group_donor_lambda[score_index[keep]]
             ## Transfer the group-level GC/centring correction to each
             ## component by expressing it relative to the selected donor
             ## component at the same window.
-            component_score <- merged$group_score +
-                log(merged$component_lambda + eps) -
-                log(merged$group_donor_lambda + eps)
+            component_score <- group_score +
+                log(component_lambda + eps) -
+                log(group_donor_lambda + eps)
             component_rows[[length(component_rows) + 1L]] <- data.frame(
                 sample = sample,
                 call_number = i,
@@ -210,12 +229,12 @@ componentEvidence <- function(result, sample = NULL, calls = NULL,
                 call_pass = isTRUE(call$pass[[1L]]),
                 donor_component = component,
                 n_component_contigs = contig_count(group, component),
-                n_windows = nrow(merged),
+                n_windows = length(component_lambda),
                 mean_component_lambda = mean(
-                    merged$component_lambda, na.rm = TRUE
+                    component_lambda, na.rm = TRUE
                 ),
                 mean_recipient_lambda = mean(
-                    merged$recipient_lambda, na.rm = TRUE
+                    recipient_lambda, na.rm = TRUE
                 ),
                 mean_component_score = mean(component_score, na.rm = TRUE),
                 median_component_score = stats::median(

@@ -56,6 +56,9 @@
 * `countReads()` opens the BAM and index once per call; the
   `MaMaMIA.count_chunk_size` option was removed because chunking re-opened
   both per chunk.
+* Component evidence pre-aggregates donor components once and matches
+  windows by index instead of subsetting and merging the full tables for
+  every call and component.
 
 ## Deployment
 
