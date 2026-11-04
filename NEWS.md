@@ -73,6 +73,9 @@
   in `full_calls`; `full_chromosomes` is the single source.
 * Example progress totals are precomputed once instead of rescanning the
   metrics and calls tables for every sample.
+* The Calls table uses DT server-side processing, so only the current page
+  is sent to the browser; selection indices remain relative to the filtered
+  table.
 
 ## Deployment
 

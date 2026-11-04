@@ -1320,7 +1320,7 @@ explorer_server <- function(id, result, sample = NULL) {
                 )
             }
             table
-        })
+        }, server = TRUE)
 
         output$download_bundle <- shiny::downloadHandler(
             filename = function() {
