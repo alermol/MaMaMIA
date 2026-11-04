@@ -45,6 +45,12 @@
 * **The duplicate `component_panel` profile is removed.** Its parameters
   were identical to `balanced`, its flag was never read, and component
   evidence is written to every bundle regardless of profile.
+* **Oversized BAM uploads are rejected before transfer.** The browser
+  checks the file size against `server.max_total_bytes` and blocks the
+  upload before Shiny starts it. The server repeats the check before
+  staging, then shows the file and server limits and points to
+  [bamhusk](https://github.com/alermol/bamhusk) with the exact command to
+  slim the BAM locally before re-uploading.
 
 ## Performance
 

@@ -11,6 +11,9 @@
 
 ## Error taxonomy ------------------------------------------------------------
 
+.bamhusk_url <- "https://github.com/alermol/bamhusk"
+.bamhusk_command <- "husk --drop-seq -@ 8 input.bam output.bam"
+
 .bam_error_suggestions <- c(
     config = paste(
         "Check MAMAMIA_CONFIG and the YAML species/assembly registry;",
@@ -60,6 +63,11 @@
         "Reduce the number of BAMs or their total size; the limits come from",
         "server.max_bams and server.max_total_bytes."
     ),
+    upload = paste(
+        "Reduce the BAM locally with bamhusk",
+        "(https://github.com/alermol/bamhusk), then upload the smaller file:",
+        .bamhusk_command
+    ),
     analysis = paste(
         "Check the input mode, the registry defaults (MAPQ, exclude flags,",
         "fit limits) and the server log."
@@ -99,6 +107,9 @@ bam_error_stage <- function(e) {
     }
     if (inherits(e, "MaMaMIASegmentationError")) {
         return("segmentation")
+    }
+    if (inherits(e, "MaMaMIBamTooLargeError")) {
+        return("upload")
     }
     if (inherits(e, "MaMaMIALimitError")) {
         return("limits")
@@ -199,7 +210,8 @@ bam_error_file_label <- function(files, max_files = 5L) {
 #' @param table Optional preflight table used to map a sample to its source
 #'   BAM.
 #'
-#' @return A list with `stage`, `class`, `message`, `files` and `suggestion`.
+#' @return A list with `stage`, `class`, `message`, `files`, `suggestion`,
+#'   and optional `size`/`limit` fields for upload-limit errors.
 #' @noRd
 bam_error_info <- function(e, files = NULL, table = NULL) {
     stage <- bam_error_stage(e)
@@ -207,12 +219,15 @@ bam_error_info <- function(e, files = NULL, table = NULL) {
     if (is.null(suggestion) || is.na(suggestion)) {
         suggestion <- .bam_error_suggestions[["analysis"]]
     }
+    data <- if (inherits(e, "condition")) e$data else NULL
     list(
         stage = stage,
         class = class(e)[[1L]],
         message = conditionMessage(e),
         files = bam_error_files(e, files = files, table = table),
-        suggestion = suggestion
+        suggestion = suggestion,
+        size = if (is.list(data)) data$size else NULL,
+        limit = if (is.list(data)) data$limit else NULL
     )
 }
 
@@ -553,6 +568,117 @@ bam_single_upload_path <- function(uploads) {
         )
     }
     paths
+}
+
+#' Format a byte count for user-facing messages
+#' @noRd
+bam_format_size <- function(bytes) {
+    if (!is.numeric(bytes) || length(bytes) != 1L || is.na(bytes) ||
+        !is.finite(bytes) || bytes < 0) {
+        return("unknown size")
+    }
+    units <- c("B", "KiB", "MiB", "GiB", "TiB", "PiB")
+    value <- as.numeric(bytes)
+    unit <- 1L
+    while (value >= 1024 && unit < length(units)) {
+        value <- value / 1024
+        unit <- unit + 1L
+    }
+    if (unit == 1L) {
+        sprintf(
+            "%s B",
+            format(round(value), big.mark = ",", scientific = FALSE)
+        )
+    } else {
+        sprintf("%.1f %s", value, units[[unit]])
+    }
+}
+
+#' Reject an oversized upload before it is staged or parsed
+#'
+#' Uses the size reported by Shiny's file input, so the server can stop before
+#' copying the file into the session directory or reading its header. The
+#' generic preflight size check remains as a fallback for non-UI callers.
+#'
+#' @param uploads The data frame Shiny stores in `input$bams`.
+#' @param max_bytes Maximum accepted size in bytes.
+#'
+#' @return The total size invisibly, or a `MaMaMIBamTooLargeError`.
+#' @noRd
+bam_upload_limit <- function(uploads, max_bytes) {
+    if (!is.data.frame(uploads) || nrow(uploads) == 0L ||
+        !all(c("name", "size") %in% names(uploads))) {
+        return(invisible(NULL))
+    }
+    sizes <- suppressWarnings(as.numeric(uploads$size))
+    if (length(sizes) == 0L || anyNA(sizes) ||
+        any(!is.finite(sizes)) || any(sizes < 0)) {
+        return(invisible(NULL))
+    }
+    total <- sum(sizes)
+    if (!is.numeric(max_bytes) || length(max_bytes) != 1L ||
+        is.na(max_bytes) || !is.finite(max_bytes) || max_bytes <= 0) {
+        return(invisible(total))
+    }
+    if (total <= max_bytes) {
+        return(invisible(total))
+    }
+    labels <- as.character(uploads$name)
+    labels[is.na(labels) | !nzchar(labels)] <- "upload.bam"
+    label <- if (length(labels) == 1L) {
+        sprintf("'%s'", labels[[1L]])
+    } else {
+        paste(sprintf("'%s'", labels), collapse = ", ")
+    }
+    .mamamia_error(
+        "MaMaMIBamTooLargeError",
+        "BAM %s is %s; this server accepts at most %s.",
+        label,
+        bam_format_size(total),
+        bam_format_size(max_bytes),
+        data = list(path = labels, size = total, limit = max_bytes)
+    )
+}
+
+#' Build error details from the browser's oversized-upload event
+#'
+#' The client sends `name` and `size` after it clears the file input. The
+#' server trusts its own configured limit rather than the client value.
+#'
+#' @param payload The list Shiny receives in `input$oversized_upload`.
+#' @param max_bytes Server limit in bytes.
+#'
+#' @return A `bam_error_info()` list, or `NULL` when the payload is invalid or
+#'   the file is not actually over the limit.
+#' @noRd
+bam_upload_payload_info <- function(payload, max_bytes) {
+    if (!is.list(payload)) {
+        return(NULL)
+    }
+    first <- function(value) {
+        value <- unlist(value, use.names = FALSE)
+        if (length(value) == 0L) NA else value[[1L]]
+    }
+    name <- as.character(first(payload$name))
+    if (length(name) != 1L || is.na(name) || !nzchar(name)) {
+        name <- "upload.bam"
+    }
+    size <- suppressWarnings(as.numeric(first(payload$size)))
+    if (length(size) != 1L || is.na(size) || !is.finite(size) ||
+        size <= 0) {
+        return(NULL)
+    }
+    uploads <- data.frame(
+        name = name, size = size, stringsAsFactors = FALSE
+    )
+    error <- tryCatch(
+        bam_upload_limit(uploads, max_bytes),
+        error = function(e) e
+    )
+    if (!inherits(error, "condition")) {
+        return(NULL)
+    }
+    bam_error_info(error)
 }
 
 ## BAM staging ---------------------------------------------------------------
@@ -2695,7 +2821,23 @@ bam_dashboard_css <- function() {
         color: #675027;
         font-weight: 700;
     }
+    .mamamia-recovery-command {
+        margin: 0 0 .55rem;
+        padding: .42rem .5rem;
+        border-radius: .35rem;
+        background: rgba(255, 255, 255, .72);
+        color: #5d4a25;
+        font-size: .6rem;
+        line-height: 1.35;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+    }
+    .mamamia-recovery-command code {
+        color: inherit;
+        font-size: inherit;
+    }
     .mamamia-recovery-action {
+        display: block;
         width: 100%;
         padding: .32rem .5rem;
         border: 1px solid rgba(183, 121, 31, .38);
@@ -2705,6 +2847,8 @@ bam_dashboard_css <- function() {
         font-size: .68rem;
         font-weight: 650;
         line-height: 1.25;
+        text-align: center;
+        text-decoration: none;
         transition: background-color .15s ease, border-color .15s ease;
     }
     .mamamia-recovery-action:hover {
@@ -3051,6 +3195,10 @@ bam_dashboard_css <- function() {
         margin-bottom: .45rem;
         cursor: pointer;
     }
+    .mamamia-upload-copy {
+        flex: 1 1 auto;
+        min-width: 0;
+    }
     .mamamia-upload-icon {
         display: grid;
         flex: 0 0 auto;
@@ -3073,6 +3221,46 @@ bam_dashboard_css <- function() {
         color: var(--mm-muted);
         font-size: .64rem;
         line-height: 1.3;
+    }
+    .mamamia-upload-title-row {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: .35rem;
+        min-width: 0;
+    }
+    .mamamia-upload-limit {
+        display: inline-flex;
+        flex: 0 0 auto;
+        align-items: center;
+        gap: .12rem;
+        color: var(--mm-muted);
+        font-size: .6rem;
+        font-variant-numeric: tabular-nums;
+        white-space: nowrap;
+    }
+    .mamamia-upload-help {
+        width: auto;
+        height: auto;
+        margin: 0;
+        padding: 0;
+        border: 0;
+        border-radius: 50%;
+        background: transparent;
+        color: var(--mm-muted);
+        font-size: .72rem;
+        line-height: 1;
+        box-shadow: none;
+        opacity: .72;
+        vertical-align: middle;
+    }
+    .mamamia-upload-help:hover,
+    .mamamia-upload-help:focus {
+        border: 0;
+        background: transparent;
+        color: var(--mm-accent);
+        box-shadow: none;
+        opacity: 1;
     }
     .mamamia-upload .input-group {
         gap: .4rem;
@@ -4066,6 +4254,83 @@ bam_dashboard_css <- function() {
         color: var(--mm-ink);
         font-weight: 650;
     }
+    .mamamia-help-facts {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: .5rem;
+        margin: 0 0 1rem;
+    }
+    .mamamia-help-facts > div {
+        padding: .45rem .55rem;
+        border: 1px solid var(--mm-line);
+        border-radius: .45rem;
+        background: var(--mm-surface);
+    }
+    .mamamia-help-facts span {
+        display: block;
+        color: var(--mm-muted);
+        font-size: .58rem;
+        font-weight: 650;
+        letter-spacing: .06em;
+        text-transform: uppercase;
+    }
+    .mamamia-help-facts strong {
+        display: block;
+        margin-top: .08rem;
+        color: var(--mm-ink);
+        font-size: .78rem;
+        font-weight: 700;
+    }
+    .mamamia-help-steps {
+        margin: 0 0 .65rem;
+        padding-left: 1.15rem;
+        color: var(--mm-muted);
+        font-size: .78rem;
+        line-height: 1.5;
+    }
+    .mamamia-help-steps li + li {
+        margin-top: .3rem;
+    }
+    .mamamia-help-steps strong {
+        color: var(--mm-ink);
+        font-weight: 650;
+    }
+    .mamamia-help-command {
+        display: block;
+        margin: .45rem 0 .65rem;
+        padding: .55rem .65rem;
+        border: 1px solid rgba(var(--mm-accent-rgb), .35);
+        border-left: 3px solid var(--mm-accent);
+        border-radius: .45rem;
+        background: var(--mm-ink);
+        color: var(--mm-paper);
+        font-family: ui-monospace, 'SFMono-Regular', 'Cascadia Code',
+            'Liberation Mono', Menlo, Consolas, monospace;
+        font-size: .74rem;
+        line-height: 1.45;
+        letter-spacing: .01em;
+        overflow-x: auto;
+        text-align: left;
+        white-space: pre;
+        tab-size: 2;
+    }
+    .mamamia-help-command:focus-visible {
+        outline: 2px solid var(--mm-accent);
+        outline-offset: 2px;
+    }
+    .mamamia-tooltip-modal .modal-footer {
+        display: flex;
+        align-items: center;
+        justify-content: flex-end;
+        gap: .45rem;
+    }
+    .mamamia-tooltip-modal .modal-footer .btn {
+        min-height: 2rem;
+        margin: 0;
+        padding: .35rem .75rem;
+        font-size: .78rem;
+        line-height: 1.25;
+    }
     .mamamia-sidebar .form-check {
         margin-bottom: .25rem;
         min-height: 1.25rem;
@@ -4425,11 +4690,22 @@ bam_dashboard_css <- function() {
 #' and the server rejects a multi-file payload. A multi-sample BAM is a single
 #' file and remains supported.
 #'
+#' @param max_bytes Optional maximum upload size in bytes. When supplied, the
+#'   upload zone records it as `data-max-bytes` so the client can reject an
+#'   oversized file before Shiny starts the upload.
+#'
 #' @return A `shiny.tag` containing the labelled file input.
 #' @noRd
-bam_single_file_input <- function() {
+bam_single_file_input <- function(max_bytes = NULL) {
+    limit <- if (is.numeric(max_bytes) && length(max_bytes) == 1L &&
+        is.finite(max_bytes) && max_bytes > 0) {
+        sprintf("%.0f", max_bytes)
+    } else {
+        NULL
+    }
     shiny::div(
         class = "mamamia-upload",
+        `data-max-bytes` = limit,
         shiny::div(
             class = "mamamia-upload-head",
             shiny::span(
@@ -4439,7 +4715,23 @@ bam_single_file_input <- function() {
             ),
             shiny::div(
                 class = "mamamia-upload-copy",
-                shiny::span(class = "mamamia-upload-title", "BAM file"),
+                shiny::div(
+                    class = "mamamia-upload-title-row",
+                    shiny::span(class = "mamamia-upload-title", "BAM file"),
+                    if (!is.null(limit)) {
+                        shiny::span(
+                            class = "mamamia-upload-limit",
+                            sprintf("Max %s", bam_format_size(max_bytes)),
+                            shiny::actionButton(
+                                "bam_upload_help",
+                                label = shiny::icon("circle-question"),
+                                class = "mamamia-upload-help",
+                                title = "About the BAM upload limit",
+                                `aria-label` = "About the BAM upload limit"
+                            )
+                        )
+                    }
+                ),
                 shiny::span(
                     class = "mamamia-upload-hint",
                     "Drag & drop or browse"
@@ -4485,9 +4777,18 @@ bam_sidebar_recovery_ui <- function(info, show_action = TRUE) {
     }
     stage <- text_value(info$stage)
     assembly <- identical(stage, "assembly")
+    too_large <- identical(stage, "upload")
     message <- text_value(info$message)
     suggestion <- text_value(info$suggestion)
-    recovery_copy <- if (assembly) {
+    recovery_copy <- if (too_large) {
+        list(
+            body = paste(
+                "This BAM is larger than this server's upload limit,",
+                "so it was not analysed."
+            ),
+            note = NULL
+        )
+    } else if (assembly) {
         if (grepl("missing target", message, ignore.case = TRUE)) {
             list(
                 body = paste(
@@ -4543,11 +4844,21 @@ bam_sidebar_recovery_ui <- function(info, show_action = TRUE) {
             class = "mamamia-recovery-head",
             shiny::span(
                 class = "mamamia-recovery-icon",
-                shiny::icon(if (assembly) "dna" else "sliders")
+                shiny::icon(
+                    if (too_large) {
+                        "triangle-exclamation"
+                    } else if (assembly) {
+                        "dna"
+                    } else {
+                        "sliders"
+                    }
+                )
             ),
             shiny::span(
                 class = "mamamia-recovery-title",
-                if (assembly) {
+                if (too_large) {
+                    "BAM is too large"
+                } else if (assembly) {
                     "No matching assembly"
                 } else {
                     "Setup needs attention"
@@ -4557,17 +4868,55 @@ bam_sidebar_recovery_ui <- function(info, show_action = TRUE) {
         if (nzchar(recovery_copy$body)) {
             shiny::p(class = "mamamia-recovery-message", recovery_copy$body)
         },
+        if (too_large && !is.null(info$size) && !is.null(info$limit)) {
+            shiny::p(
+                class = "mamamia-recovery-message",
+                sprintf(
+                    "This file is %s; the limit is %s.",
+                    bam_format_size(info$size),
+                    bam_format_size(info$limit)
+                )
+            )
+        },
         if (!is.null(recovery_copy$note) && nzchar(recovery_copy$note)) {
             shiny::p(class = "mamamia-recovery-note", recovery_copy$note)
         },
-        if (nzchar(suggestion)) {
+        if (too_large) {
+            shiny::tagList(
+                shiny::p(
+                    class = "mamamia-recovery-note",
+                    "Slim it locally with ",
+                    shiny::tags$a(
+                        href = .bamhusk_url,
+                        target = "_blank",
+                        rel = "noopener noreferrer",
+                        "bamhusk"
+                    ),
+                    ", then upload the smaller BAM."
+                ),
+                shiny::tags$pre(
+                    class = "mamamia-recovery-command",
+                    shiny::tags$code(.bamhusk_command)
+                )
+            )
+        },
+        if (nzchar(suggestion) && !too_large) {
             shiny::p(
                 class = "mamamia-recovery-suggestion",
                 shiny::strong("Next step: "),
                 suggestion
             )
         },
-        if (isTRUE(show_action)) {
+        if (too_large) {
+            shiny::tags$a(
+                class = "mamamia-recovery-action",
+                href = .bamhusk_url,
+                target = "_blank",
+                rel = "noopener noreferrer",
+                shiny::icon("arrow-up-right-from-square"),
+                " Open bamhusk"
+            )
+        } else if (isTRUE(show_action)) {
             shiny::actionButton(
                 "unlock_setup",
                 if (assembly) "Choose assembly" else "Review setup",
@@ -4575,6 +4924,192 @@ bam_sidebar_recovery_ui <- function(info, show_action = TRUE) {
                 class = "mamamia-recovery-action"
             )
         }
+    )
+}
+
+#' Modal shown once when an oversized upload is rejected
+#' @noRd
+bam_upload_too_large_modal <- function(info) {
+    if (!is.list(info)) {
+        info <- list(message = "The BAM is too large for this server.")
+    }
+    detail <- if (!is.null(info$size) && !is.null(info$limit)) {
+        sprintf(
+            "This BAM is %s; this server accepts at most %s.",
+            bam_format_size(info$size),
+            bam_format_size(info$limit)
+        )
+    } else {
+        as.character(info$message)[[1L]]
+    }
+    shiny::modalDialog(
+        title = "BAM is too large to upload",
+        easyClose = TRUE,
+        shiny::p(detail),
+        if (!is.null(info$files) && length(info$files) > 0L) {
+            shiny::p(
+                class = "text-muted small",
+                basename(as.character(info$files[[1L]]))
+            )
+        },
+        shiny::p(
+            "Slim it locally with ",
+            shiny::tags$a(
+                href = .bamhusk_url,
+                target = "_blank",
+                rel = "noopener noreferrer",
+                "bamhusk"
+            ),
+            ", then upload the smaller BAM."
+        ),
+        shiny::tags$pre(
+            class = "mamamia-recovery-command",
+            shiny::tags$code(.bamhusk_command)
+        ),
+        shiny::p(
+            class = "text-muted small mb-0",
+            paste(
+                "The upload was rejected before staging or analysis;",
+                "no BAM data was processed."
+            )
+        ),
+        footer = shiny::tagList(
+            shiny::modalButton("Close"),
+            shiny::actionButton(
+                "clear_oversized_upload",
+                "Choose another file",
+                class = "btn-primary"
+            )
+        )
+    )
+}
+
+#' Upload-limit help shown by the `?` next to the size hint
+#' @noRd
+bam_upload_help_ui <- function(max_bytes) {
+    limit <- bam_format_size(max_bytes)
+    section <- function(title, ...) {
+        shiny::div(
+            class = "mamamia-help-section",
+            shiny::tags$h6(title),
+            ...
+        )
+    }
+    shiny::div(
+        class = "mamamia-tooltip-help",
+        shiny::p(
+            class = "mamamia-help-lead",
+            "This server accepts BAM files up to ",
+            shiny::strong(limit),
+            ". The size is checked in your browser before upload."
+        ),
+        shiny::div(
+            class = "mamamia-help-facts",
+            shiny::div(
+                shiny::span("Limit"),
+                shiny::strong(limit)
+            ),
+            shiny::div(
+                shiny::span("Check"),
+                shiny::strong("Before upload")
+            ),
+            shiny::div(
+                shiny::span("Typical saving"),
+                shiny::strong("50–90%")
+            )
+        ),
+        shiny::div(
+            class = "mamamia-help-callout",
+            paste(
+                "If the BAM is larger, slim it locally with bamhusk.",
+                "The command writes a new file and leaves the original",
+                "untouched."
+            )
+        ),
+        section(
+            "Slim it locally",
+            shiny::tags$ol(
+                class = "mamamia-help-steps",
+                shiny::tags$li(
+                    shiny::strong("Get bamhusk"),
+                    " from ",
+                    shiny::tags$a(
+                        href = .bamhusk_url,
+                        target = "_blank",
+                        rel = "noopener noreferrer",
+                        "github.com/alermol/bamhusk"
+                    ),
+                    "."
+                ),
+                shiny::tags$li(
+                    shiny::strong("Run"),
+                    " the command below on the large BAM."
+                ),
+                shiny::tags$li(
+                    shiny::strong("Upload"),
+                    " the new, smaller BAM here."
+                )
+            ),
+            shiny::tags$code(
+                class = "mamamia-help-command",
+                tabindex = "0",
+                `aria-label` = "Command to slim the BAM",
+                .bamhusk_command
+            )
+        ),
+        section(
+            "What changes",
+            shiny::tags$dl(
+                class = "mamamia-help-list",
+                shiny::tags$dt("Kept"),
+                shiny::tags$dd(
+                    paste(
+                        "Everything MaMaMIA reads: FLAG, RNAME, POS,",
+                        "MAPQ, CIGAR, @HD/@SQ/@RG and RG tags."
+                    )
+                ),
+                shiny::tags$dt("Removed"),
+                shiny::tags$dd(
+                    paste(
+                        "QUAL, read names, optional tags except RG,",
+                        "and @PG/@CO header lines."
+                    )
+                ),
+                shiny::tags$dt("Optional"),
+                shiny::tags$dd(
+                    paste(
+                        "SEQ with --drop-seq. Read length still comes",
+                        "from CIGAR, so the analysis is unchanged."
+                    )
+                )
+            )
+        )
+    )
+}
+
+#' Modal for the `?` next to the upload size hint
+#' @noRd
+bam_upload_help_modal <- function(max_bytes) {
+    dialog <- shiny::modalDialog(
+        title = "BAM upload limit",
+        bam_upload_help_ui(max_bytes),
+        size = "l",
+        easyClose = TRUE,
+        footer = shiny::tagList(
+            shiny::tags$a(
+                href = .bamhusk_url,
+                target = "_blank",
+                rel = "noopener noreferrer",
+                class = "btn btn-outline-secondary",
+                shiny::icon("arrow-up-right-from-square"),
+                " Open bamhusk"
+            ),
+            shiny::modalButton("Close")
+        )
+    )
+    htmltools::tagAppendAttributes(
+        dialog,
+        class = "mamamia-tooltip-modal modal-dialog-centered"
     )
 }
 
@@ -5095,12 +5630,47 @@ bam_launcher_ui <- function(state) {
                     "    return node && node.closest ?",
                     "      node.closest('.mamamia-upload') : null;",
                     "  }",
+                    "  function uploadLimit(zone) {",
+                    "    if (!zone) return null;",
+                    "    var raw = zone.getAttribute('data-max-bytes');",
+                    "    if (!raw) return null;",
+                    "    var bytes = Number(raw);",
+                    "    return isFinite(bytes) && bytes > 0 ? bytes : null;",
+                    "  }",
+                    "  function clearInput(input) {",
+                    "    try {",
+                    "      input.files = new DataTransfer().files;",
+                    "    } catch (error) {",
+                    "      // Fall back to clearing the value below.",
+                    "    }",
+                    "    input.value = '';",
+                    "  }",
+                    "  function rejectOversized(input, file, zone, event) {",
+                    "    var limit = uploadLimit(zone);",
+                    "    if (!limit || !file || file.size <= limit) return false;",
+                    "    if (event) {",
+                    "      event.preventDefault();",
+                    "      event.stopImmediatePropagation();",
+                    "    }",
+                    "    clearInput(input);",
+                    "    if (window.Shiny && window.Shiny.setInputValue) {",
+                    "      window.Shiny.setInputValue('oversized_upload', {",
+                    "        name: file.name || 'upload.bam',",
+                    "        size: file.size,",
+                    "        limit: limit",
+                    "      }, { priority: 'event' });",
+                    "    }",
+                    "    return true;",
+                    "  }",
                     "  document.addEventListener('change', function(event) {",
                     "    var input = event.target;",
                     "    if (!input || input.id !== id || !input.files) return;",
                     "    if (input.files.length > 1) {",
                     "      input.files = onlyFirst(input.files);",
                     "    }",
+                    "    if (rejectOversized(",
+                    "      input, input.files[0], uploadZone(input), event",
+                    "    )) return;",
                     "  }, true);",
                     "  document.addEventListener('dragover', function(event) {",
                     "    var zone = uploadZone(event.target);",
@@ -5122,7 +5692,7 @@ bam_launcher_ui <- function(state) {
                     "    var zone = uploadZone(event.target);",
                     "    if (!zone) return;",
                     "    var own = event.target.closest(",
-                    "      'input[type=\"file\"], .btn-file, label');",
+                    "      'input[type=\"file\"], .btn-file, label, button, a');",
                     "    if (own) return;",
                     "    var input = zone.querySelector('input[type=\"file\"]');",
                     "    if (input) input.click();",
@@ -5135,6 +5705,9 @@ bam_launcher_ui <- function(state) {
                     "    if (!input || !files || files.length < 1) return;",
                     "    event.preventDefault();",
                     "    event.stopPropagation();",
+                    "    if (rejectOversized(",
+                    "      input, files[0], uploadZone(input), event",
+                    "    )) return;",
                     "    input.files = onlyFirst(files);",
                     "    input.dispatchEvent(new Event('change', { bubbles: true }));",
                     "  }, true);",
@@ -5468,7 +6041,7 @@ bam_launcher_server <- function(state) {
 
         output$bam_upload_ui <- shiny::renderUI({
             upload_epoch()
-            bam_single_file_input()
+            bam_single_file_input(config$server$max_total_bytes)
         })
 
         shiny::observeEvent(input$example_data, {
@@ -5705,6 +6278,16 @@ bam_launcher_server <- function(state) {
                     }
                 ))
             }
+            server <- config$server %||% .config_server_defaults()
+            limit <- server$max_total_bytes %||%
+                .config_server_defaults()$max_total_bytes
+            too_large <- tryCatch(
+                bam_upload_limit(input$bams, limit),
+                error = function(e) e
+            )
+            if (inherits(too_large, "condition")) {
+                return(bam_preflight_failure(too_large, character(), config))
+            }
             selection <- assembly_selection()
             if (!isTRUE(selection$ok)) {
                 failure <- bam_preflight_failure(
@@ -5755,6 +6338,52 @@ bam_launcher_server <- function(state) {
                 error = NULL, candidates = NULL
             )
         })
+
+        oversized_upload_key <- shiny::reactiveVal(NULL)
+        shiny::observeEvent(preflight_state(), {
+            pf <- preflight_state()
+            if (isTRUE(pf$ok) || isTRUE(pf$empty) ||
+                is.null(pf$error) ||
+                !identical(pf$error$stage, "upload")) {
+                oversized_upload_key(NULL)
+                return()
+            }
+            key <- paste(
+                c(pf$error$files, pf$error$size, pf$error$limit),
+                collapse = "\n"
+            )
+            if (identical(oversized_upload_key(), key)) {
+                return()
+            }
+            oversized_upload_key(key)
+            shiny::showModal(bam_upload_too_large_modal(pf$error))
+        }, ignoreInit = TRUE)
+
+        shiny::observeEvent(input$bam_upload_help, {
+            server <- config$server %||% .config_server_defaults()
+            limit <- server$max_total_bytes %||%
+                .config_server_defaults()$max_total_bytes
+            shiny::showModal(bam_upload_help_modal(limit))
+        }, ignoreInit = TRUE)
+
+        shiny::observeEvent(input$oversized_upload, {
+            server <- config$server %||% .config_server_defaults()
+            limit <- server$max_total_bytes %||%
+                .config_server_defaults()$max_total_bytes
+            info <- bam_upload_payload_info(
+                input$oversized_upload, limit
+            )
+            if (is.null(info)) {
+                return()
+            }
+            upload_epoch(upload_epoch() + 1L)
+            shiny::showModal(bam_upload_too_large_modal(info))
+        }, ignoreInit = TRUE)
+
+        shiny::observeEvent(input$clear_oversized_upload, {
+            shiny::removeModal()
+            upload_epoch(upload_epoch() + 1L)
+        }, ignoreInit = TRUE)
 
         ## The setup controls stay hidden until the first successful
         ## preflight. A failure can unlock them explicitly through the
@@ -6206,18 +6835,26 @@ bam_launcher_server <- function(state) {
             } else {
                 stage <- if (is.null(pf$error)) NULL else pf$error$stage
                 assembly_error <- identical(as.character(stage), "assembly")
-                label <- if (assembly_error) {
+                upload_error <- identical(as.character(stage), "upload")
+                label <- if (upload_error) {
+                    "BAM too large"
+                } else if (assembly_error) {
                     "Needs assembly"
                 } else {
                     "Preflight failed"
                 }
-                badge <- if (assembly_error) {
+                badge <- if (upload_error || assembly_error) {
                     "text-bg-warning"
                 } else {
                     "text-bg-danger"
                 }
                 detail <- if (is.null(pf$error)) {
                     "See the calculation log."
+                } else if (upload_error) {
+                    paste(
+                        "Slim it locally with bamhusk, then upload",
+                        "the smaller BAM."
+                    )
                 } else if (assembly_error) {
                     "Choose a matching assembly in the sidebar."
                 } else {

@@ -340,6 +340,7 @@ in-app cancellation.
 | Configuration error card | run `tools/validate-config.R` on the mounted registry; paths are resolved relative to the YAML file |
 | `uvr: ... package(s) not installed` | the build did not finish `uvr sync --frozen`; rebuild without a cached layer |
 | Upload rejected before the app | the nginx body limit or `shiny.maxRequestSize`; raise both |
+| BAM too large to upload | slim it locally with [bamhusk](https://github.com/alermol/bamhusk), then upload the smaller BAM |
 | Container killed during a run | `container-memory-limit`; lower the resolution at run time |
 | App stopped while running | `heartbeat-timeout`/session timeout; raise them for long runs |
 | `permission denied` reading indexes | the host mounts must be readable by the container's `mamamia` user (UID 1000) |

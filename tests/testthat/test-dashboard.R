@@ -355,6 +355,27 @@ test_that("the BAM chooser accepts exactly one file", {
     expect_match(chooser, "Choose BAM file", fixed = TRUE)
     expect_match(chooser, "No BAM selected", fixed = TRUE)
     expect_false(grepl("multiple", chooser, fixed = TRUE))
+    expect_false(grepl("data-max-bytes", chooser, fixed = TRUE))
+    expect_false(grepl("bam_upload_help", chooser, fixed = TRUE))
+
+    limited <- as.character(bam_single_file_input(5 * 1024^3))
+    expect_match(
+        limited, 'data-max-bytes="5368709120"', fixed = TRUE
+    )
+    expect_match(limited, "Max 5.0 GiB", fixed = TRUE)
+    expect_match(limited, 'id="bam_upload_help"', fixed = TRUE)
+
+    help <- as.character(bam_upload_help_ui(5 * 1024^3))
+    expect_match(help, "5.0 GiB", fixed = TRUE)
+    expect_match(help, "Before upload", fixed = TRUE)
+    expect_match(help, "50–90%", fixed = TRUE)
+    expect_match(help, "bamhusk", fixed = TRUE)
+    expect_match(help, "husk --drop-seq", fixed = TRUE)
+    expect_match(help, "mamamia-help-command", fixed = TRUE)
+    expect_match(help, "QUAL", fixed = TRUE)
+    help_modal <- as.character(bam_upload_help_modal(5 * 1024^3))
+    expect_match(help_modal, "BAM upload limit", fixed = TRUE)
+    expect_match(help_modal, "mamamia-tooltip-modal", fixed = TRUE)
 })
 
 test_that("the upload path helper rejects several files", {
@@ -373,6 +394,59 @@ test_that("the upload path helper rejects several files", {
         "one BAM per run",
         class = "MaMaMIAUploadError"
     )
+})
+
+test_that("oversized uploads are rejected with a bamhusk suggestion", {
+    uploads <- data.frame(
+        name = "huge.bam", size = 11, datapath = "huge.bam",
+        stringsAsFactors = FALSE
+    )
+    error <- tryCatch(
+        bam_upload_limit(uploads, 10),
+        error = function(e) e
+    )
+    expect_s3_class(error, "MaMaMIBamTooLargeError")
+    expect_match(conditionMessage(error), "this server accepts at most")
+    info <- bam_error_info(error)
+    expect_identical(info$stage, "upload")
+    expect_identical(info$size, 11)
+    expect_identical(info$limit, 10)
+    expect_match(info$suggestion, "bamhusk", fixed = TRUE)
+    expect_silent(bam_upload_limit(uploads, 11))
+
+    html <- as.character(bam_sidebar_recovery_ui(info))
+    expect_match(html, "BAM is too large", fixed = TRUE)
+    expect_match(
+        html, "https://github.com/alermol/bamhusk", fixed = TRUE
+    )
+    expect_match(html, "husk --drop-seq", fixed = TRUE)
+    expect_false(grepl("unlock_setup", html, fixed = TRUE))
+
+    modal <- as.character(bam_upload_too_large_modal(info))
+    expect_match(modal, "BAM is too large to upload", fixed = TRUE)
+    expect_match(
+        modal, "https://github.com/alermol/bamhusk", fixed = TRUE
+    )
+    expect_match(modal, "husk --drop-seq", fixed = TRUE)
+    expect_match(modal, "clear_oversized_upload", fixed = TRUE)
+    expect_identical(bam_format_size(5 * 1024^3), "5.0 GiB")
+
+    log_lines <- bam_preflight_log(list(
+        ok = FALSE, empty = FALSE, error = info, candidates = NULL
+    ))
+    expect_match(paste(log_lines, collapse = "\n"), "bamhusk", fixed = TRUE)
+
+    payload_info <- bam_upload_payload_info(
+        list(name = "huge.bam", size = 11), 10
+    )
+    expect_identical(payload_info$stage, "upload")
+    expect_identical(payload_info$size, 11)
+    expect_null(bam_upload_payload_info(
+        list(name = "huge.bam", size = 11), 11
+    ))
+    expect_null(bam_upload_payload_info(
+        list(name = "huge.bam", size = "not-a-number"), 10
+    ))
 })
 
 test_that("donor aggregation defaults from the registry and is set under Advanced", {
