@@ -31,6 +31,31 @@ test_that("bam_run_parameters() resolves the run controls", {
     expect_null(params$mask)
 })
 
+test_that("fractional Advanced integers are rejected", {
+    config <- readMaMaMIAConfig(
+        system.file("extdata", "bam-demo", "assemblies.yml",
+            package = "MaMaMIA")
+    )
+    expect_error(
+        bam_run_parameters(
+            list(mapq = 20.9), config, samples = "demo-sample"
+        ),
+        "whole number"
+    )
+    expect_error(
+        bam_run_parameters(
+            list(calibration_merge_gap = 100.9), config,
+            samples = "demo-sample"
+        ),
+        "whole number"
+    )
+    params <- bam_run_parameters(
+        list(mapq = 20, calibration_merge_gap = 100), config,
+        samples = "demo-sample"
+    )
+    expect_identical(params$mapq, 20L)
+})
+
 test_that("analysis profiles resolve complete parameter bundles", {
     config <- readMaMaMIAConfig(
         system.file("extdata", "bam-demo", "assemblies.yml",

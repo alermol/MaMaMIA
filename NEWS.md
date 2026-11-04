@@ -39,6 +39,9 @@
   optional karyotype images and QC plots appear only when those files exist,
   and `report.html` no longer claims to list the manifest and checksums
   generated after it.
+* **Fractional Advanced integers are rejected.** MAPQ and the calibration
+  merge gap are validated before coercion, so `20.9` no longer silently
+  runs as 20.
 
 ## Performance
 

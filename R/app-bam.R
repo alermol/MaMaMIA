@@ -1116,6 +1116,23 @@ bam_profile_input_value <- function(input, id, fallback) {
 }
 
 #' @noRd
+bam_profile_whole_number <- function(value, label, minimum, maximum) {
+    numeric <- suppressWarnings(as.numeric(value))
+    if (length(numeric) != 1L || is.na(numeric) || !is.finite(numeric) ||
+        numeric != floor(numeric) ||
+        numeric < minimum || numeric > maximum) {
+        .mamamia_error(
+            "MaMaMIAAnalysisError",
+            "%s must be a whole number between %s and %s",
+            label,
+            format(minimum, scientific = FALSE),
+            format(maximum, scientific = FALSE)
+        )
+    }
+    as.integer(numeric)
+}
+
+#' @noRd
 bam_profile_input_resolution <- function(input, config, resolution = NULL,
                                          fallback = NULL) {
     if (!is.null(resolution) && length(resolution) == 1L &&
@@ -1169,9 +1186,10 @@ bam_profile_current_parameters <- function(input, config, resolution = NULL,
         donor_aggregation = as.character(bam_profile_input_value(
             input, "donor_aggregation", fallback$donor_aggregation
         )),
-        mapq = as.integer(bam_profile_input_value(
-            input, "mapq", fallback$mapq
-        )),
+        mapq = bam_profile_whole_number(
+            bam_profile_input_value(input, "mapq", fallback$mapq),
+            "MAPQ", 0L, 255L
+        ),
         mask_physical_fallback_mb = as.numeric(bam_profile_input_value(
             input, "mask_physical_fallback_mb",
             fallback$mask_physical_fallback_mb
@@ -1187,9 +1205,13 @@ bam_profile_current_parameters <- function(input, config, resolution = NULL,
         calibration_min_mb = as.numeric(bam_profile_input_value(
             input, "calibration_min_mb", fallback$calibration_min_mb
         )),
-        calibration_merge_gap = as.integer(bam_profile_input_value(
-            input, "calibration_merge_gap", fallback$calibration_merge_gap
-        ))
+        calibration_merge_gap = bam_profile_whole_number(
+            bam_profile_input_value(
+                input, "calibration_merge_gap",
+                fallback$calibration_merge_gap
+            ),
+            "Calibration merge gap (windows)", 0L, 10000L
+        )
     )
 }
 
