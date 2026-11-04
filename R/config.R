@@ -315,6 +315,18 @@ chr_number <- function(chr_name) {
                 where
             )
         }
+        supported <- c(
+            "id", "name", "component", "group", "copy_number", "length",
+            "index_path"
+        )
+        unknown <- setdiff(names(entry), supported)
+        if (length(unknown) > 0L) {
+            .config_error(
+                "%s has unknown key(s): %s. Supported keys are: %s.",
+                where, paste(unknown, collapse = ", "),
+                paste(supported, collapse = ", ")
+            )
+        }
         id <- .config_string(entry$id, paste0(where, ".id"))
         name <- if (is.null(entry$name)) id else {
             .config_string(entry$name, paste0(where, ".name"))
@@ -406,6 +418,18 @@ chr_number <- function(chr_name) {
 .normalize_species <- function(species, key, config_dir) {
     if (!is.list(species)) {
         .config_error("Species '%s' must be a mapping", key)
+    }
+    supported <- c(
+        "key", "label", "description", "default_component", "gc_indexes",
+        "contigs"
+    )
+    unknown <- setdiff(names(species), supported)
+    if (length(unknown) > 0L) {
+        .config_error(
+            "Species '%s' has unknown key(s): %s. Supported keys are: %s.",
+            key, paste(unknown, collapse = ", "),
+            paste(supported, collapse = ", ")
+        )
     }
     label <- .config_string(species$label, sprintf("species.%s.label", key))
     description <- if (is.null(species$description)) "" else {
@@ -1014,6 +1038,15 @@ chr_number <- function(chr_name) {
     if (!is.list(server)) {
         .config_error("`server` must be a mapping")
     }
+    supported <- c("max_bams", "max_total_bytes")
+    unknown <- setdiff(names(server), supported)
+    if (length(unknown) > 0L) {
+        .config_error(
+            "Unknown `server` key(s): %s. Supported keys are: %s.",
+            paste(unknown, collapse = ", "),
+            paste(supported, collapse = ", ")
+        )
+    }
     out <- .config_server_defaults()
     if (!is.null(server$max_bams)) {
         out$max_bams <- .config_integer(server$max_bams, "server.max_bams", min = 1L)
@@ -1131,6 +1164,18 @@ validateMaMaMIAConfig <- function(config) {
         .config_error(
             "Unsupported MaMaMIA config version %s (supported: %s)",
             version, paste(.MaMaMIASupportedConfigVersions, collapse = ", ")
+        )
+    }
+
+    supported_top <- c(
+        "version", "defaults", "server", "species", "assemblies"
+    )
+    unknown_top <- setdiff(names(config), supported_top)
+    if (length(unknown_top) > 0L) {
+        .config_error(
+            "Unknown top-level config key(s): %s. Supported keys are: %s.",
+            paste(unknown_top, collapse = ", "),
+            paste(setdiff(supported_top, "assemblies"), collapse = ", ")
         )
     }
 

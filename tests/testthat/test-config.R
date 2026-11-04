@@ -181,6 +181,26 @@ test_that("version 1 is rejected with migration guidance", {
     expect_error(validateMaMaMIAConfig(config), "MIGRATION.md")
 })
 
+test_that("unknown keys are rejected at every level", {
+    config <- tiny_species_config()
+    config$unknown_top <- 1
+    expect_error(validateMaMaMIAConfig(config), "Unknown top-level")
+
+    config <- tiny_species_config()
+    config$species$tiny_recipient$gc_index <- "tiny.gcrank"
+    expect_error(validateMaMaMIAConfig(config), "unknown key")
+
+    config <- tiny_species_config()
+    contigs <- config$species$tiny_recipient$contigs
+    contigs$copy_numbr <- 4
+    config$species$tiny_recipient$contigs <- contigs
+    expect_error(validateMaMaMIAConfig(config), "copy_numbr")
+
+    config <- tiny_species_config()
+    config$server <- list(max_bam = 1)
+    expect_error(validateMaMaMIAConfig(config), "Unknown `server`")
+})
+
 test_that("unknown defaults keys are rejected", {
     config <- tiny_species_config()
     config$defaults$fitted_windows <- 1000L
