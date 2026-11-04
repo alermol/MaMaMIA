@@ -143,13 +143,11 @@ test_that("countReads() assigns reverse-strand reads by their 5' end", {
     expect_identical(countReads(path, gr, exclude_flags = 0L), c(1L, 2L, 1L))
 })
 
-test_that("countReads() supports optional chunking without changing counts", {
+test_that("countReads() counts every range in one pass", {
     fixture <- count_test_bam()
     on.exit(unlink(fixture$directory, recursive = TRUE), add = TRUE)
     gr <- tiny_count_windows()
 
-    old_options <- options(MaMaMIA.count_chunk_size = 1L)
-    on.exit(options(old_options), add = TRUE)
     expect_identical(
         countReads(fixture$path, gr, exclude_flags = 2308L),
         c(5L, 6L)

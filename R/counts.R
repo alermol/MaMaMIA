@@ -158,10 +158,6 @@
 #' it overlaps; the difference is confined to reads whose 5' end lies outside
 #' the range while the alignment span overlaps it.
 #'
-#' For very large range sets, the option `MaMaMIA.count_chunk_size` splits the
-#' GRanges into chunks before counting. It is disabled (`0`) by default and is
-#' only useful to bound the size of the returned count vector.
-#'
 #' @param bam_path Path to a coordinate-sorted BAM.
 #' @param gr A `GenomicRanges::GRanges` object with positive seqlengths for
 #'   every seqname.
@@ -201,28 +197,6 @@ countReads <- function(bam_path, gr, mapq = 20L, exclude_flags = 2308L,
             "Counting reads in %d range(s) from %s",
             length(gr), bam_path
         ))
-    }
-
-    chunk_size <- getOption("MaMaMIA.count_chunk_size", 0L)
-    if (!is.numeric(chunk_size) || length(chunk_size) != 1L ||
-        is.na(chunk_size) || chunk_size < 1 ||
-        chunk_size > .Machine$integer.max) {
-        chunk_size <- 0L
-    } else {
-        chunk_size <- as.integer(chunk_size)
-    }
-    if (chunk_size > 0L && length(gr) > chunk_size) {
-        chunks <- split(
-            seq_along(gr),
-            ceiling(seq_along(gr) / chunk_size)
-        )
-        counts <- integer(length(gr))
-        for (idx in chunks) {
-            counts[idx] <- .count_reads_cpp(
-                bam_path, gr[idx], mapq, exclude_flags
-            )
-        }
-        return(counts)
     }
 
     .count_reads_cpp(bam_path, gr, mapq, exclude_flags)

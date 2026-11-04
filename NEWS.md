@@ -53,6 +53,9 @@
 * BAM reading can use htslib worker threads. The pipeline splits its core
   budget across input BAMs; on a 644 MB BAM, 8 threads cut a 2,000-window
   count from 25.0 s to 5.8 s with identical counts.
+* `countReads()` opens the BAM and index once per call; the
+  `MaMaMIA.count_chunk_size` option was removed because chunking re-opened
+  both per chunk.
 
 ## Deployment
 
