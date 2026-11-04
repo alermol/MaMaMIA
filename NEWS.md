@@ -80,6 +80,9 @@
   same call instead of rebuilding the tooltip on every mousemove.
 * The karyotype heatmap overlay uses a sorted interval sweep instead of
   scanning every call for every bin.
+* `report.html` shows at most 500 component-evidence rows and points to the
+  full `qc/component-evidence.csv`, keeping the self-contained report
+  bounded.
 
 ## Deployment
 

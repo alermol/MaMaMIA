@@ -1548,12 +1548,25 @@ bam_bundle_report_html <- function(result, bundle, sample, calls_raw,
         "</section>",
         if (is.data.frame(diagnostics$component_evidence) &&
             nrow(diagnostics$component_evidence) > 0L) {
+            evidence <- diagnostics$component_evidence
+            shown <- utils::head(evidence, 500L)
+            note <- if (nrow(evidence) > nrow(shown)) {
+                paste0(
+                    "<p class=\"muted\">Showing the first ",
+                    nrow(shown), " of ", nrow(evidence),
+                    " rows. The full table is in ",
+                    "<code>qc/component-evidence.csv</code>.</p>"
+                )
+            } else {
+                character()
+            }
             c(
                 "<section><h2>Component evidence</h2>",
                 "<p class=\"muted\">One row per call and donor component. ",
                 "The selected component is the one used by the group-level ",
                 "call; other rows show the relative component support.</p>",
-                bam_bundle_html_table(diagnostics$component_evidence),
+                bam_bundle_html_table(shown),
+                note,
                 "</section>"
             )
         } else {
