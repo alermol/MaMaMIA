@@ -284,11 +284,19 @@
 ## First number in a contig display name, used as the chromosome group when the
 ## registry does not declare one (for example "1A" and "1R" both give "1").
 #' @noRd
+.normalize_chromosome_group <- function(x) {
+    x <- as.character(x)
+    numeric <- !is.na(x) & grepl("^[0-9]+$", x)
+    x[numeric] <- as.character(as.integer(x[numeric]))
+    x
+}
+
+#' @noRd
 chr_number <- function(chr_name) {
     has_number <- grepl("[0-9]", chr_name)
     number <- sub("^[^0-9]*([0-9]+).*$", "\\1", chr_name)
     number[!has_number] <- NA_character_
-    number
+    .normalize_chromosome_group(number)
 }
 
 .config_copy_number <- function(x, what) {
@@ -414,6 +422,7 @@ chr_number <- function(chr_name) {
     derived <- chr_number(out$name)
     missing_group <- is.na(out$group) | !nzchar(out$group)
     out$group[missing_group] <- derived[missing_group]
+    out$group <- .normalize_chromosome_group(out$group)
 
     for (component in unique(out$component)) {
         idx <- out$component == component & !is.na(out$group)

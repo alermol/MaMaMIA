@@ -367,6 +367,22 @@ test_that("the shipped registry example is role-free", {
     expect_identical(example$defaults$exclude_flags, 1796)
 })
 
+test_that("zero-padded chromosome groups normalise to bare numbers", {
+    expect_identical(
+        chr_number(c("J01", "St01", "1A", "X")),
+        c("1", "1", "1", NA_character_)
+    )
+    entries <- .species_contig_entries(
+        list(
+            list(id = "d1", name = "J01", component = "D"),
+            list(id = "d2", name = "2D", component = "D"),
+            list(id = "d3", name = "St03", component = "D", group = "03")
+        ),
+        "donor"
+    )
+    expect_identical(entries$group, c("1", "2", "3"))
+})
+
 test_that("declared assemblies are rejected by the registry schema", {
     config <- tiny_species_config()
     config$assemblies <- list(tiny = list(label = "tiny"))
