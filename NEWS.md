@@ -78,6 +78,8 @@
   table.
 * Karyotype tooltips reuse cached HTML while the pointer stays inside the
   same call instead of rebuilding the tooltip on every mousemove.
+* The karyotype heatmap overlay uses a sorted interval sweep instead of
+  scanning every call for every bin.
 
 ## Deployment
 

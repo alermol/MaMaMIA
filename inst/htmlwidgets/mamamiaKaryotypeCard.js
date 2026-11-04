@@ -227,12 +227,21 @@ HTMLWidgets.widget({
           end: call.end === null || call.end === undefined ? 1 : call.end
         };
       });
+      intervals.sort(function (left, right) {
+        return left.start - right.start;
+      });
+      var pointer = 0;
+      var activeEnd = -Infinity;
       for (var i = 0; i < bins; i += 1) {
         var centre = (i + 0.5) / bins;
-        var inside = intervals.some(function (interval) {
-          return centre >= interval.start && centre <= interval.end;
-        });
-        if (!inside) {
+        while (pointer < intervals.length &&
+            intervals[pointer].start <= centre) {
+          if (intervals[pointer].end > activeEnd) {
+            activeEnd = intervals[pointer].end;
+          }
+          pointer += 1;
+        }
+        if (centre > activeEnd) {
           continue;
         }
         var from = Math.floor(i * scores.length / bins);
