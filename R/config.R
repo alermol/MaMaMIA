@@ -195,6 +195,12 @@
             )
         }
     )
+    if (!is.list(manifest$source) || is.null(names(manifest$source))) {
+        .config_error(
+            "Assembly '%s': %s has no `source` mapping",
+            assembly_key, manifest_path
+        )
+    }
     format_version <- manifest$format_version
     if (length(format_version) != 1L || is.na(format_version) ||
         !is.character(format_version)) {
@@ -230,8 +236,15 @@
         )
     }
     num_contigs <- manifest$source$num_contigs
-    if (length(num_contigs) == 1L && is.numeric(num_contigs) &&
-        !is.na(num_contigs) && num_contigs != nrow(contigs)) {
+    if (length(num_contigs) != 1L || is.na(num_contigs) ||
+        !is.numeric(num_contigs) || !is.finite(num_contigs) ||
+        num_contigs != floor(num_contigs) || num_contigs < 0) {
+        .config_error(
+            "Assembly '%s': %s has no integer source.num_contigs",
+            assembly_key, manifest_path
+        )
+    }
+    if (num_contigs != nrow(contigs)) {
         .config_error(
             "Assembly '%s': source.num_contigs in %s is %s but contigs.tsv has %s rows",
             assembly_key, manifest_path,

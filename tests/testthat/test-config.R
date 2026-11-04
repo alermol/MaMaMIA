@@ -201,6 +201,43 @@ test_that("unknown keys are rejected at every level", {
     expect_error(validateMaMaMIAConfig(config), "Unknown `server`")
 })
 
+test_that("malformed gcrank manifest metadata is rejected", {
+    source <- testthat::test_path("fixtures", "tiny.gcrank")
+    make_index <- function(edit) {
+        target <- tempfile("gcrank-manifest-")
+        dir.create(target)
+        file.copy(
+            list.files(source, full.names = TRUE), target, recursive = TRUE
+        )
+        path <- file.path(target, "manifest.json")
+        manifest <- jsonlite::fromJSON(path, simplifyVector = TRUE)
+        manifest <- edit(manifest)
+        jsonlite::write_json(manifest, path, auto_unbox = TRUE, pretty = TRUE)
+        target
+    }
+
+    bad_count <- make_index(function(manifest) {
+        manifest$source$num_contigs <- "2"
+        manifest
+    })
+    on.exit(unlink(bad_count, recursive = TRUE), add = TRUE)
+    config <- tiny_species_config()
+    config$species$tiny_recipient$gc_indexes <- bad_count
+    config$species$tiny_donor$gc_indexes <- bad_count
+    expect_error(
+        validateMaMaMIAConfig(config), "source.num_contigs"
+    )
+
+    bad_source <- make_index(function(manifest) {
+        manifest$source <- "not a mapping"
+        manifest
+    })
+    on.exit(unlink(bad_source, recursive = TRUE), add = TRUE)
+    config$species$tiny_recipient$gc_indexes <- bad_source
+    config$species$tiny_donor$gc_indexes <- bad_source
+    expect_error(validateMaMaMIAConfig(config), "`source` mapping")
+})
+
 test_that("unknown defaults keys are rejected", {
     config <- tiny_species_config()
     config$defaults$fitted_windows <- 1000L
