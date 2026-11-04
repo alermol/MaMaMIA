@@ -66,6 +66,28 @@ test_that("component evidence reports every donor component per call", {
     )
 })
 
+test_that("component evidence joins scores within the chromosome group", {
+    fixture <- component_evidence_fixture()
+    extra <- fixture
+    extra$metrics$group <- "2"
+    extra$scores$group <- "2"
+    extra$scores$donor_mean <- 0.04
+    extra$calls$group <- "2"
+    fixture$metrics <- rbind(fixture$metrics, extra$metrics)
+    fixture$scores <- rbind(fixture$scores, extra$scores)
+    fixture$calls <- rbind(fixture$calls, extra$calls)
+    donor_contigs <- fixture$assembly$contigs$donor
+    fixture$assembly$contigs$donor <- rbind(
+        donor_contigs,
+        transform(donor_contigs, group = "2")
+    )
+
+    evidence <- componentEvidence(fixture, sample = "S1")
+    expect_equal(nrow(evidence), 4L)
+    expect_true(all(evidence$n_windows == 5L))
+    expect_identical(sum(evidence$component_selected), 2L)
+})
+
 test_that("component evidence handles an empty call table", {
     fixture <- component_evidence_fixture()
     fixture$calls <- fixture$calls[0, , drop = FALSE]

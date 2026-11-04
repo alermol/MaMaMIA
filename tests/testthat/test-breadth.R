@@ -175,6 +175,62 @@ test_that("countWindowMetrics() separates samples by RG", {
     ))
 })
 
+test_that("a single requested sample is not pooled with the others", {
+    skip_if_no_samtools()
+    directory <- tempfile("breadth-rg-subset-")
+    dir.create(directory)
+    on.exit(unlink(directory, recursive = TRUE), add = TRUE)
+    bam <- file.path(directory, "two-samples.bam")
+    write_test_bam(
+        multi_sample_variable_gc_sam(
+            c("a", "b"), contig_length = 20000L, steps = c(4L, 7L)
+        ),
+        bam,
+        index = TRUE
+    )
+    header <- bamHeaderInfo(bam)
+    config <- readMaMaMIAConfig(tiny_config_path())
+    contigs <- data.frame(name = c("d1", "r1"), length = c(20000, 20000))
+    windows <- makeAnalysisWindows(
+        tiny_assembly(config), contigs, n_per_chromosome = 20L
+    )
+    both <- countWindowMetrics(
+        bam, windows, c("a", "b"), header$read_groups
+    )
+    only_a <- countWindowMetrics(bam, windows, "a", header$read_groups)
+    expect_identical(
+        as.integer(only_a$counts["a", ]),
+        as.integer(both$counts["a", ])
+    )
+})
+
+test_that("reads from unrequested samples are skipped, not rejected", {
+    skip_if_no_samtools()
+    directory <- tempfile("breadth-rg-skip-")
+    dir.create(directory)
+    on.exit(unlink(directory, recursive = TRUE), add = TRUE)
+    bam <- file.path(directory, "three-samples.bam")
+    write_test_bam(
+        multi_sample_variable_gc_sam(
+            c("a", "b", "c"), contig_length = 20000L,
+            steps = c(4L, 7L, 9L)
+        ),
+        bam,
+        index = TRUE
+    )
+    header <- bamHeaderInfo(bam)
+    config <- readMaMaMIAConfig(tiny_config_path())
+    contigs <- data.frame(name = c("d1", "r1"), length = c(20000, 20000))
+    windows <- makeAnalysisWindows(
+        tiny_assembly(config), contigs, n_per_chromosome = 20L
+    )
+    observed <- countWindowMetrics(
+        bam, windows, c("a", "b"), header$read_groups
+    )
+    expect_identical(rownames(observed$counts), c("a", "b"))
+    expect_gt(sum(observed$counts), 0)
+})
+
 test_that("flag and MAPQ filters are applied", {
     skip_if_no_samtools()
     directory <- tempfile("breadth-flags-")

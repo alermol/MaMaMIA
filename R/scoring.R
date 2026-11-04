@@ -157,6 +157,17 @@
     as.numeric(residual)
 }
 
+## Mean of `values` per window, aligned to `iid`. One grouped pass instead of
+## rescanning the component table for every window.
+.score_window_mean <- function(values, iid, out_iid, finite_only = TRUE) {
+    values <- as.numeric(values)
+    means <- tapply(values, iid, function(x) {
+        x <- x[is.finite(x)]
+        if (length(x) == 0L) NA_real_ else mean(x)
+    })
+    as.numeric(means[as.character(out_iid)])
+}
+
 .score_one_group <- function(donor, recipient, metric, donor_aggregation,
                              composition, eps = .scoring_eps,
                              score_type = "paired_log_ratio") {
@@ -224,12 +235,8 @@
         log(donor_mean + eps) - log(recipient_mean + eps)
     }
 
-    gc_donor <- vapply(iid, function(i) {
-        mean(donor$gc[donor$iid == i], na.rm = TRUE)
-    }, numeric(1))
-    gc_recipient <- vapply(iid, function(i) {
-        mean(recipient$gc[recipient$iid == i], na.rm = TRUE)
-    }, numeric(1))
+    gc_donor <- .score_window_mean(donor$gc, donor$iid, iid)
+    gc_recipient <- .score_window_mean(recipient$gc, recipient$iid, iid)
 
     donor_log <- log(donor_matrix + eps)
     recipient_log <- log(recipient_matrix + eps)
@@ -259,20 +266,17 @@
         na.rm = TRUE
     )
     mapq_donor <- if ("mapq_high_fraction" %in% names(donor)) {
-        vapply(iid, function(i) {
-            values <- donor$mapq_high_fraction[donor$iid == i]
-            values <- values[is.finite(values)]
-            if (length(values) == 0L) NA_real_ else mean(values)
-        }, numeric(1))
+        .score_window_mean(
+            donor$mapq_high_fraction, donor$iid, iid, finite_only = TRUE
+        )
     } else {
         rep(NA_real_, length(iid))
     }
     mapq_recipient <- if ("mapq_high_fraction" %in% names(recipient)) {
-        vapply(iid, function(i) {
-            values <- recipient$mapq_high_fraction[recipient$iid == i]
-            values <- values[is.finite(values)]
-            if (length(values) == 0L) NA_real_ else mean(values)
-        }, numeric(1))
+        .score_window_mean(
+            recipient$mapq_high_fraction, recipient$iid, iid,
+            finite_only = TRUE
+        )
     } else {
         rep(NA_real_, length(iid))
     }
@@ -358,9 +362,10 @@ scoreIntrogression <- function(
     composition <- .scoring_composition(metrics, sample_composition)
     eps <- .scoring_eps
 
+    by_sample <- split(metrics, factor(metrics$sample, levels = samples))
     pieces <- list()
     for (sample in samples) {
-        x <- metrics[metrics$sample == sample, , drop = FALSE]
+        x <- by_sample[[sample]]
         for (group in sort(unique(x$group))) {
             donor <- x[x$role == "donor" & x$group == group, , drop = FALSE]
             recipient <- x[

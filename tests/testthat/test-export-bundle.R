@@ -517,3 +517,24 @@ test_that("diagnostic plots handle empty inputs and multi-sample cohorts", {
     expect_s3_class(bam_bundle_plot_cohort(cohort), "ggplot")
     expect_null(bam_bundle_plot_cohort(cohort[1L, , drop = FALSE]))
 })
+
+test_that("SVG numbers ignore the locale decimal mark", {
+    old <- options(OutDec = ",")
+    on.exit(options(old), add = TRUE)
+    expect_identical(bam_svg_number(1.5), "1.50")
+})
+
+test_that("a relative bundle path is written to the caller's directory", {
+    skip_if_not(bam_example_available(), "bundled example is not installed")
+    result <- bam_example_result(1000)
+    sample <- unique(as.character(result$calls$sample))[[1L]]
+    directory <- tempfile("mamamia-relative-")
+    dir.create(directory)
+    old <- setwd(directory)
+    on.exit({
+        setwd(old)
+        unlink(directory, recursive = TRUE)
+    }, add = TRUE)
+    bam_write_result_bundle(result, "relative-bundle.zip", sample = sample)
+    expect_true(file.exists(file.path(directory, "relative-bundle.zip")))
+})

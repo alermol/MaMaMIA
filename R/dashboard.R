@@ -947,7 +947,8 @@ explorer_karyotype_ui <- function(id, height = "calc(100vh - 360px)") {
 #' @noRd
 karyotype_export_payload <- function(result, sample = NULL,
                                      mode = c("heatmap", "calls"),
-                                     calls = NULL, selected_groups = NULL) {
+                                     calls = NULL, selected_groups = NULL,
+                                     full = NULL) {
     mode <- match.arg(mode)
     payload <- karyotype_payload(
         result,
@@ -956,13 +957,15 @@ karyotype_export_payload <- function(result, sample = NULL,
         calls = calls,
         selected_groups = selected_groups
     )
-    full <- karyotype_payload(
-        result,
-        sample = sample,
-        mode = mode,
-        calls = NULL,
-        selected_groups = NULL
-    )
+    if (is.null(full)) {
+        full <- karyotype_payload(
+            result,
+            sample = sample,
+            mode = mode,
+            calls = NULL,
+            selected_groups = NULL
+        )
+    }
     payload$full_chromosomes <- lapply(
         full$chromosomes,
         function(chromosome) {
@@ -1117,7 +1120,9 @@ explorer_server <- function(id, result, sample = NULL) {
             if (is.null(x) || length(rows) == 0L) {
                 return(integer())
             }
-            as.integer(rows)
+            rows <- suppressWarnings(as.integer(rows))
+            rows <- rows[!is.na(rows) & rows >= 1L & rows <= nrow(x)]
+            unique(rows)
         })
 
         output$selection_status <- shiny::renderText({
@@ -1128,6 +1133,11 @@ explorer_server <- function(id, result, sample = NULL) {
         })
 
         proxy <- DT::dataTableProxy("calls", session = session)
+        ## A new sample or filter produces a different table; row indices from
+        ## the previous table would silently select different calls.
+        shiny::observeEvent(visible_calls(), {
+            DT::selectRows(proxy, NULL)
+        }, ignoreNULL = FALSE)
         shiny::observeEvent(input$select_all, {
             x <- visible_calls()
             if (!is.null(x) && nrow(x) > 0L) {
@@ -1151,6 +1161,25 @@ explorer_server <- function(id, result, sample = NULL) {
                 class = "mamamia-tooltip-modal modal-dialog-centered"
             )
             shiny::showModal(dialog)
+        })
+
+        ## The unfiltered export depends only on result, sample and mode, not
+        ## on the call filters, so build it once per view instead of on every
+        ## filter change.
+        full_karyotype <- shiny::reactive({
+            res <- result_value()
+            mode <- input$karyotype_mode
+            if (is.null(res) || length(mode) != 1L || is.na(mode) ||
+                !mode %in% c("heatmap", "calls")) {
+                return(NULL)
+            }
+            karyotype_payload(
+                res,
+                sample = sample_value(),
+                mode = mode,
+                calls = NULL,
+                selected_groups = NULL
+            )
         })
 
         output$karyotype <- render_mamamia_karyotype({
@@ -1179,7 +1208,8 @@ explorer_server <- function(id, result, sample = NULL) {
                 sample = sample_value(),
                 mode = mode,
                 calls = visible_calls(),
-                selected_groups = group_filter()
+                selected_groups = group_filter(),
+                full = full_karyotype()
             ))
         })
 

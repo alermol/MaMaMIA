@@ -1,5 +1,48 @@
 # MaMaMIA 0.1.0
 
+## Fixes
+
+* **Calibration bins are open-ended.** `length_bins_mb` must end with `Inf`;
+  a finite last break used to leave every longer call uncalibrated and
+  silently failing. Config validation rejects it and names the fix.
+* **Multi-sample BAMs are no longer pooled.** `countWindowMetrics()` with a
+  single requested sample on a multi-sample BAM used to count every read for
+  that sample; reads from unrequested samples are now skipped. Requesting a
+  subset of several samples no longer aborts on reads from the other samples.
+* **Merged segments keep a correct weighted mean.** When three or more CBS
+  segments were merged, gap windows inflated the weight of earlier segments.
+* **Component evidence joins on group and window.** The score join used only
+  `iid`, multiplying rows by the number of chromosome groups and mixing their
+  donor baselines.
+* **Panel masks without `f`/`posterior` columns are accepted**, and an all-NA
+  mask no longer raises `missing value where TRUE/FALSE needed`.
+* **Assignment nulls stay aligned** when a contig has no finite score.
+* **Relative bundle paths are written**, and a failed `zip` leaves the
+  previous bundle intact.
+* **SVG coordinates are locale-independent** (the decimal mark is always a
+  point).
+* **The dashboard result cache keeps its fixed budget** instead of growing by
+  one entry per run, and stale call selections are cleared when the calls
+  table changes.
+* **Cohort class counts are passing-only**, matching their labels.
+* **Validation covers the calibrated call columns** (`pass`, `n_windows`,
+  `metric`, `length_bin`, `threshold`) plus `copy_number` and `score_type`.
+
+## Performance
+
+* Mask recurrence fractions use one grouped pass per cohort instead of one
+  full-table scan per window (about 28x faster at 12 samples x 7 groups x
+  1,000 windows).
+* Per-window GC/MAPQ means in scoring use grouped means (about 4x faster at
+  5,000 windows).
+* Segmentation splits the score table once instead of subsetting it per
+  sample x group (about 8x faster at 24 samples x 7 groups x 1,000 windows).
+* BEDPE export annotates calls once instead of once per output file, bundle
+  manifest digests are reused for `checksums.md5`, and the QC mask summary is
+  computed once.
+* BAM counting no longer zero-fills its result matrices twice, and long
+  counts respond to interrupts.
+
 ## Deployment
 
 * **Faster uploads.** The container rebuilds the pinned httpuv 1.6.17 with a

@@ -195,7 +195,7 @@ bam_bundle_safe_sd <- function(x) {
 
 bam_bundle_write_csv <- function(x, path, gzip = FALSE) {
     if (isTRUE(gzip)) {
-        connection <- gzfile(path, "w")
+        connection <- gzfile(path, "w", encoding = "UTF-8")
         on.exit(close(connection), add = TRUE)
         utils::write.csv(x, connection, row.names = FALSE, na = "")
     } else {
@@ -667,7 +667,11 @@ bam_bundle_write_masks_bed <- function(masks, file) {
         writeLines(track, file)
         return(invisible(file))
     }
-    keep <- isTRUE_vec(masks$masked)
+    keep <- isTRUE_vec(masks$masked) &
+        !is.na(masks$chromosome_group) &
+        is.finite(as.numeric(masks$start_bp)) &
+        is.finite(as.numeric(masks$end_bp)) &
+        as.numeric(masks$end_bp) > as.numeric(masks$start_bp)
     if (!any(keep)) {
         writeLines(track, file)
         return(invisible(file))
@@ -705,6 +709,7 @@ bam_bundle_write_breadth_bedgraph <- function(metrics, file) {
     )
     if (is.data.frame(metrics) && nrow(metrics) > 0L) {
         keep <- is.finite(metrics$breadth) &
+            !is.na(metrics$contig_id) &
             is.finite(metrics$start_bp) & is.finite(metrics$end_bp)
         if (any(keep)) {
             out <- data.frame(
@@ -1145,6 +1150,8 @@ bam_bundle_write_diagnostics <- function(result, bundle, sample,
     dir.create(run_dir, showWarnings = FALSE)
     dir.create(qc_dir, showWarnings = FALSE)
     dir.create(tracks_dir, showWarnings = FALSE)
+    ## Build the QC summaries first: calls-by-group reuses the mask summary.
+    qc <- bam_bundle_qc_files(result, bundle, sample)
 
     status <- as.character(calls_raw$class_status)
     passing <- isTRUE_vec(calls_raw$pass)
@@ -1163,12 +1170,8 @@ bam_bundle_write_diagnostics <- function(result, bundle, sample,
     calls_by_copy_state <- bam_bundle_call_status_summary(
         calls_raw, column = "copy_state", label = "copy_number_state"
     )
-    masks_for_groups <- bam_bundle_rename_columns(
-        result$masks, bam_bundle_mask_columns()
-    )
-    masks_summary <- bam_bundle_masks_summary(masks_for_groups)
     calls_by_group <- bam_bundle_call_group_summary(
-        calls_raw, masks_summary
+        calls_raw, qc$masks_summary
     )
     alternatives <- bam_bundle_assignment_alternatives(calls_desc)
     component_evidence <- componentEvidence(
@@ -1196,7 +1199,6 @@ bam_bundle_write_diagnostics <- function(result, bundle, sample,
     )
 
     versions <- bam_bundle_run_files(result, bundle, sample)
-    qc <- bam_bundle_qc_files(result, bundle, sample)
 
     bam_bundle_write_bed(
         calls_raw, file.path(tracks_dir, "calls-recipient.bed"),
@@ -1256,13 +1258,23 @@ bam_bundle_manifest <- function(bundle, sample, generated, version) {
     invisible(manifest)
 }
 
-bam_bundle_checksums <- function(bundle) {
+bam_bundle_checksums <- function(bundle, manifest = NULL) {
     files <- list.files(bundle, recursive = TRUE, full.names = TRUE)
     files <- files[basename(files) != "checksums.md5"]
     files <- files[file.info(files)$isdir %in% FALSE]
     relative <- substring(files, nchar(bundle) + 2L)
     relative <- gsub("\\\\", "/", relative)
-    md5 <- unname(tools::md5sum(files))
+    md5 <- rep(NA_character_, length(files))
+    if (!is.null(manifest) && is.data.frame(manifest$files) &&
+        all(c("path", "md5") %in% names(manifest$files))) {
+        md5 <- manifest$files$md5[match(relative, manifest$files$path)]
+    }
+    ## manifest.json did not exist when the manifest hashed the payload, so
+    ## only that file still needs a digest here.
+    todo <- is.na(md5)
+    if (any(todo)) {
+        md5[todo] <- unname(tools::md5sum(files[todo]))
+    }
     order_index <- order(relative)
     writeLines(
         paste(md5[order_index], relative[order_index], sep = "  "),

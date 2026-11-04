@@ -125,6 +125,41 @@ test_that("resolution accepts ten-window steps between the allowed ticks", {
     expect_error(validateMaMaMIAConfig(config), "between")
 })
 
+test_that("non-integer versions are rejected", {
+    config <- list(version = 2.9, species = list())
+    expect_error(validateMaMaMIAConfig(config), "integer")
+    config$version <- "2.9"
+    expect_error(validateMaMaMIAConfig(config), "integer")
+    config$version <- c(2, 3)
+    expect_error(validateMaMaMIAConfig(config), "integer")
+    config$version <- list(2)
+    expect_error(validateMaMaMIAConfig(config), "integer")
+})
+
+test_that("a component must agree on its copy number", {
+    config <- tiny_species_config()
+    config$species$tiny_donor$contigs <- list(
+        list(id = "d1", name = "1D", component = "D", copy_number = 2),
+        list(id = "d2", name = "2D", component = "D", copy_number = 4)
+    )
+    expect_error(validateMaMaMIAConfig(config), "copy_number")
+})
+
+test_that("calibration bins must end with Inf", {
+    config <- tiny_species_config()
+    config$defaults$calibration <- list(length_bins_mb = c(5, 10, 25))
+    expect_error(validateMaMaMIAConfig(config), "end with Inf")
+})
+
+test_that("single-sample floors match the length bins", {
+    config <- tiny_species_config()
+    config$defaults$calibration <- list(single_sample_floors = c(1, 1))
+    expect_error(
+        validateMaMaMIAConfig(config),
+        "one value per length bin"
+    )
+})
+
 test_that("version 1 is rejected with migration guidance", {
     config <- list(version = 1L, species = list())
     expect_error(

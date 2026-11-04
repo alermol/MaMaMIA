@@ -614,6 +614,7 @@ test_that("cohort summaries and warnings read WindowMetrics", {
     expect_equal(summary$masked_windows, c(0.2, 0.4))
     expect_identical(summary$n_all_calls, c(2L, 1L))
     expect_identical(summary$n_substitution, c(1L, 0L))
+    expect_identical(summary$n_deletion, c(0L, 0L))
     expect_identical(summary$n_class_confident, c(1L, 0L))
     expect_identical(summary$n_class_needs_review, c(1L, 1L))
     expect_equal(summary$pass_rate, c(0.5, 0))
@@ -827,4 +828,15 @@ test_that("exploreIntrogressions() requires a BamAnalysisResult", {
         exploreIntrogressions(list()),
         "BamAnalysisResult"
     )
+})
+
+test_that("the result cache keeps a fixed session budget", {
+    cache <- bam_result_cache(max_entries = 2L)
+    cache$set("a", 1)
+    cache$set("b", 2)
+    cache$set("c", 3)
+    expect_identical(cache$limit(), 2L)
+    expect_identical(cache$size(), 2L)
+    expect_null(cache$get("a"))
+    expect_identical(cache$get("c"), 3)
 })

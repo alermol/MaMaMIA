@@ -52,18 +52,24 @@
     positive <- calls$score_mean > merge_min
     merged <- list()
     current <- NULL
+    ## Weight for the running mean: the number of CBS windows actually
+    ## contributing to the merged segment. `current$n_windows` is widened to
+    ## the full span below, so it cannot be reused as the weight.
+    current_weight <- NULL
     for (i in seq_len(nrow(calls))) {
         row <- calls[i, , drop = FALSE]
         if (!positive[[i]]) {
             if (!is.null(current)) {
                 merged[[length(merged) + 1L]] <- current
                 current <- NULL
+                current_weight <- NULL
             }
             merged[[length(merged) + 1L]] <- row
             next
         }
         if (is.null(current)) {
             current <- row
+            current_weight <- row$n_windows
             next
         }
         gap_start <- current$end_iid + 1L
@@ -78,17 +84,19 @@
         }
         if (row$start_iid - current$end_iid - 1L <= merge_gap &&
             gap_mean > merge_floor) {
-            weight_current <- current$n_windows
+            weight_current <- current_weight
             weight_row <- row$n_windows
             current$score_mean <- (
                 current$score_mean * weight_current +
                     row$score_mean * weight_row
             ) / (weight_current + weight_row)
+            current_weight <- weight_current + weight_row
             current$end_iid <- row$end_iid
             current$n_windows <- current$end_iid - current$start_iid + 1L
         } else {
             merged[[length(merged) + 1L]] <- current
             current <- row
+            current_weight <- row$n_windows
         }
     }
     if (!is.null(current)) {
@@ -154,13 +162,19 @@ segmentScores <- function(scores, mask = NULL, alpha = 0.001, undo_SD = 1,
         .segmentation_error("`lengths` must be named by chromosome group")
     }
 
+    samples <- unique(scores$sample)
+    sample_groups <- sort(unique(scores$group))
+    by_group <- split(
+        scores,
+        factor(paste(scores$sample, scores$group, sep = "\r"))
+    )
     pieces <- list()
-    for (sample in unique(scores$sample)) {
-        for (group in sort(unique(scores$group))) {
-            x <- scores[
-                scores$sample == sample & scores$group == group, ,
-                drop = FALSE
-            ]
+    for (sample in samples) {
+        for (group in sample_groups) {
+            x <- by_group[[paste(sample, group, sep = "\r")]]
+            if (is.null(x)) {
+                next
+            }
             if (nrow(x) < max(20L, min_width)) {
                 next
             }
@@ -200,15 +214,18 @@ segmentScores <- function(scores, mask = NULL, alpha = 0.001, undo_SD = 1,
                 (segments$end_iid + 1L) * group_length / n_per
             )
             segments$width_bp <- segments$end_bp - segments$start_bp
+            ## Masked windows have score = NA but keep their residual columns;
+            ## they must not contribute to the per-segment evidence means.
+            valid <- is.finite(x$score)
             segments$donor_mean <- vapply(seq_len(nrow(segments)), function(i) {
                 idx <- x$iid >= segments$start_iid[[i]] &
-                    x$iid <= segments$end_iid[[i]]
+                    x$iid <= segments$end_iid[[i]] & valid
                 mean(x$donor_residual[idx], na.rm = TRUE)
             }, numeric(1))
             segments$recipient_mean <- vapply(
                 seq_len(nrow(segments)), function(i) {
                     idx <- x$iid >= segments$start_iid[[i]] &
-                        x$iid <= segments$end_iid[[i]]
+                        x$iid <= segments$end_iid[[i]] & valid
                     mean(x$recipient_residual[idx], na.rm = TRUE)
                 }, numeric(1)
             )
@@ -216,7 +233,7 @@ segmentScores <- function(scores, mask = NULL, alpha = 0.001, undo_SD = 1,
                 segments$total_mean <- vapply(
                     seq_len(nrow(segments)), function(i) {
                         idx <- x$iid >= segments$start_iid[[i]] &
-                            x$iid <= segments$end_iid[[i]]
+                            x$iid <= segments$end_iid[[i]] & valid
                         mean(x$total_residual[idx], na.rm = TRUE)
                     }, numeric(1)
                 )
@@ -231,7 +248,7 @@ segmentScores <- function(scores, mask = NULL, alpha = 0.001, undo_SD = 1,
                     segments[[column]] <- vapply(
                         seq_len(nrow(segments)), function(i) {
                             idx <- x$iid >= segments$start_iid[[i]] &
-                                x$iid <= segments$end_iid[[i]]
+                                x$iid <= segments$end_iid[[i]] & valid
                             mean(x[[column]][idx], na.rm = TRUE)
                         }, numeric(1)
                     )

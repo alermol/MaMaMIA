@@ -302,17 +302,19 @@
                         0
                     }
             }
-            values <- values[is.finite(values)]
+            ok <- is.finite(values)
+            values <- values[ok]
             if (length(values) == 0L) {
                 next
             }
+            groups <- contig_group[ok]
             ordered <- sort(values, decreasing = TRUE)
             best <- c(best, ordered[[1L]])
             if (length(ordered) > 1L) {
                 second <- c(second, ordered[[2L]])
             }
-            same <- values[contig_group == group]
-            other <- values[contig_group != group]
+            same <- values[groups == group]
+            other <- values[groups != group]
             if (length(same) > 0L) {
                 best_same <- c(best_same, max(same))
             }

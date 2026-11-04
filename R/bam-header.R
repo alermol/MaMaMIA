@@ -119,15 +119,12 @@
             stringsAsFactors = FALSE
         ))
     }
-    rows <- lapply(records, function(line) {
-        fields <- .header_fields(line)
-        data.frame(
-            id = .header_field(fields, "ID"),
-            sample = .header_field(fields, "SM"),
-            stringsAsFactors = FALSE
-        )
-    })
-    out <- do.call(rbind, rows)
+    fields <- lapply(records, .header_fields)
+    out <- data.frame(
+        id = vapply(fields, .header_field, character(1), key = "ID"),
+        sample = vapply(fields, .header_field, character(1), key = "SM"),
+        stringsAsFactors = FALSE
+    )
     rownames(out) <- NULL
     out
 }
@@ -143,17 +140,14 @@
             stringsAsFactors = FALSE
         ))
     }
-    rows <- lapply(records, function(line) {
-        fields <- .header_fields(line)
-        data.frame(
-            id = .header_field(fields, "ID"),
-            name = .header_field(fields, "PN"),
-            version = .header_field(fields, "VN"),
-            command = .header_field(fields, "CL"),
-            stringsAsFactors = FALSE
-        )
-    })
-    out <- do.call(rbind, rows)
+    fields <- lapply(records, .header_fields)
+    out <- data.frame(
+        id = vapply(fields, .header_field, character(1), key = "ID"),
+        name = vapply(fields, .header_field, character(1), key = "PN"),
+        version = vapply(fields, .header_field, character(1), key = "VN"),
+        command = vapply(fields, .header_field, character(1), key = "CL"),
+        stringsAsFactors = FALSE
+    )
     rownames(out) <- NULL
     out
 }

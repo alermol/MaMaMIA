@@ -430,7 +430,7 @@ bam_svg_number <- function(x, digits = 2) {
     if (length(x) != 1L || !is.finite(x)) {
         return("0")
     }
-    formatC(x, format = "f", digits = digits)
+    formatC(x, format = "f", digits = digits, decimal.mark = ".")
 }
 
 #' SVG text element
@@ -868,7 +868,7 @@ bam_bundle_write_bedpe <- function(calls, windows, file, pass_only = FALSE) {
     table <- bam_bundle_descriptive_calls(table)
     utils::write.table(
         table, file, sep = "\t", quote = FALSE,
-        row.names = FALSE, na = ""
+        row.names = FALSE, na = "", fileEncoding = "UTF-8"
     )
     names(table)
 }
@@ -1074,12 +1074,28 @@ bam_write_result_bundle <- function(result, file, sample,
     calls_raw <- calls_raw[
         as.character(calls_raw$sample) == sample, , drop = FALSE
     ]
+    old <- getwd()
+    ## `utils::zip()` runs inside the staging directory, so a relative output
+    ## path would land in staging and be deleted with it.
+    file <- if (grepl("^(/|[A-Za-z]:[/\\\\])", file)) {
+        file
+    } else {
+        file.path(old, file)
+    }
     confident_raw <- bam_confident_calls(calls_raw)
     calls <- bam_bundle_descriptive_calls(calls_raw)
     confident_calls <- bam_bundle_descriptive_calls(confident_raw)
+    ## Annotate once; each BEDPE writer otherwise rescans the windows table
+    ## for the same calls.
+    bedpe_calls <- if (nrow(calls_raw) > 0L &&
+        !"chr_id.don" %in% names(calls_raw)) {
+        .annotate_call_intervals(calls_raw, result$windows)
+    } else {
+        calls_raw
+    }
+    bedpe_confident <- bam_confident_calls(bedpe_calls)
     staging <- tempfile("mamamia-bundle-")
     dir.create(staging)
-    old <- getwd()
     on.exit({
         setwd(old)
         unlink(staging, recursive = TRUE, force = TRUE)
@@ -1097,15 +1113,15 @@ bam_write_result_bundle <- function(result, file, sample,
         row.names = FALSE, na = "", fileEncoding = "UTF-8"
     )
     bedpe_columns <- bam_bundle_write_bedpe(
-        calls_raw, result$windows, file.path(bundle, "calls-all.bedpe"),
+        bedpe_calls, result$windows, file.path(bundle, "calls-all.bedpe"),
         pass_only = FALSE
     )
     bam_bundle_write_bedpe(
-        calls_raw, result$windows, file.path(bundle, "calls-passing.bedpe"),
+        bedpe_calls, result$windows, file.path(bundle, "calls-passing.bedpe"),
         pass_only = TRUE
     )
     bam_bundle_write_bedpe(
-        confident_raw, result$windows,
+        bedpe_confident, result$windows,
         file.path(bundle, "calls-confident.bedpe"),
         pass_only = FALSE
     )
@@ -1175,16 +1191,17 @@ bam_write_result_bundle <- function(result, file, sample,
         file.path(bundle, "report.html"),
         useBytes = TRUE
     )
-    bam_bundle_manifest(bundle, sample, generated, version)
-    bam_bundle_checksums(bundle)
+    manifest <- bam_bundle_manifest(bundle, sample, generated, version)
+    bam_bundle_checksums(bundle, manifest)
 
-    if (file.exists(file)) {
-        unlink(file)
-    }
+    ## Build the archive next to the destination first; only replace the
+    ## previous bundle once `zip` has succeeded.
+    tmp_zip <- tempfile(tmpdir = dirname(file), fileext = ".zip")
+    on.exit(unlink(tmp_zip), add = TRUE)
     setwd(staging)
     status <- tryCatch(
         utils::zip(
-            zipfile = file, files = bundle_name, flags = "-q -r"
+            zipfile = tmp_zip, files = bundle_name, flags = "-q -r"
         ),
         error = function(e) e
     )
@@ -1193,6 +1210,16 @@ bam_write_result_bundle <- function(result, file, sample,
         stop(
             "Could not create the results ZIP archive. ",
             "Check that the `zip` command is available.",
+            call. = FALSE
+        )
+    }
+    if (file.exists(file)) {
+        unlink(file)
+    }
+    if (!file.rename(tmp_zip, file) &&
+        !file.copy(tmp_zip, file, overwrite = TRUE)) {
+        stop(
+            "Could not move the results ZIP archive to '", file, "'",
             call. = FALSE
         )
     }

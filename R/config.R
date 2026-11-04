@@ -361,6 +361,23 @@ chr_number <- function(chr_name) {
         }
     }
 
+    ## A component is one copy set: its contigs must agree on the copy number,
+    ## because scoring uses one representative value per component.
+    by_component <- split(out$copy_number, out$component)
+    inconsistent <- vapply(by_component, function(values) {
+        length(unique(values[is.finite(values)])) > 1L
+    }, logical(1))
+    if (any(inconsistent)) {
+        bad <- names(by_component)[which(inconsistent)[[1L]]]
+        .config_error(
+            paste0(
+                "Species '%s': contigs in component '%s' declare different ",
+                "copy_number values"
+            ),
+            species_key, bad
+        )
+    }
+
     if (anyDuplicated(out$id)) {
         duplicate <- unique(out$id[duplicated(out$id)])[[1L]]
         .config_error(
@@ -932,10 +949,15 @@ chr_number <- function(chr_name) {
         }
         if (!is.null(calibration$length_bins_mb)) {
             breaks <- as.numeric(unlist(calibration$length_bins_mb))
-            if (length(breaks) < 2L || anyNA(breaks) || any(!is.finite(breaks[-length(breaks)])) ||
+            if (length(breaks) < 2L || anyNA(breaks) ||
+                any(!is.finite(breaks[-length(breaks)])) ||
+                !isTRUE(breaks[[length(breaks)]] == Inf) ||
                 any(diff(breaks) <= 0)) {
                 .config_error(
-                    "`defaults.calibration.length_bins_mb` must be increasing"
+                    paste0(
+                        "`defaults.calibration.length_bins_mb` must be ",
+                        "increasing and end with Inf"
+                    )
                 )
             }
             out$calibration$length_bins_mb <- breaks
@@ -951,6 +973,16 @@ chr_number <- function(chr_name) {
             if (anyNA(floors) || any(!is.finite(floors)) || any(floors < 0)) {
                 .config_error(
                     "`defaults.calibration.single_sample_floors` must be non-negative numbers"
+                )
+            }
+            expected <- length(out$calibration$length_bins_mb) - 1L
+            if (length(floors) != 1L && length(floors) != expected) {
+                .config_error(
+                    paste0(
+                        "`defaults.calibration.single_sample_floors` must ",
+                        "have one value per length bin (%d) or one value"
+                    ),
+                    expected
                 )
             }
             out$calibration$single_sample_floors <- floors
@@ -1058,10 +1090,17 @@ validateMaMaMIAConfig <- function(config) {
     if (is.null(config$version)) {
         .config_error("`version` is required in the MaMaMIA config")
     }
-    version <- suppressWarnings(as.integer(config$version))
-    if (is.na(version)) {
-        .config_error("`version` must be an integer")
+    raw_version <- config$version
+    if (is.list(raw_version) || length(raw_version) != 1L ||
+        is.na(raw_version)) {
+        .config_error("`version` must be the integer 2")
     }
+    numeric_version <- suppressWarnings(as.numeric(raw_version))
+    if (!is.finite(numeric_version) ||
+        numeric_version != trunc(numeric_version)) {
+        .config_error("`version` must be the integer 2")
+    }
+    version <- as.integer(numeric_version)
     if (version == 1L) {
         .config_error(
             paste0(

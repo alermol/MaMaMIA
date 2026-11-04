@@ -65,10 +65,20 @@
     mmap <- .gcrank_logical(mmap, "mmap")
     validate_crc <- .gcrank_logical(validate_crc, "validate_crc")
 
-    if (exists(index_dir, envir = .MaMaMIAgcrankCache, inherits = FALSE)) {
-        entry <- get(index_dir, envir = .MaMaMIAgcrankCache, inherits = FALSE)
+    ## The open options change what the handle guarantees: a cached handle
+    ## without CRC validation must not satisfy a request that asked for it,
+    ## and an mmap handle must not satisfy mmap = FALSE.
+    cache_key <- paste(
+        index_dir, as.integer(mmap), as.integer(validate_crc),
+        sep = "\r"
+    )
+
+    if (exists(cache_key, envir = .MaMaMIAgcrankCache, inherits = FALSE)) {
+        entry <- get(
+            cache_key, envir = .MaMaMIAgcrankCache, inherits = FALSE
+        )
         entry$last_used <- .gcrank_tick()
-        assign(index_dir, entry, envir = .MaMaMIAgcrankCache)
+        assign(cache_key, entry, envir = .MaMaMIAgcrankCache)
         return(entry$xptr)
     }
 
@@ -79,7 +89,7 @@
         }
     )
     assign(
-        index_dir,
+        cache_key,
         list(
             xptr = xptr,
             mmap = mmap,

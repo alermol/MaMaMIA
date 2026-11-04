@@ -91,11 +91,23 @@ test_that("a sparse length bin borrows the mode-wide null", {
     calls <- calls[calls$width_bp < 100e6, , drop = FALSE]
     calibrated <- calibrateSegments(
         calls, fdr = 0.01,
-        length_bins_mb = c(5, 10, 25, 50, 100),
+        length_bins_mb = c(5, 10, 25, 50, Inf),
         floors = c(0, 0, 0, 0)
     )
     expect_true(all(is.finite(calibrated$calibration$threshold)))
     expect_identical(nrow(calibrated$calibration), 4L)
+})
+
+test_that("calibration requires an open-ended last bin", {
+    calls <- calibration_calls()
+    expect_error(
+        calibrateSegments(
+            calls, fdr = 0.01,
+            length_bins_mb = c(5, 10, 25, 50, 100),
+            floors = c(0, 0, 0, 0)
+        ),
+        "end with Inf"
+    )
 })
 
 test_that("self-calibration does not let a target call define the null", {
@@ -114,6 +126,9 @@ test_that("calibration validates fdr and empty input", {
     expect_error(calibrateSegments(calls, fdr = 0), "fdr")
     empty <- calibrateSegments(calls[0, , drop = FALSE])
     expect_identical(nrow(empty$calibration), 0L)
+    expect_true(all(
+        c("length_bin", "threshold", "pass") %in% names(empty$calls)
+    ))
 })
 
 test_that("classifyCalls() assigns class and confidence", {

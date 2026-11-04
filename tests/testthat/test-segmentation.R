@@ -4,6 +4,45 @@ segment_positive <- function(calls) {
     calls[!is.na(calls$score_mean) & calls$score_mean > 0.5, , drop = FALSE]
 }
 
+test_that("merging three segments keeps the window-weighted mean", {
+    calls <- data.frame(
+        start_iid = c(0L, 10L, 20L),
+        end_iid = c(4L, 14L, 24L),
+        n_windows = c(5L, 5L, 5L),
+        score_mean = c(1, 2, 10),
+        stringsAsFactors = FALSE
+    )
+    profile <- stats::setNames(rep(0, 30L), as.character(0:29))
+    merged <- MaMaMIA:::.segment_merge(
+        calls, profile, merge_gap = 10L, merge_floor = -1, min_mb = 0
+    )
+    expect_equal(nrow(merged), 1L)
+    expect_equal(merged$score_mean, (1 * 5 + 2 * 5 + 10 * 5) / 15)
+    expect_equal(merged$n_windows, 25L)
+    expect_equal(merged$start_iid, 0L)
+    expect_equal(merged$end_iid, 24L)
+})
+
+test_that("masked windows do not contribute to segment evidence", {
+    scores <- synthetic_score_table(
+        event_from = 40L, event_to = 60L, event_effect = 2
+    )
+    inside <- scores$group == "1" & scores$iid == 50L
+    scores$donor_residual[inside] <- 1e6
+    mask <- data.frame(
+        group = "1", iid = 50L, mask = TRUE,
+        stringsAsFactors = FALSE
+    )
+    calls <- segmentScores(scores, mask = mask, min_mb = 1)
+    hit <- calls[
+        calls$group == "1" & calls$start_iid <= 50L &
+            calls$end_iid >= 50L, ,
+        drop = FALSE
+    ]
+    expect_gt(nrow(hit), 0L)
+    expect_lt(max(abs(hit$donor_mean)), 100)
+})
+
 test_that("CBS finds a single event within a few windows", {
     scores <- synthetic_score_table(event_effect = 2)
     calls <- segmentScores(scores, min_mb = 1)

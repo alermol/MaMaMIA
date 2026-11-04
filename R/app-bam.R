@@ -1741,10 +1741,20 @@ bam_cohort_summary <- function(result) {
                 sum(status == "ambiguous", na.rm = TRUE)
             call_stats$n_class_needs_review[[i]] <-
                 sum(status == "needs_review", na.rm = TRUE)
-            classes <- if ("class" %in% names(one)) {
-                as.character(one$class)
+            passing <- if ("pass" %in% names(one)) {
+                as.logical(one$pass)
             } else {
-                rep(NA_character_, nrow(one))
+                rep(TRUE, nrow(one))
+            }
+            passing[is.na(passing)] <- FALSE
+            selected <- one[passing, , drop = FALSE]
+            if (nrow(selected) == 0L) {
+                next
+            }
+            classes <- if ("class" %in% names(selected)) {
+                as.character(selected$class)
+            } else {
+                rep(NA_character_, nrow(selected))
             }
             call_stats$n_substitution[[i]] <-
                 sum(classes == "substitution", na.rm = TRUE)
@@ -1756,17 +1766,6 @@ bam_cohort_summary <- function(result) {
                 sum(classes == "complex", na.rm = TRUE)
             call_stats$n_other[[i]] <-
                 sum(classes == "other", na.rm = TRUE)
-
-            passing <- if ("pass" %in% names(one)) {
-                as.logical(one$pass)
-            } else {
-                rep(TRUE, nrow(one))
-            }
-            passing[is.na(passing)] <- FALSE
-            selected <- one[passing, , drop = FALSE]
-            if (nrow(selected) == 0L) {
-                next
-            }
             if ("group" %in% names(selected)) {
                 groups <- as.character(selected$group)
                 call_stats$n_groups_with_calls[[i]] <-
@@ -2140,8 +2139,8 @@ bam_coverage_warnings <- function(result, near_zero = 1) {
 #'
 #' Returning to an input that was already analysed should reuse that result
 #' instead of repeating the whole pipeline. `get()` returns `NULL` on a miss;
-#' `set()` evicts the oldest entry once the current limit is reached;
-#' `reserve()` raises the budget before a run adds its entry.
+#' `set()` evicts the oldest entry once the current limit is reached. The
+#' limit stays fixed for the session so old analyses cannot accumulate.
 #'
 #' @noRd
 bam_result_cache <- function(max_entries = 3L) {
@@ -2173,15 +2172,6 @@ bam_result_cache <- function(max_entries = 3L) {
                     rm(list = oldest, envir = store)
                 }
                 order <<- order[-1L]
-            }
-            invisible(NULL)
-        },
-        ## A run can need more entries than the default session budget; grow
-        ## the budget before the result arrives.
-        reserve = function(n) {
-            n <- suppressWarnings(as.integer(n))
-            if (length(n) == 1L && !is.na(n) && n > max_entries) {
-                max_entries <<- n
             }
             invisible(NULL)
         },
@@ -6500,8 +6490,6 @@ bam_launcher_server <- function(state) {
                 ))
             }
 
-            result_cache$reserve(result_cache$size() + 1L)
-
             stages_per_run <- length(bam_progress_stages(length(samples)))
             total_steps <- stages_per_run
             run_analysis <- function(assembly_config, assembly_key, progress) {
@@ -6682,16 +6670,26 @@ bam_launcher_server <- function(state) {
             )
         })
 
-        output$cohort_table <- DT::renderDT({
+        ## The summary depends only on the result; rebuilding it whenever the
+        ## column picker changes rescans every call and metric table.
+        cohort_summary <- shiny::reactive({
             res <- result()
+            if (is.null(res)) {
+                return(NULL)
+            }
+            bam_cohort_summary(res)
+        })
+
+        output$cohort_table <- DT::renderDT({
+            summary <- cohort_summary()
             shiny::validate(
                 shiny::need(
-                    !is.null(res),
+                    !is.null(summary),
                     "Run the analysis to see the cohort summary"
                 )
             )
             bam_cohort_table(
-                bam_cohort_summary(res),
+                summary,
                 input$cohort_columns
             )
         })

@@ -186,7 +186,9 @@ componentEvidence <- function(result, sample = NULL, calls = NULL,
                 d_frame, rec, by = "iid", all = FALSE, sort = TRUE
             )
             merged <- merge(
-                merged, score_frame, by = "iid", all = FALSE, sort = TRUE
+                merged, score_frame,
+                by = c("chromosome_group", "iid"),
+                all = FALSE, sort = TRUE
             )
             if (nrow(merged) == 0L) next
             ## Transfer the group-level GC/centring correction to each
@@ -234,8 +236,14 @@ componentEvidence <- function(result, sample = NULL, calls = NULL,
                 -component_rows$mean_component_score,
                 ties.method = "min", na.last = "keep"
             )
-            selected <- as.character(call$donor_component[[1L]])
-            component_rows$component_selected <- if (is.na(selected)) {
+            selected <- if ("donor_component" %in% names(call) &&
+                length(call$donor_component) > 0L) {
+                as.character(call$donor_component[[1L]])
+            } else {
+                NA_character_
+            }
+            component_rows$component_selected <- if (length(selected) == 0L ||
+                is.na(selected)) {
                 rep(FALSE, nrow(component_rows))
             } else {
                 component_rows$donor_component == selected

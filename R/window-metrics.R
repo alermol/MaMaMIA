@@ -141,10 +141,7 @@ countWindowMetrics <- function(bam_path, windows, samples, read_groups,
         ,
         drop = FALSE
     ]
-    if (length(samples) == 1L) {
-        read_group_ids <- character()
-        sample_index <- integer()
-    } else {
+    if (nrow(read_groups) > 0L) {
         missing_samples <- setdiff(samples, read_groups$sample)
         if (length(missing_samples) > 0L) {
             .window_metrics_error(
@@ -153,11 +150,26 @@ countWindowMetrics <- function(bam_path, windows, samples, read_groups,
                 paste(sprintf("'%s'", missing_samples), collapse = ", ")
             )
         }
-        read_groups <- read_groups[
-            read_groups$sample %in% samples, , drop = FALSE
-        ]
+    }
+    if (length(samples) > 1L && nrow(read_groups) == 0L) {
+        .window_metrics_error(
+            "A multi-sample request needs @RG lines in the BAM header"
+        )
+    }
+    if (length(samples) == 1L && all(read_groups$sample %in% samples)) {
+        ## Every read group in this BAM belongs to the requested sample, so
+        ## every alignment is that sample. Keep the fast path that does not
+        ## require an RG tag on every read.
+        read_group_ids <- character()
+        sample_index <- integer()
+    } else {
+        ## Map every declared read group, including groups from samples that
+        ## were not requested. The C++ side skips those reads instead of
+        ## pooling them into the requested sample or rejecting them as
+        ## undeclared.
         read_group_ids <- read_groups$id
         sample_index <- match(read_groups$sample, samples)
+        sample_index[is.na(sample_index)] <- 0L
     }
 
     result <- tryCatch(

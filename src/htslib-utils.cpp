@@ -213,7 +213,7 @@ Rcpp::List bam_metrics_rg_cpp(
     bool count_deletions) {
   const int n_contigs = contig_names.size();
   const int n_samples = sample_names.size();
-  const bool single_sample = n_samples == 1;
+  const bool map_read_groups = read_group_ids.size() > 0;
   if (n_contigs < 1) {
     Rcpp::stop("At least one contig is required for read counting");
   }
@@ -237,7 +237,9 @@ Rcpp::List bam_metrics_rg_cpp(
     if (id.empty()) {
       Rcpp::stop("Read group IDs must not be empty");
     }
-    if (sample < 1 || sample > n_samples) {
+    // 0 is the sentinel for an @RG line that belongs to a sample the caller
+    // did not request; its reads are skipped.
+    if (sample < 0 || sample > n_samples) {
       Rcpp::stop("sample_index must point into sample_names");
     }
     if (!rg_to_sample.emplace(id, sample - 1).second) {
@@ -268,9 +270,8 @@ Rcpp::List bam_metrics_rg_cpp(
   Rcpp::IntegerMatrix counts(n_samples, static_cast<int>(n_windows));
   Rcpp::IntegerMatrix covered(n_samples, static_cast<int>(n_windows));
   Rcpp::IntegerMatrix mapq_high(n_samples, static_cast<int>(n_windows));
-  std::fill(counts.begin(), counts.end(), 0);
-  std::fill(covered.begin(), covered.end(), 0);
-  std::fill(mapq_high.begin(), mapq_high.end(), 0);
+  // R's allocMatrix() returns zero-filled memory; filling again here would
+  // touch n_samples * n_windows cells three extra times.
 
   BamPtr record(bam_init1());
   if (!record) {
@@ -283,6 +284,9 @@ Rcpp::List bam_metrics_rg_cpp(
   for (int contig = 0; contig < n_contigs; ++contig) {
     const std::string name = Rcpp::as<std::string>(contig_names[contig]);
     const double expected_length = contig_lengths[contig];
+    if (!std::isfinite(expected_length) || expected_length <= 0) {
+      Rcpp::stop("Contig '%s' has an invalid length", name);
+    }
     const int tid = sam_hdr_name2tid(hdr.get(), name.c_str());
     if (tid < 0) {
       Rcpp::stop("Contig '%s' is not present in the BAM header of '%s'", name,
@@ -301,6 +305,9 @@ Rcpp::List bam_metrics_rg_cpp(
     }
 
     for (int window = 0; window < n_per_chromosome; ++window) {
+      if ((window & 0x3F) == 0) {
+        Rcpp::checkUserInterrupt();
+      }
       // Match makeAnalysisWindows() exactly: floor(i * L / n) with integer
       // arithmetic, not a floating-point division.
       const hts_pos_t start =
@@ -323,7 +330,11 @@ Rcpp::List bam_metrics_rg_cpp(
         Rcpp::stop("Could not iterate contig '%s' in BAM '%s'", name, path);
       }
       int ret = 0;
+      long long seen = 0;
       while ((ret = sam_itr_next(fp.get(), itr.get(), record.get())) >= 0) {
+        if ((++seen & 0xFFFFF) == 0) {
+          Rcpp::checkUserInterrupt();
+        }
         const bam1_t* b = record.get();
         if ((b->core.flag & exclude_flags) != 0) {
           continue;
@@ -336,7 +347,7 @@ Rcpp::List bam_metrics_rg_cpp(
         }
 
         int sample = 0;
-        if (!single_sample) {
+        if (map_read_groups) {
           const uint8_t* rg_aux = bam_aux_get(b, "RG");
           if (rg_aux == nullptr) {
             Rcpp::stop(
@@ -359,6 +370,10 @@ Rcpp::List bam_metrics_rg_cpp(
                 bam_get_qname(b), path, rg);
           }
           sample = found->second;
+          if (sample < 0) {
+            // This read group belongs to a sample the caller did not request.
+            continue;
+          }
         }
 
         const uint32_t* cigar = bam_get_cigar(b);
@@ -541,13 +556,19 @@ Rcpp::IntegerVector bam_count_ranges_cpp(
   }
 
   Rcpp::IntegerVector counts(n_ranges);
-  std::fill(counts.begin(), counts.end(), 0);
+  // Rcpp vectors are zero-filled by allocVector(); no extra fill needed.
   BamPtr record(bam_init1());
   if (!record) {
     Rcpp::stop("Could not allocate a BAM record");
   }
 
   for (R_xlen_t i = 0; i < n_ranges; ++i) {
+    if ((i & 0x3F) == 0) {
+      Rcpp::checkUserInterrupt();
+    }
+    if (range_contig[i] == NA_INTEGER) {
+      Rcpp::stop("range_contig must not be NA");
+    }
     const int contig = range_contig[i] - 1;
     if (contig < 0 || contig >= n_contigs) {
       Rcpp::stop("range_contig must point into contig_names");
@@ -577,7 +598,11 @@ Rcpp::IntegerVector bam_count_ranges_cpp(
           Rcpp::as<std::string>(contig_names[contig]));
     }
     int ret = 0;
+    long long seen = 0;
     while ((ret = sam_itr_next(fp.get(), itr.get(), record.get())) >= 0) {
+      if ((++seen & 0xFFFFF) == 0) {
+        Rcpp::checkUserInterrupt();
+      }
       const bam1_t* b = record.get();
       if ((b->core.flag & exclude_flags) != 0) {
         continue;

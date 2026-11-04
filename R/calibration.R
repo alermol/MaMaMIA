@@ -1,10 +1,24 @@
 ## Length-stratified empirical calibration of segment thresholds.
 
 .calibration_bins <- function(length_bins_mb) {
-    if (length(length_bins_mb) < 2L || any(diff(length_bins_mb) <= 0)) {
+    if (length(length_bins_mb) < 2L || anyNA(length_bins_mb) ||
+        any(diff(length_bins_mb) <= 0)) {
         .mamamia_error(
             "MaMaMIACalibrationError",
             "`length_bins_mb` must be an increasing numeric vector"
+        )
+    }
+    ## The last label is ">X" and `cut()` cannot represent an open-ended tail
+    ## unless the last break is Inf. A finite last break would leave every
+    ## longer call uncalibrated (and silently failing).
+    last <- length_bins_mb[[length(length_bins_mb)]]
+    if (!isTRUE(last == Inf)) {
+        .mamamia_error(
+            "MaMaMIACalibrationError",
+            paste0(
+                "`length_bins_mb` must end with Inf so that the longest ",
+                "calls have a calibration bin"
+            )
         )
     }
     labels <- paste0(
@@ -124,6 +138,9 @@ calibrateSegments <- function(
         )
     }
     if (nrow(calls) == 0L) {
+        calls$length_bin <- character(0)
+        calls$threshold <- numeric(0)
+        calls$pass <- logical(0)
         return(list(
             calibration = data.frame(
                 mode = character(0), length_bin = character(0),

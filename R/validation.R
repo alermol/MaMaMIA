@@ -28,16 +28,17 @@ validateBamAnalysisResult <- function(x) {
     contracts <- list(
         metrics = c(
             "sample", "chr_id", "chr_name", "group", "role", "component",
-            "iid", "start", "stop", "length", "count", "covered",
-            "mapq_high", "mapq_high_fraction", "breadth", "gc",
+            "copy_number", "iid", "start", "stop", "length", "count",
+            "covered", "mapq_high", "mapq_high_fraction", "breadth", "gc",
             "lambda_breadth", "lambda_count", "read_length"
         ),
         scores = c(
             "sample", "group", "iid", "start", "stop", "mode", "metric",
-            "score", "donor_mean", "recipient_mean", "donor_component",
-            "n_donor", "n_recipient", "donor_copies", "donor_fraction",
-            "donor_component_spread", "recipient_component_spread",
-            "n_donor_supported", "mapq_fraction", "total_residual"
+            "score_type", "score", "donor_mean", "recipient_mean",
+            "donor_component", "n_donor", "n_recipient", "donor_copies",
+            "donor_fraction", "donor_component_spread",
+            "recipient_component_spread", "n_donor_supported",
+            "mapq_fraction", "total_residual"
         ),
         masks = c(
             "group", "iid", "start", "stop", "f", "posterior", "mask",
@@ -50,7 +51,8 @@ validateBamAnalysisResult <- function(x) {
         calls = c(
             "sample", "group", "start_iid", "end_iid", "start_bp", "end_bp",
             "width_bp", "score_mean", "donor_mean", "recipient_mean",
-            "total_mean", "class", "copy_state", "copy_state_group",
+            "total_mean", "n_windows", "metric", "length_bin", "threshold",
+            "pass", "class", "copy_state", "copy_state_group",
             "total_evidence", "component_status", "mappability_status",
             "mapq_fraction", "class_group",
             "class_evidence", "class_confidence", "class_status",

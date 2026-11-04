@@ -131,12 +131,13 @@ buildPanelMask <- function(panel_metrics, z = 0.5,
         donor_aggregation = donor_aggregation
     )
     keys <- unique(scored[, c("group", "iid")])
-    f <- vapply(seq_len(nrow(keys)), function(i) {
-        values <- scored$score[
-            scored$group == keys$group[[i]] & scored$iid == keys$iid[[i]]
-        ]
+    key <- paste(scored$group, scored$iid, sep = "\r")
+    recurrence <- tapply(scored$score, key, function(values) {
         mean(values > z, na.rm = TRUE)
-    }, numeric(1))
+    })
+    f <- as.numeric(recurrence[
+        paste(keys$group, keys$iid, sep = "\r")
+    ])
     fraction <- data.frame(
         group = keys$group,
         iid = keys$iid,
@@ -292,11 +293,24 @@ buildWindowMask <- function(metrics, scores = NULL,
                 "The panel mask does not cover every analysis window; rebuild it with the same window grid"
             )
         }
-        out$f <- panel$f[position]
-        out$posterior <- panel$posterior[position]
-        out$mask <- panel$mask[position]
+        out$f <- if ("f" %in% names(panel)) {
+            as.numeric(panel$f[position])
+        } else {
+            NA_real_
+        }
+        out$posterior <- if ("posterior" %in% names(panel)) {
+            as.numeric(panel$posterior[position])
+        } else {
+            NA_real_
+        }
+        out$mask <- as.logical(panel$mask[position])
+        out$mask[is.na(out$mask)] <- FALSE
         out$source <- "panel"
-        out$version <- panel$version[position] %||% NA_character_
+        out$version <- if ("version" %in% names(panel)) {
+            as.character(panel$version[position])
+        } else {
+            NA_character_
+        }
         used <- TRUE
     } else if (identical(mode, "multi") && !is.null(scores)) {
         if (!is.data.frame(scores) ||
@@ -304,18 +318,18 @@ buildWindowMask <- function(metrics, scores = NULL,
             .mask_error("`scores` must be a ScoreTable with group, iid and score")
         }
         keys <- unique(scores[, c("group", "iid")])
-        f <- vapply(seq_len(nrow(keys)), function(i) {
-            values <- if ("score_raw" %in% names(scores)) {
-                scores$score_raw
-            } else {
-                scores$score
-            }
-            values <- values[
-                scores$group == keys$group[[i]] &
-                    scores$iid == keys$iid[[i]]
-            ]
-            mean(values > z, na.rm = TRUE)
-        }, numeric(1))
+        values <- if ("score_raw" %in% names(scores)) {
+            scores$score_raw
+        } else {
+            scores$score
+        }
+        key <- paste(scores$group, scores$iid, sep = "\r")
+        recurrence <- tapply(values, key, function(x) {
+            mean(x > z, na.rm = TRUE)
+        })
+        f <- as.numeric(recurrence[
+            paste(keys$group, keys$iid, sep = "\r")
+        ])
         fraction <- data.frame(
             group = keys$group, iid = keys$iid, f = f,
             stringsAsFactors = FALSE
@@ -402,11 +416,13 @@ buildWindowMask <- function(metrics, scores = NULL,
 #' @return `scores` with `score` set to `NA` in masked windows.
 #' @export
 applyWindowMask <- function(scores, mask) {
-    if (is.null(mask) || nrow(mask) == 0L || !any(mask$mask)) {
+    if (is.null(mask) || nrow(mask) == 0L ||
+        !any(mask$mask %in% TRUE)) {
         return(scores)
     }
     key <- paste(scores$group, scores$iid, sep = ":")
-    mask_key <- paste(mask$group[mask$mask], mask$iid[mask$mask], sep = ":")
+    masked <- mask$mask %in% TRUE
+    mask_key <- paste(mask$group[masked], mask$iid[masked], sep = ":")
     scores$score[key %in% mask_key] <- NA_real_
     scores
 }

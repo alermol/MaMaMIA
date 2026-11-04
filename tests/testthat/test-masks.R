@@ -55,6 +55,33 @@ test_that("buildWindowMask() applies a panel mask and validates the grid", {
     )
 })
 
+test_that("a panel mask without evidence columns keeps the contract", {
+    metrics <- panel_fixture()
+    panel <- buildPanelMask(metrics)
+    target <- metrics[metrics$sample == "P1", , drop = FALSE]
+    bare <- data.frame(
+        group = panel$group, iid = panel$iid, mask = panel$mask,
+        stringsAsFactors = FALSE
+    )
+    mask <- buildWindowMask(target, mode = "single", panel_mask = bare)
+    expect_true(all(c("f", "posterior", "version") %in% names(mask)))
+    expect_true(all(is.na(mask$f)))
+    expect_true(all(is.na(mask$posterior)))
+    expect_identical(mask$mask, panel$mask)
+})
+
+test_that("an all-NA mask leaves scores untouched", {
+    scores <- data.frame(
+        group = "1", iid = 0:2, score = c(1, 2, 3),
+        stringsAsFactors = FALSE
+    )
+    mask <- data.frame(
+        group = "1", iid = 0:2, mask = NA,
+        stringsAsFactors = FALSE
+    )
+    expect_identical(applyWindowMask(scores, mask), scores)
+})
+
 test_that("a small panel warns and uses a fixed fraction", {
     metrics <- synthetic_window_metrics(samples = paste0("P", 1:4))
     metrics <- multiply_donor(metrics, "1", 0L, 10L, 6)
