@@ -125,8 +125,8 @@
 #'
 #' @return The output path, invisibly.
 #' @export
-writeCallsToBedpe <- function(x, file, samples = NULL, selected = NULL,
-                              pass_only = TRUE, windows = NULL) {
+.bedpe_table <- function(x, samples = NULL, selected = NULL,
+                         pass_only = TRUE, windows = NULL) {
     if (inherits(x, "BamAnalysisResult")) {
         calls <- x$calls
         if (is.null(windows)) {
@@ -139,10 +139,6 @@ writeCallsToBedpe <- function(x, file, samples = NULL, selected = NULL,
     }
     if (is.null(windows)) {
         .bedpe_error("`windows` is required when `x` is a Calls data frame")
-    }
-    if (!is.character(file) || length(file) != 1L || is.na(file) ||
-        !nzchar(file)) {
-        .bedpe_error("`file` must be a single output path")
     }
     if (nrow(calls) > 0L && !"chr_id.don" %in% names(calls)) {
         calls <- .annotate_call_intervals(calls, windows)
@@ -158,54 +154,50 @@ writeCallsToBedpe <- function(x, file, samples = NULL, selected = NULL,
         calls <- calls[isTRUE_vec(calls$pass), , drop = FALSE]
     }
     if (nrow(calls) == 0L) {
-        utils::write.table(
-            data.frame(
-                sample = character(0), chr_id.don = character(0),
-                start.don = numeric(0), stop.don = numeric(0),
-                chr_id.rec = character(0), start.rec = numeric(0),
-                stop.rec = numeric(0), width_bp = numeric(0),
-                score_mean = numeric(0), donor_mean = numeric(0),
-                recipient_mean = numeric(0), class = character(0),
-                class_group = character(0), class_evidence = character(0),
-                class_confidence = character(0), class_status = character(0),
-                copy_state = character(0), total_evidence = character(0),
-                component_status = character(0),
-                mappability_status = character(0),
-                confidence = character(0),
-                method = character(0),
-                mode = character(0), group = character(0),
-                pass = logical(0),
-                recipient_component = character(0),
-                recipient_chr_name = character(0),
-                recipient_group = character(0),
-                recipient_assignment = character(0),
-                recipient_cross_group = logical(0),
-                recipient_weight = numeric(0),
-                recipient_expected_breadth = numeric(0),
-                recipient_observed_breadth = numeric(0),
-                recipient_copy_number = numeric(0),
-                recipient_deletion_width_bp = numeric(0),
-                affected_fraction = numeric(0),
-                affected_copies = integer(0),
-                dosage_confidence = character(0),
-                recipient_alternative = character(0),
-                recipient_mean_depletion = numeric(0),
-                recipient_depletion_se = numeric(0),
-                recipient_depletion_lower = numeric(0),
-                recipient_depletion_z = numeric(0),
-                recipient_width_overlap = numeric(0),
-                recipient_fraction_ratio = numeric(0),
-                recipient_mapq_fraction = numeric(0),
-                mapq_fraction = numeric(0),
-                donor_copies = numeric(0),
-                total_mean = numeric(0),
-                donor_component = character(0),
-                donor_chr_name = character(0),
-                stringsAsFactors = FALSE
-            ),
-            file, sep = "\t", quote = FALSE, row.names = FALSE
-        )
-        return(invisible(file))
+        return(data.frame(
+            sample = character(0), chr_id.don = character(0),
+            start.don = numeric(0), stop.don = numeric(0),
+            chr_id.rec = character(0), start.rec = numeric(0),
+            stop.rec = numeric(0), width_bp = numeric(0),
+            score_mean = numeric(0), donor_mean = numeric(0),
+            recipient_mean = numeric(0), class = character(0),
+            class_group = character(0), class_evidence = character(0),
+            class_confidence = character(0), class_status = character(0),
+            copy_state = character(0), total_evidence = character(0),
+            component_status = character(0),
+            mappability_status = character(0),
+            confidence = character(0),
+            method = character(0),
+            mode = character(0), group = character(0),
+            pass = logical(0),
+            recipient_component = character(0),
+            recipient_chr_name = character(0),
+            recipient_group = character(0),
+            recipient_assignment = character(0),
+            recipient_cross_group = logical(0),
+            recipient_weight = numeric(0),
+            recipient_expected_breadth = numeric(0),
+            recipient_observed_breadth = numeric(0),
+            recipient_copy_number = numeric(0),
+            recipient_deletion_width_bp = numeric(0),
+            affected_fraction = numeric(0),
+            affected_copies = integer(0),
+            dosage_confidence = character(0),
+            recipient_alternative = character(0),
+            recipient_mean_depletion = numeric(0),
+            recipient_depletion_se = numeric(0),
+            recipient_depletion_lower = numeric(0),
+            recipient_depletion_z = numeric(0),
+            recipient_width_overlap = numeric(0),
+            recipient_fraction_ratio = numeric(0),
+            recipient_mapq_fraction = numeric(0),
+            mapq_fraction = numeric(0),
+            donor_copies = numeric(0),
+            total_mean = numeric(0),
+            donor_component = character(0),
+            donor_chr_name = character(0),
+            stringsAsFactors = FALSE
+        ))
     }
     columns <- c(
         "sample", "chr_id.don", "start.don", "stop.don",
@@ -215,20 +207,35 @@ writeCallsToBedpe <- function(x, file, samples = NULL, selected = NULL,
         "copy_state", "total_evidence", "component_status",
         "mappability_status", "mapq_fraction",
         "confidence", "method", "mode", "group",
-        "start_iid", "end_iid", "pass", "recipient_component", "recipient_chr_name",
-        "recipient_group", "recipient_assignment", "recipient_cross_group",
-        "recipient_weight", "recipient_expected_breadth",
-        "recipient_observed_breadth", "recipient_copy_number",
-        "recipient_deletion_width_bp", "affected_fraction",
-        "affected_copies", "dosage_confidence", "recipient_alternative",
-        "recipient_mean_depletion", "recipient_depletion_se",
-        "recipient_depletion_lower", "recipient_depletion_z",
-        "recipient_width_overlap", "recipient_fraction_ratio",
-        "recipient_mapq_fraction", "mapq_fraction", "donor_copies",
-        "total_mean",
+        "start_iid", "end_iid", "pass", "recipient_component",
+        "recipient_chr_name", "recipient_group", "recipient_assignment",
+        "recipient_cross_group", "recipient_weight",
+        "recipient_expected_breadth", "recipient_observed_breadth",
+        "recipient_copy_number", "recipient_deletion_width_bp",
+        "affected_fraction", "affected_copies", "dosage_confidence",
+        "recipient_alternative", "recipient_mean_depletion",
+        "recipient_depletion_se", "recipient_depletion_lower",
+        "recipient_depletion_z", "recipient_width_overlap",
+        "recipient_fraction_ratio", "recipient_mapq_fraction",
+        "mapq_fraction", "donor_copies", "total_mean",
         "donor_component", "donor_chr_name"
     )
-    out <- calls[, intersect(columns, names(calls)), drop = FALSE]
+    calls[, intersect(columns, names(calls)), drop = FALSE]
+}
+
+writeCallsToBedpe <- function(x, file, samples = NULL, selected = NULL,
+                              pass_only = TRUE, windows = NULL) {
+    if (!is.character(file) || length(file) != 1L || is.na(file) ||
+        !nzchar(file)) {
+        .bedpe_error("`file` must be a single output path")
+    }
+    out <- .bedpe_table(
+        x,
+        samples = samples,
+        selected = selected,
+        pass_only = pass_only,
+        windows = windows
+    )
     utils::write.table(
         out, file, sep = "\t", quote = FALSE, row.names = FALSE
     )

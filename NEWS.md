@@ -83,6 +83,8 @@
 * `report.html` shows at most 500 component-evidence rows and points to the
   full `qc/component-evidence.csv`, keeping the self-contained report
   bounded.
+* BEDPE export builds the descriptive table in memory instead of writing
+  and re-reading a temporary file for each output.
 
 ## Deployment
 

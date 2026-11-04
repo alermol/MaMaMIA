@@ -856,14 +856,8 @@ bam_karyotype_static_svg <- function(payload, width = 1600, height = 900,
 #' Write a BEDPE file with descriptive column names
 #' @noRd
 bam_bundle_write_bedpe <- function(calls, windows, file, pass_only = FALSE) {
-    raw <- tempfile(fileext = ".bedpe")
-    on.exit(unlink(raw), add = TRUE)
-    writeCallsToBedpe(
-        calls, raw, pass_only = pass_only, windows = windows
-    )
-    table <- utils::read.delim(
-        raw, check.names = FALSE, stringsAsFactors = FALSE,
-        quote = "", comment.char = ""
+    table <- .bedpe_table(
+        calls, pass_only = pass_only, windows = windows
     )
     table <- bam_bundle_descriptive_calls(table)
     utils::write.table(
