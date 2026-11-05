@@ -59,6 +59,9 @@ proxy:
       container-volumes:
         - /srv/mamamia/config:/srv/mamamia/config:ro
         - /srv/mamamia/gcidx:/srv/mamamia/gcidx:ro
+        # Keep the calculation log and report timestamps in the host timezone.
+        - /etc/localtime:/etc/localtime:ro
+        - /etc/timezone:/etc/timezone:ro
       container-memory-limit: 16g
       container-cpu-limit: 4
       # One analysis per user; at most two 16 GB containers on the host.

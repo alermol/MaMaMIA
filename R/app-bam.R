@@ -6208,6 +6208,7 @@ bam_launcher_server <- function(state) {
         sidebar_unlocked <- shiny::reactiveVal(FALSE)
         upload_epoch <- shiny::reactiveVal(0L)
         auto_species <- shiny::reactiveVal(NULL)
+        species_manual <- shiny::reactiveVal(FALSE)
 
         shiny::observeEvent(example_mode(), {
             if (isTRUE(example_mode())) {
@@ -6463,6 +6464,7 @@ bam_launcher_server <- function(state) {
                 identical(as.character(value), detected$recipient)) {
                 return()
             }
+            species_manual(TRUE)
             detected$recipient <- NULL
             auto_species(detected)
         }, ignoreInit = TRUE)
@@ -6474,6 +6476,7 @@ bam_launcher_server <- function(state) {
                 identical(as.character(value), detected$donor)) {
                 return()
             }
+            species_manual(TRUE)
             detected$donor <- NULL
             auto_species(detected)
         }, ignoreInit = TRUE)
@@ -6482,8 +6485,10 @@ bam_launcher_server <- function(state) {
             paths <- uploaded_paths()
             if (length(paths) == 0L || isTRUE(example_mode())) {
                 auto_species(NULL)
+                species_manual(FALSE)
                 return()
             }
+            species_manual(FALSE)
             current_recipient <- recipient_species()
             current_donor <- donor_species()
             pair <- tryCatch(
@@ -6548,6 +6553,7 @@ bam_launcher_server <- function(state) {
             if (is.null(recipient_key) || is.null(donor_key)) {
                 return()
             }
+            species_manual(TRUE)
             auto_species(list(recipient = donor_key, donor = recipient_key))
             shiny::updateSelectInput(
                 session, "recipient_species", selected = donor_key
@@ -6573,6 +6579,26 @@ bam_launcher_server <- function(state) {
             )
             recipient_key <- recipient_species()
             donor_key <- donor_species()
+            ## Resolve the header match before the first preflight, not only in
+            ## the observer that updates the selectors. Otherwise the default
+            ## pair can log a transient assembly failure before detection.
+            if (!isTRUE(species_manual())) {
+                paths <- uploaded_paths()
+                if (length(paths) > 0L) {
+                    detected <- tryCatch(
+                        bam_detect_species_pair(
+                            paths[[1L]], config,
+                            current_recipient = recipient_key,
+                            current_donor = donor_key
+                        ),
+                        error = function(e) NULL
+                    )
+                    if (!is.null(detected)) {
+                        recipient_key <- detected$recipient
+                        donor_key <- detected$donor
+                    }
+                }
+            }
             if (is.null(recipient_key) || is.null(donor_key)) {
                 empty$error <- tryCatch(
                     .config_error(
