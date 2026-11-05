@@ -116,6 +116,9 @@ test_that("the bundle filename is safe", {
     )
     expect_identical(bam_bundle_filename(NULL), "mamamia-sample-results.zip")
     expect_identical(bam_bundle_filename(""), "mamamia-sample-results.zip")
+    expect_identical(
+        bam_cohort_bundle_filename(), "mamamia-cohort-results.zip"
+    )
 })
 
 test_that("the static karyotype renders calls and states", {
@@ -560,4 +563,145 @@ test_that("a relative bundle path is written to the caller's directory", {
     readme <- readLines(file.path(root, "README.txt"))
     expect_false(any(grepl("karyotype-full.svg", readme, fixed = TRUE)))
     expect_true(any(grepl("report.html", readme, fixed = TRUE)))
+})
+
+test_that("a cohort bundle has per-sample folders and top-level summaries", {
+    skip_if_not(nzchar(Sys.which("zip")), "the zip command is unavailable")
+    result <- bam_example_result(1000)
+    samples <- c("cohort A", "cohort B")
+    multi <- result
+    multi$calls <- do.call(rbind, lapply(samples, function(sample) {
+        calls <- result$calls
+        calls$sample <- sample
+        calls
+    }))
+    multi$metrics <- do.call(rbind, lapply(samples, function(sample) {
+        metrics <- result$metrics
+        metrics$sample <- sample
+        metrics
+    }))
+    multi$scores <- do.call(rbind, lapply(samples, function(sample) {
+        scores <- result$scores
+        scores$sample <- sample
+        scores
+    }))
+    multi$samples <- do.call(rbind, lapply(samples, function(sample) {
+        meta <- result$samples[1L, , drop = FALSE]
+        meta$sample <- sample
+        meta$path <- paste0(sample, ".bam")
+        meta
+    }))
+    multi$bams <- do.call(rbind, lapply(samples, function(sample) {
+        bam <- result$bams[1L, , drop = FALSE]
+        bam$sample <- sample
+        bam$path <- paste0(sample, ".bam")
+        bam
+    }))
+    class(multi) <- class(result)
+
+    archive <- tempfile(fileext = ".zip")
+    on.exit(unlink(archive), add = TRUE)
+    bam_write_cohort_bundle(
+        multi, archive,
+        generated = as.POSIXct("2026-01-01 00:00:00", tz = "UTC")
+    )
+    expect_true(file.exists(archive))
+    listing <- utils::unzip(archive, list = TRUE)
+    relative <- sub("^mamamia-cohort-results/", "", listing$Name)
+    expect_true(all(c(
+        "README.txt", "report.html", "cohort-summary.csv",
+        "calls-all.csv", "calls-passing.csv", "calls-confident.csv",
+        "calls-summary.csv", "calls-by-status.csv",
+        "calls-by-copy-state.csv", "calls-all.bedpe",
+        "calls-passing.bedpe", "calls-confident.bedpe",
+        "manifest.json", "checksums.md5", "qc/calibration.csv",
+        "qc/masks-summary.csv", "qc/masks-windows.csv.gz",
+        "qc/plots/cohort-calls.png", "qc/plots/calls-by-class.png",
+        "qc/plots/masked-fraction-by-group.png", "tracks/masks.bed",
+        "run/provenance.json", "run/samples.csv", "run/bams.csv"
+    ) %in% relative))
+
+    folders <- unname(bam_bundle_sample_folders(samples))
+    sample_files <- c(
+        "calls-full.csv", "calls-passing.csv", "calls-confident.csv",
+        "calls-review.csv", "calls-summary.csv", "calls-all.bedpe",
+        "calls-passing.bedpe", "calls-confident.bedpe",
+        "karyotype-current.svg", "karyotype-full.svg",
+        "karyotype-confident.svg", "report.html", "README.txt",
+        "qc/metrics-summary.csv", "qc/scores-summary.csv",
+        "qc/metrics-windows.csv.gz", "qc/scores-windows.csv.gz",
+        "qc/component-evidence.csv", "tracks/calls-recipient.bed",
+        "tracks/calls-donor.bed", "tracks/breadth.bedGraph.gz"
+    )
+    for (i in seq_along(samples)) {
+        prefix <- paste0("samples/", folders[[i]], "/")
+        expect_true(all(paste0(prefix, sample_files) %in% relative))
+        expect_false(any(grepl(
+            paste0("^", prefix, "(run/|qc/calibration\\.csv|qc/masks-)"),
+            relative
+        )))
+    }
+
+    directory <- tempfile("mamamia-cohort-test-")
+    dir.create(directory)
+    on.exit(unlink(directory, recursive = TRUE), add = TRUE)
+    utils::unzip(archive, exdir = directory)
+    root <- file.path(directory, "mamamia-cohort-results")
+    cohort <- utils::read.csv(
+        file.path(root, "cohort-summary.csv"),
+        check.names = FALSE, stringsAsFactors = FALSE
+    )
+    expect_identical(nrow(cohort), length(samples))
+    expect_setequal(as.character(cohort$sample), samples)
+    calls <- utils::read.csv(
+        file.path(root, "calls-all.csv"),
+        check.names = FALSE, stringsAsFactors = FALSE
+    )
+    expect_identical(nrow(calls), nrow(result$calls) * length(samples))
+    expect_setequal(unique(as.character(calls$sample_name)), samples)
+    bedpe <- utils::read.delim(
+        file.path(root, "calls-all.bedpe"),
+        check.names = FALSE, stringsAsFactors = FALSE
+    )
+    expect_identical(nrow(bedpe), nrow(result$calls) * length(samples))
+    expect_true("sample_name" %in% names(bedpe))
+
+    for (i in seq_along(samples)) {
+        sample_calls <- utils::read.csv(
+            file.path(root, "samples", folders[[i]], "calls-full.csv"),
+            check.names = FALSE, stringsAsFactors = FALSE
+        )
+        expect_identical(nrow(sample_calls), nrow(result$calls))
+        expect_true(all(as.character(sample_calls$sample_name) == samples[[i]]))
+        sample_readme <- paste(
+            readLines(file.path(
+                root, "samples", folders[[i]], "README.txt"
+            )),
+            collapse = "\n"
+        )
+        expect_match(sample_readme, "Column descriptions", fixed = TRUE)
+        expect_false(grepl("qc/calibration.csv", sample_readme, fixed = TRUE))
+        expect_false(grepl("run/provenance.json", sample_readme, fixed = TRUE))
+    }
+
+    readme <- paste(
+        readLines(file.path(root, "README.txt")),
+        collapse = "\n"
+    )
+    expect_match(readme, "Per-sample folders", fixed = TRUE)
+    expect_match(readme, "cohort-summary.csv", fixed = TRUE)
+    expect_match(readme, "samples/cohort-A/", fixed = TRUE)
+    report <- paste(
+        readLines(file.path(root, "report.html")),
+        collapse = "\n"
+    )
+    expect_match(report, "Cohort results", fixed = TRUE)
+    expect_match(report, "Per-sample bundles", fixed = TRUE)
+    expect_match(report, "samples/cohort-A/report.html", fixed = TRUE)
+
+    manifest <- jsonlite::fromJSON(file.path(root, "manifest.json"))
+    expect_identical(manifest$sample, "cohort")
+    expect_identical(manifest$n_samples, length(samples))
+    expect_setequal(manifest$samples, samples)
+    expect_true(all(file.exists(file.path(root, manifest$files$path))))
 })

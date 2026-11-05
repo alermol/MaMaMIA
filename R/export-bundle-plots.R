@@ -465,7 +465,9 @@ bam_bundle_save_plot <- function(plot, path, width = 9, height = 5.5) {
     FALSE
 }
 
-bam_bundle_plot_files <- function(bundle, qc, calls_summary) {
+bam_bundle_plot_files <- function(bundle, qc, calls_summary,
+                                  include_cohort = TRUE,
+                                  include_masks_plot = TRUE) {
     plot_dir <- file.path(bundle, "qc", "plots")
     dir.create(plot_dir, recursive = TRUE, showWarnings = FALSE)
     specs <- list(
@@ -540,6 +542,18 @@ bam_bundle_plot_files <- function(bundle, qc, calls_summary) {
             width = 10, height = 5.2
         )
     )
+    drop <- character()
+    if (!isTRUE(include_cohort)) {
+        drop <- c(drop, "cohort-calls.png")
+    }
+    if (!isTRUE(include_masks_plot)) {
+        drop <- c(drop, "masked-fraction-by-group.png")
+    }
+    if (length(drop) > 0L) {
+        specs <- Filter(function(spec) {
+            !spec$file %in% drop
+        }, specs)
+    }
     rows <- lapply(specs, function(spec) {
         path <- file.path(plot_dir, spec$file)
         if (!bam_bundle_save_plot(

@@ -1068,7 +1068,10 @@ bam_bundle_run_files <- function(result, bundle, sample) {
     versions
 }
 
-bam_bundle_qc_files <- function(result, bundle, sample) {
+bam_bundle_qc_files <- function(result, bundle, sample,
+                                include_masks = TRUE,
+                                include_calibration = TRUE,
+                                include_cohort = TRUE) {
     qc_dir <- file.path(bundle, "qc")
     dir.create(qc_dir, showWarnings = FALSE)
     metrics <- result$metrics
@@ -1102,12 +1105,16 @@ bam_bundle_qc_files <- function(result, bundle, sample) {
     bam_bundle_write_csv(
         scores, file.path(qc_dir, "scores-windows.csv.gz"), gzip = TRUE
     )
-    bam_bundle_write_csv(
-        masks, file.path(qc_dir, "masks-windows.csv.gz"), gzip = TRUE
-    )
-    bam_bundle_write_csv(
-        calibration, file.path(qc_dir, "calibration.csv")
-    )
+    if (isTRUE(include_masks)) {
+        bam_bundle_write_csv(
+            masks, file.path(qc_dir, "masks-windows.csv.gz"), gzip = TRUE
+        )
+    }
+    if (isTRUE(include_calibration)) {
+        bam_bundle_write_csv(
+            calibration, file.path(qc_dir, "calibration.csv")
+        )
+    }
 
     metrics_summary <- bam_bundle_metrics_summary(metrics)
     contig_summary <- bam_bundle_contig_summary(metrics)
@@ -1122,13 +1129,17 @@ bam_bundle_qc_files <- function(result, bundle, sample) {
     bam_bundle_write_csv(
         scores_summary, file.path(qc_dir, "scores-summary.csv")
     )
-    bam_bundle_write_csv(
-        masks_summary, file.path(qc_dir, "masks-summary.csv")
-    )
+    if (isTRUE(include_masks)) {
+        bam_bundle_write_csv(
+            masks_summary, file.path(qc_dir, "masks-summary.csv")
+        )
+    }
     cohort <- bam_cohort_summary(result)
-    bam_bundle_write_csv(
-        cohort, file.path(qc_dir, "cohort-summary.csv")
-    )
+    if (isTRUE(include_cohort)) {
+        bam_bundle_write_csv(
+            cohort, file.path(qc_dir, "cohort-summary.csv")
+        )
+    }
     list(
         metrics = metrics,
         scores = scores,
@@ -1143,15 +1154,28 @@ bam_bundle_qc_files <- function(result, bundle, sample) {
 }
 
 bam_bundle_write_diagnostics <- function(result, bundle, sample,
-                                         calls_raw, calls_desc) {
+                                         calls_raw, calls_desc,
+                                         include_run = TRUE,
+                                         include_masks = TRUE,
+                                         include_calibration = TRUE,
+                                         include_cohort = TRUE,
+                                         include_cohort_plot = TRUE,
+                                         include_masks_track = TRUE) {
     run_dir <- file.path(bundle, "run")
     qc_dir <- file.path(bundle, "qc")
     tracks_dir <- file.path(bundle, "tracks")
-    dir.create(run_dir, showWarnings = FALSE)
+    if (isTRUE(include_run)) {
+        dir.create(run_dir, showWarnings = FALSE)
+    }
     dir.create(qc_dir, showWarnings = FALSE)
     dir.create(tracks_dir, showWarnings = FALSE)
     ## Build the QC summaries first: calls-by-group reuses the mask summary.
-    qc <- bam_bundle_qc_files(result, bundle, sample)
+    qc <- bam_bundle_qc_files(
+        result, bundle, sample,
+        include_masks = include_masks,
+        include_calibration = include_calibration,
+        include_cohort = include_cohort
+    )
 
     status <- as.character(calls_raw$class_status)
     passing <- isTRUE_vec(calls_raw$pass)
@@ -1198,7 +1222,11 @@ bam_bundle_write_diagnostics <- function(result, bundle, sample,
         file.path(qc_dir, "component-evidence.csv")
     )
 
-    versions <- bam_bundle_run_files(result, bundle, sample)
+    versions <- if (isTRUE(include_run)) {
+        bam_bundle_run_files(result, bundle, sample)
+    } else {
+        NULL
+    }
 
     bam_bundle_write_bed(
         calls_raw, file.path(tracks_dir, "calls-recipient.bed"),
@@ -1207,13 +1235,19 @@ bam_bundle_write_diagnostics <- function(result, bundle, sample,
     bam_bundle_write_bed(
         calls_raw, file.path(tracks_dir, "calls-donor.bed"), side = "donor"
     )
-    bam_bundle_write_masks_bed(
-        qc$masks, file.path(tracks_dir, "masks.bed")
-    )
+    if (isTRUE(include_masks_track)) {
+        bam_bundle_write_masks_bed(
+            qc$masks, file.path(tracks_dir, "masks.bed")
+        )
+    }
     bam_bundle_write_breadth_bedgraph(
         qc$metrics, file.path(tracks_dir, "breadth.bedGraph.gz")
     )
-    plots <- bam_bundle_plot_files(bundle, qc, calls_summary)
+    plots <- bam_bundle_plot_files(
+        bundle, qc, calls_summary,
+        include_cohort = include_cohort_plot,
+        include_masks_plot = include_masks
+    )
 
     list(
         calls_summary = calls_summary,
@@ -1233,7 +1267,8 @@ bam_bundle_write_diagnostics <- function(result, bundle, sample,
     )
 }
 
-bam_bundle_manifest <- function(bundle, sample, generated, version) {
+bam_bundle_manifest <- function(bundle, sample, generated, version,
+                                samples = NULL) {
     files <- list.files(bundle, recursive = TRUE, full.names = TRUE)
     files <- files[file.info(files)$isdir %in% FALSE]
     relative <- substring(files, nchar(bundle) + 2L)
@@ -1252,6 +1287,10 @@ bam_bundle_manifest <- function(bundle, sample, generated, version) {
             stringsAsFactors = FALSE
         )
     )
+    if (!is.null(samples)) {
+        manifest$samples <- as.character(samples)
+        manifest$n_samples <- length(samples)
+    }
     bam_bundle_write_json(
         manifest, file.path(bundle, "manifest.json")
     )
@@ -1337,9 +1376,48 @@ bam_bundle_html_table <- function(x) {
     )
 }
 
+bam_bundle_report_css <- function() {
+    paste(
+        "body{margin:0;background:#f4f6f3;color:#1f2a24;",
+        "font:14px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}",
+        "main{max-width:1100px;margin:0 auto;padding:32px 24px 48px}",
+        "header{border-bottom:2px solid #1f6f5c;padding-bottom:16px;",
+        "margin-bottom:8px}",
+        "h1{font-size:28px;line-height:1.2;margin:4px 0 6px}",
+        "h2{font-size:17px;margin:28px 0 10px;color:#1f6f5c}",
+        "h3{font-size:14px;margin:20px 0 8px;color:#33443a}",
+        ".eyebrow{font-size:11px;font-weight:700;letter-spacing:.14em;",
+        "text-transform:uppercase;color:#65736a;margin:0}",
+        ".lead{color:#4f5f55;margin:0}",
+        "table{border-collapse:collapse;width:100%;background:#fff;",
+        "font-size:12px}",
+        "th,td{border-bottom:1px solid #dfe5e0;padding:6px 8px;",
+        "text-align:left;vertical-align:top}",
+        "th{background:#eef3ef;font-size:10px;letter-spacing:.06em;",
+        "text-transform:uppercase;color:#5b6b60}",
+        "tr:nth-child(even) td{background:#fafbfa}",
+        ".scroll{overflow-x:auto;border:1px solid #dfe5e0;border-radius:6px}",
+        "img,.karyotype svg{max-width:100%;height:auto;",
+        "border:1px solid #dfe5e0;background:#fff}",
+        "figure{margin:0 0 18px;background:#fff;border:1px solid #dfe5e0;",
+        "border-radius:6px;padding:10px}",
+        "figure img{display:block;width:100%;height:auto;border:0}",
+        "figcaption{font-size:11px;color:#4f5f55;margin-top:6px;",
+        "line-height:1.45}",
+        "figcaption strong{color:#1f2a24}",
+        ".muted{color:#65736a}",
+        "code{background:#eef3ef;border-radius:3px;padding:1px 4px;",
+        "font-size:12px}",
+        "footer{margin-top:36px;padding-top:14px;",
+        "border-top:1px solid #dfe5e0;color:#65736a;font-size:11px}",
+        sep = ""
+    )
+}
+
 bam_bundle_report_html <- function(result, bundle, sample, calls_raw,
                                    diagnostics, generated, version,
-                                   has_full_svg = FALSE) {
+                                   has_full_svg = FALSE,
+                                   show_cohort = TRUE) {
     provenance <- result$provenance
     sample_meta <- result$samples[
         as.character(result$samples$sample) == sample, , drop = FALSE
@@ -1440,41 +1518,7 @@ bam_bundle_report_html <- function(result, bundle, sample, calls_raw,
         cohort <- cohort[, keep, drop = FALSE]
     }
 
-    css <- paste(
-        "body{margin:0;background:#f4f6f3;color:#1f2a24;",
-        "font:14px/1.5 -apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif}",
-        "main{max-width:1100px;margin:0 auto;padding:32px 24px 48px}",
-        "header{border-bottom:2px solid #1f6f5c;padding-bottom:16px;",
-        "margin-bottom:8px}",
-        "h1{font-size:28px;line-height:1.2;margin:4px 0 6px}",
-        "h2{font-size:17px;margin:28px 0 10px;color:#1f6f5c}",
-        "h3{font-size:14px;margin:20px 0 8px;color:#33443a}",
-        ".eyebrow{font-size:11px;font-weight:700;letter-spacing:.14em;",
-        "text-transform:uppercase;color:#65736a;margin:0}",
-        ".lead{color:#4f5f55;margin:0}",
-        "table{border-collapse:collapse;width:100%;background:#fff;",
-        "font-size:12px}",
-        "th,td{border-bottom:1px solid #dfe5e0;padding:6px 8px;",
-        "text-align:left;vertical-align:top}",
-        "th{background:#eef3ef;font-size:10px;letter-spacing:.06em;",
-        "text-transform:uppercase;color:#5b6b60}",
-        "tr:nth-child(even) td{background:#fafbfa}",
-        ".scroll{overflow-x:auto;border:1px solid #dfe5e0;border-radius:6px}",
-        "img,.karyotype svg{max-width:100%;height:auto;",
-        "border:1px solid #dfe5e0;background:#fff}",
-        "figure{margin:0 0 18px;background:#fff;border:1px solid #dfe5e0;",
-        "border-radius:6px;padding:10px}",
-        "figure img{display:block;width:100%;height:auto;border:0}",
-        "figcaption{font-size:11px;color:#4f5f55;margin-top:6px;",
-        "line-height:1.45}",
-        "figcaption strong{color:#1f2a24}",
-        ".muted{color:#65736a}",
-        "code{background:#eef3ef;border-radius:3px;padding:1px 4px;",
-        "font-size:12px}",
-        "footer{margin-top:36px;padding-top:14px;",
-        "border-top:1px solid #dfe5e0;color:#65736a;font-size:11px}",
-        sep = ""
-    )
+    css <- bam_bundle_report_css()
 
     karyotype <- if (isTRUE(has_full_svg)) {
         svg_path <- file.path(bundle, "karyotype-full.svg")
@@ -1603,7 +1647,8 @@ bam_bundle_report_html <- function(result, bundle, sample, calls_raw,
         "<section><h2>Calibration</h2>",
         bam_bundle_html_table(diagnostics$calibration),
         "</section>",
-        if (is.data.frame(cohort) && nrow(cohort) > 1L) {
+        if (isTRUE(show_cohort) && is.data.frame(cohort) &&
+            nrow(cohort) > 1L) {
             c(
                 "<section><h2>All samples in this run</h2>",
                 bam_bundle_plot_html(

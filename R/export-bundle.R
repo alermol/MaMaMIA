@@ -395,6 +395,41 @@ bam_bundle_filename <- function(sample = NULL) {
     paste0("mamamia-", bam_bundle_stem(sample), "-results.zip")
 }
 
+#' ZIP filename for a multi-sample cohort bundle
+#' @noRd
+bam_cohort_bundle_filename <- function() {
+    "mamamia-cohort-results.zip"
+}
+
+#' Installed MaMaMIA version for bundle metadata
+#' @noRd
+bam_bundle_version <- function() {
+    tryCatch(
+        as.character(utils::packageVersion("MaMaMIA")),
+        error = function(e) ""
+    )
+}
+
+#' Write one karyotype SVG into a bundle
+#' @noRd
+bam_bundle_write_karyotype <- function(payload, path, sample, label,
+                                       version) {
+    if (is.null(payload)) {
+        return(invisible(NULL))
+    }
+    writeLines(
+        bam_karyotype_static_svg(
+            payload,
+            title = "MaMaMIA karyotype",
+            subtitle = paste0("Sample: ", sample, " \u00b7 ", label),
+            footer = paste0("MaMaMIA ", version)
+        ),
+        path,
+        useBytes = TRUE
+    )
+    invisible(path)
+}
+
 #' Merge payload palette with the package defaults
 #' @noRd
 bam_bundle_palette <- function(payload) {
@@ -872,7 +907,9 @@ bam_bundle_write_bedpe <- function(calls, windows, file, pass_only = FALSE) {
 bam_bundle_readme <- function(sample, calls, generated, version,
                               bedpe_columns = character(),
                               confident_calls = NULL, result = NULL,
-                              bundle = NULL) {
+                              bundle = NULL, include_run = TRUE,
+                              include_shared = TRUE,
+                              include_manifest = TRUE) {
     n <- nrow(calls)
     passing <- if ("passes_calibration" %in% names(calls)) {
         sum(isTRUE_vec(calls$passes_calibration), na.rm = TRUE)
@@ -925,8 +962,16 @@ bam_bundle_readme <- function(sample, calls, generated, version,
     )
     plot_lines <- if (has_plots) {
         c(
-            "qc/plots/              PNG diagnostics for coverage, scores, residuals,",
-            "                       masks, calls and the cohort."
+            "qc/plots/              PNG diagnostics for coverage, scores,",
+            "                       residuals, masks and calls.",
+            if (isTRUE(include_shared)) {
+                c(
+                    "                       Cohort plots, when present, are in",
+                    "                       qc/plots/."
+                )
+            } else {
+                character()
+            }
         )
     } else {
         character()
@@ -970,16 +1015,27 @@ bam_bundle_readme <- function(sample, calls, generated, version,
         "",
         "Diagnostics",
         "-----------",
-        "qc/cohort-summary.csv  One row per sample in the run.",
+        if (isTRUE(include_shared)) {
+            "qc/cohort-summary.csv  One row per sample in the run."
+        } else {
+            character()
+        },
         "qc/metrics-summary.csv Coverage, GC and MAPQ by chromosome group and",
         "                       role.",
         "qc/contig-summary.csv  Per-contig coverage and GC.",
         "qc/scores-summary.csv  Score and residual summaries by group.",
         "qc/metrics-windows.csv.gz Every window metric for this sample.",
         "qc/scores-windows.csv.gz Every window score for this sample.",
-        "qc/masks-summary.csv   Masked windows by chromosome group.",
-        "qc/masks-windows.csv.gz Every mask decision.",
-        "qc/calibration.csv     Calibration thresholds by mode and length bin.",
+        if (isTRUE(include_shared)) {
+            c(
+                "qc/masks-summary.csv   Masked windows by chromosome group.",
+                "qc/masks-windows.csv.gz Every mask decision.",
+                "qc/calibration.csv     Calibration thresholds by mode and",
+                "                       length bin."
+            )
+        } else {
+            character()
+        },
         "qc/component-evidence.csv Per-call evidence for every donor component.",
         plot_lines,
         "",
@@ -987,25 +1043,43 @@ bam_bundle_readme <- function(sample, calls, generated, version,
         "---------------------",
         "tracks/calls-recipient.bed Calls on assigned recipient contigs.",
         "tracks/calls-donor.bed     Calls on donor contigs.",
-        "tracks/masks.bed           Masked windows in group coordinates.",
+        if (isTRUE(include_shared)) {
+            "tracks/masks.bed           Masked windows in group coordinates."
+        } else {
+            character()
+        },
         "tracks/breadth.bedGraph.gz Window breadth for this sample.",
         "",
-        "Run and reproducibility",
-        "-----------------------",
-        "run/provenance.json    Full provenance record.",
-        "run/config.yml         Resolved configuration.",
-        "run/parameters.csv     Key analysis parameters.",
-        "run/profile-parameters.csv Every effective profile parameter with",
-        "                       its default and whether it was changed.",
-        "run/versions.csv       Software and reference versions.",
-        "run/session-info.txt   R session information.",
-        "run/assembly.csv       Contigs, groups and roles.",
-        "run/reference-indexes.csv Index paths, sizes and timestamps.",
-        "run/samples.csv        Sample metadata.",
-        "run/bams.csv           BAM paths, sizes, timestamps and target counts.",
-        "manifest.json          File sizes and MD5 checksums.",
-        "checksums.md5          MD5 checksums including the manifest.",
-        "",
+        if (isTRUE(include_run)) {
+            c(
+                "Run and reproducibility",
+                "-----------------------",
+                "run/provenance.json    Full provenance record.",
+                "run/config.yml         Resolved configuration.",
+                "run/parameters.csv     Key analysis parameters.",
+                "run/profile-parameters.csv Every effective profile parameter with",
+                "                       its default and whether it was changed.",
+                "run/versions.csv       Software and reference versions.",
+                "run/session-info.txt   R session information.",
+                "run/assembly.csv       Contigs, groups and roles.",
+                "run/reference-indexes.csv Index paths, sizes and timestamps.",
+                "run/samples.csv        Sample metadata.",
+                "run/bams.csv           BAM paths, sizes, timestamps and target",
+                "                       counts.",
+                ""
+            )
+        } else {
+            character()
+        },
+        if (isTRUE(include_manifest)) {
+            c(
+                "manifest.json          File sizes and MD5 checksums.",
+                "checksums.md5          MD5 checksums including the manifest.",
+                ""
+            )
+        } else {
+            character()
+        },
         "Confident set",
         "-------------",
         "The confident set contains calls that pass calibration and have",
@@ -1061,6 +1135,169 @@ bam_bundle_readme <- function(sample, calls, generated, version,
     )
 }
 
+#' Write the files for one sample into a bundle directory
+#'
+#' The caller adds the README, manifest, checksums and ZIP archive. Keeping
+#' the sample payload separate lets the cohort bundle write the same files
+#' under `samples/<sample>/` without duplicating the export logic.
+#'
+#' @param result A `BamAnalysisResult`.
+#' @param bundle Directory that receives the sample files.
+#' @param sample Sample name.
+#' @param current_payload,full_payload,confident_payload Optional karyotype
+#'   payloads. `NULL` skips the corresponding SVG.
+#' @param include_run Write the shared `run/` metadata.
+#' @param include_masks,include_calibration Write run-level mask and
+#'   calibration tables.
+#' @param include_cohort Write the run-wide cohort summary.
+#' @param include_cohort_plot Write `cohort-calls.png`.
+#' @param include_cohort_section Include the cohort section in the report.
+#' @param write_report Write `report.html`.
+#' @param generated Timestamp used in the report.
+#'
+#' @return A list with the descriptive call tables, BEDPE columns,
+#'   diagnostics and package version.
+#' @noRd
+bam_bundle_write_sample_files <- function(result, bundle, sample,
+                                          current_payload = NULL,
+                                          full_payload = NULL,
+                                          confident_payload = NULL,
+                                          include_run = TRUE,
+                                          include_masks = TRUE,
+                                          include_calibration = TRUE,
+                                          include_cohort = TRUE,
+                                          include_cohort_plot = TRUE,
+                                          include_cohort_section = TRUE,
+                                          write_report = TRUE,
+                                          generated = Sys.time()) {
+    calls_raw <- result$calls
+    calls_raw <- calls_raw[
+        as.character(calls_raw$sample) == sample, , drop = FALSE
+    ]
+    confident_raw <- bam_confident_calls(calls_raw)
+    calls <- bam_bundle_descriptive_calls(calls_raw)
+    confident_calls <- bam_bundle_descriptive_calls(confident_raw)
+    ## Annotate once; each BEDPE writer otherwise rescans the windows table
+    ## for the same calls.
+    bedpe_calls <- if (nrow(calls_raw) > 0L &&
+        !"chr_id.don" %in% names(calls_raw)) {
+        .annotate_call_intervals(calls_raw, result$windows)
+    } else {
+        calls_raw
+    }
+    bedpe_confident <- bam_confident_calls(bedpe_calls)
+
+    utils::write.csv(
+        calls, file.path(bundle, "calls-full.csv"),
+        row.names = FALSE, na = "", fileEncoding = "UTF-8"
+    )
+    utils::write.csv(
+        confident_calls, file.path(bundle, "calls-confident.csv"),
+        row.names = FALSE, na = "", fileEncoding = "UTF-8"
+    )
+    bedpe_columns <- bam_bundle_write_bedpe(
+        bedpe_calls, result$windows, file.path(bundle, "calls-all.bedpe"),
+        pass_only = FALSE
+    )
+    bam_bundle_write_bedpe(
+        bedpe_calls, result$windows, file.path(bundle, "calls-passing.bedpe"),
+        pass_only = TRUE
+    )
+    bam_bundle_write_bedpe(
+        bedpe_confident, result$windows,
+        file.path(bundle, "calls-confident.bedpe"),
+        pass_only = FALSE
+    )
+    diagnostics <- bam_bundle_write_diagnostics(
+        result, bundle, sample, calls_raw, calls,
+        include_run = include_run,
+        include_masks = include_masks,
+        include_calibration = include_calibration,
+        include_cohort = include_cohort,
+        include_cohort_plot = include_cohort_plot,
+        include_masks_track = include_masks
+    )
+    version <- bam_bundle_version()
+    bam_bundle_write_karyotype(
+        current_payload, file.path(bundle, "karyotype-current.svg"),
+        sample, "Filtered calls", version
+    )
+    bam_bundle_write_karyotype(
+        full_payload, file.path(bundle, "karyotype-full.svg"),
+        sample, "All calls", version
+    )
+    bam_bundle_write_karyotype(
+        confident_payload, file.path(bundle, "karyotype-confident.svg"),
+        sample, "Confident calls", version
+    )
+    if (isTRUE(write_report)) {
+        writeLines(
+            bam_bundle_report_html(
+                result, bundle, sample, calls_raw, diagnostics,
+                generated, version,
+                has_full_svg = !is.null(full_payload),
+                show_cohort = include_cohort_section
+            ),
+            file.path(bundle, "report.html"),
+            useBytes = TRUE
+        )
+    }
+    list(
+        calls = calls,
+        confident_calls = confident_calls,
+        calls_raw = calls_raw,
+        bedpe_columns = bedpe_columns,
+        diagnostics = diagnostics,
+        version = version
+    )
+}
+
+#' Build a bundle ZIP from a staging directory
+#' @noRd
+bam_bundle_archive <- function(staging, bundle_name, file) {
+    old <- getwd()
+    ## `utils::zip()` runs inside the staging directory, so a relative output
+    ## path would land in staging and be deleted with it.
+    file <- if (grepl("^(/|[A-Za-z]:[/\\\\])", file)) {
+        file
+    } else {
+        file.path(old, file)
+    }
+    ## Build the archive next to the destination first; only replace the
+    ## previous bundle once `zip` has succeeded.
+    tmp_zip <- tempfile(tmpdir = dirname(file), fileext = ".zip")
+    on.exit({
+        setwd(old)
+        unlink(tmp_zip)
+    }, add = TRUE)
+    setwd(staging)
+    status <- tryCatch(
+        utils::zip(
+            zipfile = tmp_zip, files = bundle_name, flags = "-q -r"
+        ),
+        error = function(e) e
+    )
+    setwd(old)
+    if (inherits(status, "error") || !identical(as.integer(status), 0L)) {
+        stop(
+            "Could not create the results ZIP archive. ",
+            "Check that the `zip` command is available.",
+            call. = FALSE
+        )
+    }
+    if (file.exists(file)) {
+        unlink(file)
+    }
+    if (!file.rename(tmp_zip, file) &&
+        !file.copy(tmp_zip, file, overwrite = TRUE)) {
+        stop(
+            "Could not move the results ZIP archive to '", file, "'",
+            call. = FALSE
+        )
+    }
+    invisible(file)
+}
+
 #' Write the full result bundle
 #'
 #' @param result A `BamAnalysisResult`.
@@ -1089,159 +1326,34 @@ bam_write_result_bundle <- function(result, file, sample,
     if (length(sample) != 1L || is.na(sample) || !nzchar(sample)) {
         sample <- karyotype_sample(result, NULL)
     }
-    calls_raw <- result$calls
-    calls_raw <- calls_raw[
-        as.character(calls_raw$sample) == sample, , drop = FALSE
-    ]
-    old <- getwd()
-    ## `utils::zip()` runs inside the staging directory, so a relative output
-    ## path would land in staging and be deleted with it.
-    file <- if (grepl("^(/|[A-Za-z]:[/\\\\])", file)) {
-        file
-    } else {
-        file.path(old, file)
-    }
-    confident_raw <- bam_confident_calls(calls_raw)
-    calls <- bam_bundle_descriptive_calls(calls_raw)
-    confident_calls <- bam_bundle_descriptive_calls(confident_raw)
-    ## Annotate once; each BEDPE writer otherwise rescans the windows table
-    ## for the same calls.
-    bedpe_calls <- if (nrow(calls_raw) > 0L &&
-        !"chr_id.don" %in% names(calls_raw)) {
-        .annotate_call_intervals(calls_raw, result$windows)
-    } else {
-        calls_raw
-    }
-    bedpe_confident <- bam_confident_calls(bedpe_calls)
     staging <- tempfile("mamamia-bundle-")
     dir.create(staging)
-    on.exit({
-        setwd(old)
-        unlink(staging, recursive = TRUE, force = TRUE)
-    }, add = TRUE)
+    on.exit(unlink(staging, recursive = TRUE, force = TRUE), add = TRUE)
     bundle_name <- paste0("mamamia-", bam_bundle_stem(sample), "-results")
     bundle <- file.path(staging, bundle_name)
     dir.create(bundle)
 
-    utils::write.csv(
-        calls, file.path(bundle, "calls-full.csv"),
-        row.names = FALSE, na = "", fileEncoding = "UTF-8"
+    parts <- bam_bundle_write_sample_files(
+        result, bundle, sample,
+        current_payload = current_payload,
+        full_payload = full_payload,
+        confident_payload = confident_payload,
+        generated = generated
     )
-    utils::write.csv(
-        confident_calls, file.path(bundle, "calls-confident.csv"),
-        row.names = FALSE, na = "", fileEncoding = "UTF-8"
-    )
-    bedpe_columns <- bam_bundle_write_bedpe(
-        bedpe_calls, result$windows, file.path(bundle, "calls-all.bedpe"),
-        pass_only = FALSE
-    )
-    bam_bundle_write_bedpe(
-        bedpe_calls, result$windows, file.path(bundle, "calls-passing.bedpe"),
-        pass_only = TRUE
-    )
-    bam_bundle_write_bedpe(
-        bedpe_confident, result$windows,
-        file.path(bundle, "calls-confident.bedpe"),
-        pass_only = FALSE
-    )
-    diagnostics <- bam_bundle_write_diagnostics(
-        result, bundle, sample, calls_raw, calls
-    )
-    version <- tryCatch(
-        as.character(utils::packageVersion("MaMaMIA")),
-        error = function(e) ""
-    )
-    if (!is.null(current_payload)) {
-        writeLines(
-            bam_karyotype_static_svg(
-                current_payload,
-                title = "MaMaMIA karyotype",
-                subtitle = paste0(
-                    "Sample: ", sample, " \u00b7 Filtered calls"
-                ),
-                footer = paste0("MaMaMIA ", version)
-            ),
-            file.path(bundle, "karyotype-current.svg"),
-            useBytes = TRUE
-        )
-    }
-    if (!is.null(full_payload)) {
-        writeLines(
-            bam_karyotype_static_svg(
-                full_payload,
-                title = "MaMaMIA karyotype",
-                subtitle = paste0("Sample: ", sample, " \u00b7 All calls"),
-                footer = paste0("MaMaMIA ", version)
-            ),
-            file.path(bundle, "karyotype-full.svg"),
-            useBytes = TRUE
-        )
-    }
-    if (!is.null(confident_payload)) {
-        writeLines(
-            bam_karyotype_static_svg(
-                confident_payload,
-                title = "MaMaMIA karyotype",
-                subtitle = paste0(
-                    "Sample: ", sample, " \u00b7 Confident calls"
-                ),
-                footer = paste0("MaMaMIA ", version)
-            ),
-            file.path(bundle, "karyotype-confident.svg"),
-            useBytes = TRUE
-        )
-    }
     writeLines(
         bam_bundle_readme(
-            sample, calls, generated, version,
-            bedpe_columns = bedpe_columns,
-            confident_calls = confident_calls,
+            sample, parts$calls, generated, parts$version,
+            bedpe_columns = parts$bedpe_columns,
+            confident_calls = parts$confident_calls,
             result = result,
             bundle = bundle
         ),
         file.path(bundle, "README.txt"),
         useBytes = TRUE
     )
-    writeLines(
-        bam_bundle_report_html(
-            result, bundle, sample, calls_raw, diagnostics,
-            generated, version,
-            has_full_svg = !is.null(full_payload)
-        ),
-        file.path(bundle, "report.html"),
-        useBytes = TRUE
+    manifest <- bam_bundle_manifest(
+        bundle, sample, generated, parts$version
     )
-    manifest <- bam_bundle_manifest(bundle, sample, generated, version)
     bam_bundle_checksums(bundle, manifest)
-
-    ## Build the archive next to the destination first; only replace the
-    ## previous bundle once `zip` has succeeded.
-    tmp_zip <- tempfile(tmpdir = dirname(file), fileext = ".zip")
-    on.exit(unlink(tmp_zip), add = TRUE)
-    setwd(staging)
-    status <- tryCatch(
-        utils::zip(
-            zipfile = tmp_zip, files = bundle_name, flags = "-q -r"
-        ),
-        error = function(e) e
-    )
-    setwd(old)
-    if (inherits(status, "error") || !identical(as.integer(status), 0L)) {
-        stop(
-            "Could not create the results ZIP archive. ",
-            "Check that the `zip` command is available.",
-            call. = FALSE
-        )
-    }
-    if (file.exists(file)) {
-        unlink(file)
-    }
-    if (!file.rename(tmp_zip, file) &&
-        !file.copy(tmp_zip, file, overwrite = TRUE)) {
-        stop(
-            "Could not move the results ZIP archive to '", file, "'",
-            call. = FALSE
-        )
-    }
-    invisible(file)
+    bam_bundle_archive(staging, bundle_name, file)
 }

@@ -926,6 +926,7 @@ test_that("the export panel offers one results bundle", {
     expect_match(html, "Results bundle", fixed = TRUE)
     expect_match(html, "download_bundle", fixed = TRUE)
     expect_match(html, "Download results bundle", fixed = TRUE)
+    expect_match(html, "one folder per sample", fixed = TRUE)
     expect_match(html, "All calls", fixed = TRUE)
     expect_match(html, "download_all_bedpe", fixed = TRUE)
     expect_match(html, "Download all BEDPE", fixed = TRUE)

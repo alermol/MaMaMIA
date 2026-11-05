@@ -7371,8 +7371,9 @@ bam_launcher_server <- function(state) {
                         class = "mamamia-export-note",
                         if (multiple_samples) {
                             paste(
-                                "The results bundle above exports the current",
-                                "sample. The cohort BEDPE adds a `sample` column",
+                                "The results bundle above contains one folder",
+                                "per sample plus cohort summaries at the top",
+                                "level. The cohort BEDPE adds a `sample` column",
                                 "for every sample in the BAM."
                             )
                         } else {
