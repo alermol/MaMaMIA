@@ -1,12 +1,8 @@
 ## Window-level masks for recurrent artifacts.
 ##
-## Three sources are supported, in this order:
-##   1. a fixed panel mask built from a reference cohort (`source = panel`);
-##   2. a cohort recurrence mask computed from the current samples
-##      (`source = cohort`);
-##   3. an external BED blacklist (`source = blacklist`).
-## When none of those applies, a physical terminal fallback masks a fixed
-## number of megabases at both contig ends (`source = physical`).
+## The only mask source is a cohort recurrence mask computed from the current
+## samples (`source = "cohort"`). A single-sample run has no cohort and
+## therefore returns an unmasked table with `source = "none"`.
 ##
 ## Masked windows are set to NA before CBS, not removed after segmentation, so
 ## segment boundaries and gap merging still see the full window grid.
@@ -91,178 +87,23 @@
     fraction
 }
 
-#' Build a panel recurrence mask
+#' Build a cohort recurrence mask
 #'
-#' Computes the single-sample score for every panel sample, the fraction of
-#' samples above `z` in each window, and fits a two-component mixture to those
-#' fractions. Windows in the recurrent (upper) component with a fraction above
-#' `recurrence_threshold` are masked.
-#'
-#' @param panel_metrics A `WindowMetrics` data frame for the panel.
-#' @param z Score threshold that defines a high residual in one sample.
-#' @param recurrence_threshold Minimum fraction of panel samples.
-#' @param output Optional TSV path for the mask.
-#' @param metric,donor_aggregation Scoring options passed to
-#'   [scoreIntrogression()].
-#'
-#' @return A `MaskTable` data frame.
-#' @export
-buildPanelMask <- function(panel_metrics, z = 0.5,
-                           recurrence_threshold = 0.4, output = NULL,
-                           metric = "breadth",
-                           donor_aggregation = "max") {
-    if (!is.data.frame(panel_metrics) || nrow(panel_metrics) == 0L) {
-        .mask_error("`panel_metrics` must be a non-empty WindowMetrics table")
-    }
-    n_panel <- length(unique(panel_metrics$sample))
-    if (n_panel < 10L) {
-        warning(
-            sprintf(
-                "Panel has only %d sample(s); using a fixed fraction > 0.5 instead of the two-component posterior",
-                n_panel
-            ),
-            call. = FALSE
-        )
-    }
-    scored <- scoreIntrogression(
-        panel_metrics,
-        mode = "single",
-        metric = metric,
-        donor_aggregation = donor_aggregation
-    )
-    keys <- unique(scored[, c("group", "iid")])
-    key <- paste(scored$group, scored$iid, sep = "\r")
-    recurrence <- tapply(scored$score, key, function(values) {
-        mean(values > z, na.rm = TRUE)
-    })
-    f <- as.numeric(recurrence[
-        paste(keys$group, keys$iid, sep = "\r")
-    ])
-    fraction <- data.frame(
-        group = keys$group,
-        iid = keys$iid,
-        f = f,
-        stringsAsFactors = FALSE
-    )
-    if (n_panel < 10L) {
-        fraction$posterior <- NA_real_
-        fraction$mask <- fraction$f > 0.5
-    } else {
-        fraction <- .mask_from_fraction(fraction, recurrence_threshold)
-    }
-    frame <- .mask_metrics_frame(panel_metrics)
-    position <- match(
-        paste(fraction$group, fraction$iid, sep = ":"),
-        paste(frame$group, frame$iid, sep = ":")
-    )
-    if (anyNA(position)) {
-        .mask_error("The panel score and the window grid do not match")
-    }
-    out <- data.frame(
-        group = frame$group,
-        iid = frame$iid,
-        start = as.numeric(frame$start),
-        stop = as.numeric(frame$stop),
-        f = NA_real_,
-        posterior = NA_real_,
-        mask = FALSE,
-        source = "panel",
-        version = hash_object(list(
-            f = round(fraction$f, 8),
-            z = z,
-            threshold = recurrence_threshold,
-            n = n_panel
-        )),
-        stringsAsFactors = FALSE
-    )
-    out$f[position] <- fraction$f
-    out$posterior[position] <- fraction$posterior
-    out$mask[position] <- fraction$mask
-    if (!is.null(output)) {
-        utils::write.table(
-            out, output, sep = "\t", quote = FALSE, row.names = FALSE
-        )
-    }
-    out
-}
-
-.read_mask_table <- function(panel_mask) {
-    if (is.character(panel_mask)) {
-        if (length(panel_mask) != 1L || !file.exists(panel_mask)) {
-            .mask_error("Panel mask file does not exist: %s", panel_mask)
-        }
-        panel_mask <- utils::read.delim(
-            panel_mask,
-            stringsAsFactors = FALSE,
-            check.names = FALSE
-        )
-    }
-    if (!is.data.frame(panel_mask) ||
-        !all(c("group", "iid", "mask") %in% names(panel_mask))) {
-        .mask_error(
-            "`panel_mask` must be a data frame or TSV with group, iid and mask"
-        )
-    }
-    panel_mask$group <- as.character(panel_mask$group)
-    panel_mask$iid <- as.integer(panel_mask$iid)
-    panel_mask$mask <- as.logical(panel_mask$mask)
-    panel_mask
-}
-
-.read_blacklist <- function(blacklist) {
-    if (is.null(blacklist)) {
-        return(NULL)
-    }
-    if (is.character(blacklist)) {
-        if (length(blacklist) != 1L || !file.exists(blacklist)) {
-            .mask_error("Blacklist file does not exist: %s", blacklist)
-        }
-        blacklist <- utils::read.delim(
-            blacklist,
-            header = FALSE,
-            stringsAsFactors = FALSE,
-            check.names = FALSE
-        )
-        if (ncol(blacklist) < 3L) {
-            .mask_error(
-                "Blacklist BED must have at least three columns (chr, start, end)"
-            )
-        }
-        names(blacklist)[seq_len(3L)] <- c("chr_id", "start", "stop")
-    }
-    if (!is.data.frame(blacklist) ||
-        !all(c("chr_id", "start", "stop") %in% names(blacklist))) {
-        .mask_error(
-            "`blacklist` must be a BED path or a data frame with chr_id, start and stop"
-        )
-    }
-    blacklist$chr_id <- as.character(blacklist$chr_id)
-    blacklist$start <- as.numeric(blacklist$start)
-    blacklist$stop <- as.numeric(blacklist$stop)
-    blacklist
-}
-
-#' Build a window mask
+#' The recurrence mask is the only supported masking method. It requires at
+#' least two samples in `scores`; a single-sample run returns an all-false
+#' `MaskTable` with `source = "none"`. The cutoff is derived from the fitted
+#' two-component mixture.
 #'
 #' @param metrics A `WindowMetrics` data frame.
 #' @param scores Optional `ScoreTable` used for the cohort recurrence mask.
-#' @param mode `"single"` or `"multi"`.
-#' @param panel_mask Optional panel `MaskTable` or TSV path.
-#' @param blacklist Optional BED path or data frame.
-#' @param physical_fallback_mb Width in Mb masked at both contig ends when no
-#'   other source applies. `0` disables the fallback.
-#' @param recurrence_threshold Minimum recurrence fraction for a cohort mask.
+#' @param mode `"single"` or `"multi"`. Only `"multi"` can compute a mask.
 #' @param z Score threshold that defines a high residual.
-#' @param config Optional validated configuration.
 #'
-#' @return A `MaskTable` data frame with one row per window.
+#' @return A `MaskTable` data frame with one row per window. The derived
+#'   recurrence threshold is stored in the `"recurrence_threshold"` attribute.
 #' @export
 buildWindowMask <- function(metrics, scores = NULL,
-                            mode = c("single", "multi"),
-                            panel_mask = NULL, blacklist = NULL,
-                            physical_fallback_mb = 1,
-                            recurrence_threshold = 0.4, z = 0.5,
-                            config = NULL) {
+                            mode = c("single", "multi"), z = 0.5) {
     if (!is.data.frame(metrics) || nrow(metrics) == 0L) {
         .mask_error("`metrics` must be a non-empty WindowMetrics table")
     }
@@ -280,131 +121,71 @@ buildWindowMask <- function(metrics, scores = NULL,
         version = NA_character_,
         stringsAsFactors = FALSE
     )
-    used <- FALSE
-
-    if (!is.null(panel_mask)) {
-        panel <- .read_mask_table(panel_mask)
-        position <- match(
-            paste(out$group, out$iid, sep = ":"),
-            paste(panel$group, panel$iid, sep = ":")
+    attr(out, "recurrence_threshold") <- NA_real_
+    attr(out, "threshold_source") <- "none"
+    if (!identical(mode, "multi") || is.null(scores)) {
+        return(out)
+    }
+    if (!is.data.frame(scores) ||
+        !all(c("group", "iid", "score") %in% names(scores)) ||
+        !"sample" %in% names(scores)) {
+        .mask_error(
+            "`scores` must be a ScoreTable with sample, group, iid and score"
         )
-        if (anyNA(position)) {
-            .mask_error(
-                "The panel mask does not cover every analysis window; rebuild it with the same window grid"
-            )
-        }
-        out$f <- if ("f" %in% names(panel)) {
-            as.numeric(panel$f[position])
+    }
+    if (length(unique(as.character(scores$sample))) < 2L) {
+        return(out)
+    }
+    keys <- unique(scores[, c("group", "iid")])
+    values <- if ("score_raw" %in% names(scores)) {
+        scores$score_raw
+    } else {
+        scores$score
+    }
+    key <- paste(scores$group, scores$iid, sep = "\r")
+    recurrence <- tapply(values, key, function(x) {
+        mean(x > z, na.rm = TRUE)
+    })
+    f <- as.numeric(recurrence[
+        paste(keys$group, keys$iid, sep = "\r")
+    ])
+    fraction <- data.frame(
+        group = keys$group, iid = keys$iid, f = f,
+        stringsAsFactors = FALSE
+    )
+    n_samples <- length(unique(as.character(scores$sample)))
+    threshold_floor <- if (n_samples < 10L) 0.5 + 1e-9 else -Inf
+    fraction <- .mask_from_fraction(fraction, threshold_floor)
+    fraction$mask[is.na(fraction$mask)] <- FALSE
+    masked <- fraction$mask %in% TRUE
+    derived_threshold <- if (any(masked)) {
+        min(fraction$f[masked], na.rm = TRUE)
+    } else {
+        NA_real_
+    }
+    position <- match(
+        paste(out$group, out$iid, sep = ":"),
+        paste(fraction$group, fraction$iid, sep = ":")
+    )
+    if (anyNA(position)) {
+        .mask_error("The cohort score and the window grid do not match")
+    }
+    out$f <- fraction$f[position]
+    out$posterior <- fraction$posterior[position]
+    out$mask <- fraction$mask[position]
+    out$source <- "cohort"
+    out$version <- hash_object(list(
+        f = round(fraction$f, 8),
+        z = z,
+        threshold = if (is.finite(derived_threshold)) {
+            derived_threshold
         } else {
             NA_real_
-        }
-        out$posterior <- if ("posterior" %in% names(panel)) {
-            as.numeric(panel$posterior[position])
-        } else {
-            NA_real_
-        }
-        out$mask <- as.logical(panel$mask[position])
-        out$mask[is.na(out$mask)] <- FALSE
-        out$source <- "panel"
-        out$version <- if ("version" %in% names(panel)) {
-            as.character(panel$version[position])
-        } else {
-            NA_character_
-        }
-        used <- TRUE
-    } else if (identical(mode, "multi") && !is.null(scores)) {
-        if (!is.data.frame(scores) ||
-            !all(c("group", "iid", "score") %in% names(scores))) {
-            .mask_error("`scores` must be a ScoreTable with group, iid and score")
-        }
-        keys <- unique(scores[, c("group", "iid")])
-        values <- if ("score_raw" %in% names(scores)) {
-            scores$score_raw
-        } else {
-            scores$score
-        }
-        key <- paste(scores$group, scores$iid, sep = "\r")
-        recurrence <- tapply(values, key, function(x) {
-            mean(x > z, na.rm = TRUE)
-        })
-        f <- as.numeric(recurrence[
-            paste(keys$group, keys$iid, sep = "\r")
-        ])
-        fraction <- data.frame(
-            group = keys$group, iid = keys$iid, f = f,
-            stringsAsFactors = FALSE
-        )
-        n_samples <- length(unique(scores$sample))
-        effective_threshold <- recurrence_threshold
-        if (n_samples < 10L) {
-            ## In a tiny cohort a unique event has f = 1/n; do not mask it. A
-            ## shared artifact in every sample still has f = 1.
-            effective_threshold <- max(effective_threshold, 0.5 + 1e-9)
-        }
-        fraction <- .mask_from_fraction(fraction, effective_threshold)
-        position <- match(
-            paste(out$group, out$iid, sep = ":"),
-            paste(fraction$group, fraction$iid, sep = ":")
-        )
-        if (anyNA(position)) {
-            .mask_error("The cohort score and the window grid do not match")
-        }
-        out$f <- fraction$f[position]
-        out$posterior <- fraction$posterior[position]
-        out$mask <- fraction$mask[position]
-        out$source <- "cohort"
-        out$version <- hash_object(list(
-            f = round(fraction$f, 8),
-            z = z,
-            threshold = effective_threshold,
-            samples = sort(unique(scores$sample))
-        ))
-        used <- TRUE
-    }
-
-    if (!is.null(blacklist)) {
-        bed <- .read_blacklist(blacklist)
-        ids <- as.character(frame$chr_id)
-        starts <- as.numeric(frame$start)
-        stops <- as.numeric(frame$stop)
-        mask <- rep(FALSE, length(ids))
-        bed_key <- paste(bed$chr_id, bed$start, bed$stop, sep = ":")
-        for (i in seq_len(nrow(bed))) {
-            mask <- mask | (
-                ids == bed$chr_id[[i]] &
-                    stops > bed$start[[i]] &
-                    starts < bed$stop[[i]]
-            )
-        }
-        if (!used) {
-            out$source <- "blacklist"
-        }
-        out$mask <- out$mask | mask
-        out$version <- ifelse(
-            is.na(out$version), hash_object(bed_key), out$version
-        )
-        used <- TRUE
-    }
-
-    if (!used && is.numeric(physical_fallback_mb) &&
-        length(physical_fallback_mb) == 1L &&
-        is.finite(physical_fallback_mb) && physical_fallback_mb > 0) {
-        fallback_bp <- physical_fallback_mb * 1e6
-        lengths <- tapply(
-            as.numeric(frame$stop), as.character(frame$group), max,
-            na.rm = TRUE
-        )
-        group_length <- as.numeric(lengths[out$group])
-        ## A fixed megabase fallback must not swallow a short contig (for
-        ## example the 20 kb test fixture); cap it at 10% of the contig.
-        end_mask <- pmin(fallback_bp, 0.1 * group_length)
-        out$mask <- out$start < end_mask | out$stop > (group_length - end_mask)
-        out$source <- "physical"
-        out$version <- hash_object(list(
-            fallback_mb = physical_fallback_mb,
-            lengths = lengths
-        ))
-    }
+        },
+        samples = sort(unique(as.character(scores$sample)))
+    ))
+    attr(out, "recurrence_threshold") <- derived_threshold
+    attr(out, "threshold_source") <- "automatic"
     out
 }
 

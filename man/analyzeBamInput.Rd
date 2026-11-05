@@ -12,7 +12,6 @@ analyzeBamInput(
   metric = NULL,
   score = NULL,
   donor_aggregation = NULL,
-  mask = NULL,
   calibration = NULL,
   windows_per_chromosome = 1000L,
   mapq = NULL,
@@ -41,9 +40,6 @@ example \code{c(A = 2, B = 2, D = 2)}.}
 
 \item{donor_aggregation}{\code{"mean"}, \code{"max"} or \code{"sum"}. Defaults to the
 registry value; the dashboard exposes it under \strong{Advanced}.}
-
-\item{mask}{Optional panel \code{MaskTable}/TSV path, or a list with \code{panel},
-\code{blacklist}, \code{physical_fallback_mb} and \code{recurrence_threshold}.}
 
 \item{calibration}{Optional list with \code{length_bins_mb}, \code{fdr}, \code{floors},
 \code{controls}, \code{alpha}, \code{undo_SD}, \code{min_width}, \code{merge_gap}, \code{merge_floor}

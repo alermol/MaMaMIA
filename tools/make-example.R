@@ -209,7 +209,6 @@ result <- analyzeBamInput(
         floors = c(0.2, 0.2),
         fdr = 0.5
     ),
-    mask = list(physical_fallback_mb = 0),
     cores = 1L
 )
 

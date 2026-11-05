@@ -3,7 +3,6 @@
 export(analyzeBamInput)
 export(applyWindowMask)
 export(bamHeaderInfo)
-export(buildPanelMask)
 export(buildWindowMask)
 export(buildWindowMetrics)
 export(calibrateSegments)

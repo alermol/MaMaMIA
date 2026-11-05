@@ -48,8 +48,8 @@
         "and that every group has at least one donor and one recipient."
     ),
     mask = paste(
-        "Rebuild the panel mask with the same window grid,",
-        "or check the blacklist BED coordinates."
+        "Check that the score table and window grid use the same windows;",
+        "cohort recurrence requires at least two samples."
     ),
     segmentation = paste(
         "Check that both the donor and the recipient side",
@@ -1375,10 +1375,6 @@ bam_assembly_summary_ui <- function(assembly, resolutions = NULL) {
 #' @noRd
 bam_profile_config_parameters <- function(config) {
     defaults <- config$defaults
-    mask <- defaults$mask
-    if (!is.list(mask)) {
-        mask <- list()
-    }
     calibration <- defaults$calibration
     if (!is.list(calibration)) {
         calibration <- list()
@@ -1397,12 +1393,6 @@ bam_profile_config_parameters <- function(config) {
             defaults$donor_aggregation %||% "max"
         ),
         mapq = as.integer(defaults$mapq %||% 20L),
-        mask_physical_fallback_mb = as.numeric(
-            mask$physical_fallback_mb %||% 1
-        ),
-        mask_recurrence_threshold = as.numeric(
-            mask$recurrence_threshold %||% 0.4
-        ),
         calibration_fdr = as.numeric(calibration$fdr %||% 0.01),
         calibration_floors = as.numeric(floors),
         calibration_min_mb = 5,
@@ -1561,14 +1551,6 @@ bam_profile_current_parameters <- function(input, config, resolution = NULL,
             bam_profile_input_value(input, "mapq", fallback$mapq),
             "MAPQ", 0L, 255L
         ),
-        mask_physical_fallback_mb = as.numeric(bam_profile_input_value(
-            input, "mask_physical_fallback_mb",
-            fallback$mask_physical_fallback_mb
-        )),
-        mask_recurrence_threshold = as.numeric(bam_profile_input_value(
-            input, "mask_recurrence_threshold",
-            fallback$mask_recurrence_threshold
-        )),
         calibration_fdr = as.numeric(bam_profile_input_value(
             input, "calibration_fdr", fallback$calibration_fdr
         )),
@@ -1631,14 +1613,6 @@ bam_update_profile_inputs <- function(session, parameters) {
         session, "mapq", value = as.integer(parameters$mapq)
     )
     shiny::updateNumericInput(
-        session, "mask_physical_fallback_mb",
-        value = parameters$mask_physical_fallback_mb
-    )
-    shiny::updateNumericInput(
-        session, "mask_recurrence_threshold",
-        value = parameters$mask_recurrence_threshold
-    )
-    shiny::updateNumericInput(
         session, "calibration_fdr",
         value = parameters$calibration_fdr
     )
@@ -1697,14 +1671,6 @@ bam_parameter_help <- function(id, label = NULL) {
         mapq = paste(
             "Minimum mapping quality for a read to count. Higher values",
             "exclude more ambiguous alignments."
-        ),
-        mask_physical_fallback_mb = paste(
-            "Extra region around each masked window, in megabases,",
-            "masked when physical coordinates are available."
-        ),
-        mask_recurrence_threshold = paste(
-            "Fraction of cohort samples that must mask a window before",
-            "it becomes a recurrence mask. Lower values mask more."
         ),
         calibration_fdr = paste(
             "Target false discovery rate for segment thresholds.",
@@ -1854,27 +1820,6 @@ bam_run_parameters <- function(input, config, samples, resolution = NULL,
             "`score` must be one of: paired_log_ratio, donor_only"
         )
     }
-    mask_ids <- c(
-        "mask_physical_fallback_mb", "mask_recurrence_threshold"
-    )
-    has_mask <- !is.null(profile) ||
-        any(vapply(mask_ids, function(id) {
-            bam_profile_has_value(input[[id]])
-        }, logical(1)))
-    mask <- if (isTRUE(has_mask)) {
-        list(
-            physical_fallback_mb = bam_number(
-                current$mask_physical_fallback_mb,
-                "Mask physical fallback (Mb)", 0, Inf
-            ),
-            recurrence_threshold = bam_number(
-                current$mask_recurrence_threshold,
-                "Mask recurrence threshold", 0, 1
-            )
-        )
-    } else {
-        NULL
-    }
     calibration_ids <- c(
         "calibration_fdr", paste0("calibration_floor_", seq_len(5L)),
         "calibration_min_mb", "calibration_merge_gap"
@@ -1950,7 +1895,6 @@ bam_run_parameters <- function(input, config, samples, resolution = NULL,
         metric = metric,
         score = score,
         donor_aggregation = donor_aggregation,
-        mask = mask,
         control_samples = control_samples,
         calibration = calibration,
         profile_name = effective,
@@ -2688,10 +2632,6 @@ bam_analysis_key <- function(preflight, resolution, donor_aggregation = NULL,
         score <- parameters$score
         donor_aggregation <- parameters$donor_aggregation
         mapq <- parameters$mapq
-        mask <- list(
-            physical_fallback_mb = parameters$mask_physical_fallback_mb,
-            recurrence_threshold = parameters$mask_recurrence_threshold
-        )
         calibration <- list(
             fdr = parameters$calibration_fdr,
             floors = parameters$calibration_floors,
@@ -2704,14 +2644,12 @@ bam_analysis_key <- function(preflight, resolution, donor_aggregation = NULL,
         score <- profile_spec$parameters$score
         donor_aggregation <- profile_spec$parameters$donor_aggregation
         mapq <- profile_spec$parameters$mapq
-        mask <- profile_spec$parameters$mask
         calibration <- profile_spec$parameters$calibration
     } else {
         resolution_value <- resolution
         metric <- defaults$metric
         score <- defaults$score
         mapq <- defaults$mapq
-        mask <- NULL
         calibration <- list()
     }
     if (is.null(donor_aggregation) || length(donor_aggregation) != 1L ||
@@ -2744,7 +2682,6 @@ bam_analysis_key <- function(preflight, resolution, donor_aggregation = NULL,
         metric = as.character(metric),
         score = as.character(score),
         donor_aggregation = as.character(donor_aggregation),
-        mask = mask,
         calibration = calibration,
         controls = controls
     ))
@@ -5485,6 +5422,25 @@ bam_calibration_floor_labels <- function(config) {
     paste0("Floor ", labels, " Mb")
 }
 
+#' Warning shown when cohort recurrence cannot be computed
+#' @noRd
+bam_cohort_mask_warning_ui <- function(n_samples) {
+    n_samples <- suppressWarnings(as.integer(n_samples))
+    if (length(n_samples) != 1L || is.na(n_samples) ||
+        n_samples != 1L) {
+        return(NULL)
+    }
+    shiny::div(
+        class = "alert alert-warning py-2 px-3 small mb-2",
+        role = "status",
+        shiny::strong("Cohort recurrence unavailable."),
+        paste(
+            "This run has one sample. Cohort recurrence masking requires",
+            "at least two samples, so no windows will be masked."
+        )
+    )
+}
+
 #' Every profile parameter is editable under Advanced
 #' @noRd
 bam_advanced_parameters_ui <- function(config, defaults, locked = FALSE) {
@@ -5575,22 +5531,11 @@ bam_advanced_parameters_ui <- function(config, defaults, locked = FALSE) {
             )
         ),
         shiny::div(class = "mamamia-param-heading", "Masking"),
-        bam_parameter_control_ui(
-            "mask_physical_fallback_mb",
-            shiny::numericInput(
-                "mask_physical_fallback_mb", NULL,
-                value = defaults$mask_physical_fallback_mb,
-                min = 0, step = 0.5,
-                width = "100%"
-            )
-        ),
-        bam_parameter_control_ui(
-            "mask_recurrence_threshold",
-            shiny::numericInput(
-                "mask_recurrence_threshold", NULL,
-                value = defaults$mask_recurrence_threshold,
-                min = 0, max = 1, step = 0.05,
-                width = "100%"
+        shiny::p(
+            class = "text-muted small mb-2",
+            paste(
+                "Cohort recurrence cutoff is derived automatically from",
+                "the fitted cohort mixture. Single-sample runs are unmasked."
             )
         ),
         shiny::div(class = "mamamia-param-heading", "Calibration"),
@@ -6924,6 +6869,23 @@ bam_launcher_server <- function(state) {
             )
         })
 
+        output$mask_recurrence_warning_ui <- shiny::renderUI({
+            if (isTRUE(example_mode())) {
+                return(NULL)
+            }
+            pf <- preflight_state()
+            if (!isTRUE(pf$ok) || is.null(pf$table) ||
+                nrow(pf$table) == 0L) {
+                return(NULL)
+            }
+            bam_cohort_mask_warning_ui(
+                length(unique(as.character(pf$table$sample)))
+            )
+        })
+        shiny::outputOptions(
+            output, "mask_recurrence_warning_ui", suspendWhenHidden = FALSE
+        )
+
         ## Parameter labels are separate outputs so editing a value never
         ## rebuilds the input and steals keyboard focus.
         output$resolution_param_label <- shiny::renderUI({
@@ -6940,8 +6902,6 @@ bam_launcher_server <- function(state) {
             score = "Score",
             donor_aggregation = "Donor aggregation",
             mapq = "Minimum MAPQ",
-            mask_physical_fallback_mb = "Mask physical fallback (Mb)",
-            mask_recurrence_threshold = "Mask recurrence threshold",
             calibration_fdr = "Calibration FDR",
             calibration_min_mb = "Calibration minimum length (Mb)",
             calibration_merge_gap = "Calibration merge gap (windows)"
@@ -7379,7 +7339,8 @@ bam_launcher_server <- function(state) {
                 ),
                 if (!is.null(problem)) {
                     shiny::p(class = "text-danger", problem)
-                }
+                },
+                shiny::uiOutput("mask_recurrence_warning_ui")
             )
         })
 
@@ -7523,7 +7484,6 @@ bam_launcher_server <- function(state) {
                 params$control_samples <- character(0)
                 params$calibration <- NULL
                 params$profile_name <- "balanced"
-                params$mask <- NULL
             }
 
             resolution_problem <- bam_resolution_problem(
@@ -7605,7 +7565,6 @@ bam_launcher_server <- function(state) {
                     metric = params$metric,
                     score = params$score,
                     donor_aggregation = params$donor_aggregation,
-                    mask = params$mask,
                     calibration = params$calibration,
                     mapq = params$mapq,
                     exclude_flags = params$exclude_flags,

@@ -1,4 +1,4 @@
-## P5: window masks (panel, cohort, blacklist, physical fallback).
+## P5: cohort recurrence window masks.
 
 multiply_donor <- function(metrics, group, from, to, multiplier,
                            samples = NULL) {
@@ -16,82 +16,6 @@ multiply_donor <- function(metrics, group, from, to, multiplier,
     metrics
 }
 
-panel_fixture <- function() {
-    metrics <- synthetic_window_metrics(
-        samples = paste0("P", seq_len(12)), seed = 31
-    )
-    ## A recurrent terminal artifact in every panel sample.
-    metrics <- multiply_donor(metrics, "1", 0L, 20L, 6)
-    ## A unique event in one sample; it must not become a panel mask.
-    metrics <- multiply_donor(metrics, "2", 100L, 130L, 6, samples = "P1")
-    metrics
-}
-
-test_that("buildPanelMask() masks recurrent artifacts only", {
-    metrics <- panel_fixture()
-    panel <- buildPanelMask(metrics, z = 0.5, recurrence_threshold = 0.4)
-    expect_identical(nrow(panel), 400L)
-    expect_true(all(panel$mask[panel$group == "1" & panel$iid <= 20]))
-    expect_false(any(panel$mask[panel$group == "2" & panel$iid >= 100 &
-        panel$iid <= 130]))
-    expect_true(mean(panel$mask) < 0.2)
-    expect_identical(unique(panel$source), "panel")
-    expect_true(nzchar(unique(panel$version)))
-})
-
-test_that("buildWindowMask() applies a panel mask and validates the grid", {
-    metrics <- panel_fixture()
-    panel <- buildPanelMask(metrics)
-    target <- metrics[metrics$sample == "P1", , drop = FALSE]
-    mask <- buildWindowMask(target, mode = "single", panel_mask = panel)
-    expect_identical(mask$mask, panel$mask)
-    expect_identical(unique(mask$source), "panel")
-    expect_error(
-        buildWindowMask(
-            target, mode = "single",
-            panel_mask = panel[-1L, , drop = FALSE]
-        ),
-        "does not cover"
-    )
-})
-
-test_that("a panel mask without evidence columns keeps the contract", {
-    metrics <- panel_fixture()
-    panel <- buildPanelMask(metrics)
-    target <- metrics[metrics$sample == "P1", , drop = FALSE]
-    bare <- data.frame(
-        group = panel$group, iid = panel$iid, mask = panel$mask,
-        stringsAsFactors = FALSE
-    )
-    mask <- buildWindowMask(target, mode = "single", panel_mask = bare)
-    expect_true(all(c("f", "posterior", "version") %in% names(mask)))
-    expect_true(all(is.na(mask$f)))
-    expect_true(all(is.na(mask$posterior)))
-    expect_identical(mask$mask, panel$mask)
-})
-
-test_that("an all-NA mask leaves scores untouched", {
-    scores <- data.frame(
-        group = "1", iid = 0:2, score = c(1, 2, 3),
-        stringsAsFactors = FALSE
-    )
-    mask <- data.frame(
-        group = "1", iid = 0:2, mask = NA,
-        stringsAsFactors = FALSE
-    )
-    expect_identical(applyWindowMask(scores, mask), scores)
-})
-
-test_that("a small panel warns and uses a fixed fraction", {
-    metrics <- synthetic_window_metrics(samples = paste0("P", 1:4))
-    metrics <- multiply_donor(metrics, "1", 0L, 10L, 6)
-    expect_warning(
-        panel <- buildPanelMask(metrics),
-        "only 4 sample"
-    )
-    expect_true(all(panel$mask[panel$group == "1" & panel$iid <= 10]))
-})
-
 test_that("a cohort mask removes recurrent windows", {
     metrics <- synthetic_window_metrics(
         samples = paste0("P", seq_len(12)), seed = 32
@@ -104,38 +28,47 @@ test_that("a cohort mask removes recurrent windows", {
     )
     scores <- scoreIntrogression(metrics, mode = "multi")
     mask <- buildWindowMask(
-        metrics, scores = scores, mode = "multi",
-        physical_fallback_mb = 0
+        metrics, scores = scores, mode = "multi"
     )
     expect_true(any(mask$mask[mask$group == "1" & mask$iid <= 20]))
     expect_false(any(mask$mask[mask$group == "2" & mask$iid >= 100 &
         mask$iid <= 130]))
     expect_identical(unique(mask$source), "cohort")
+    expect_true(nzchar(unique(mask$version)))
+    expect_identical(attr(mask, "threshold_source"), "automatic")
+    expect_true(is.finite(attr(mask, "recurrence_threshold")))
 })
 
-test_that("a blacklist BED masks overlapping windows", {
-    metrics <- synthetic_window_metrics()
-    bed <- data.frame(
-        chr_id = "d1S", start = 0, stop = 2e6, stringsAsFactors = FALSE
+test_that("the automatic cutoff follows the mixture", {
+    metrics <- synthetic_window_metrics(
+        samples = paste0("P", seq_len(12)), seed = 42
     )
-    mask <- buildWindowMask(
-        metrics, mode = "single", blacklist = bed,
-        physical_fallback_mb = 0
+    metrics <- multiply_donor(
+        metrics, "1", 0L, 50L, 6, samples = paste0("P", 1:3)
     )
-    expect_true(all(mask$mask[mask$group == "1" & mask$iid <= 1]))
-    expect_false(any(mask$mask[mask$group == "1" & mask$iid > 1]))
-    expect_identical(unique(mask$source[mask$mask]), "blacklist")
+    scores <- scoreIntrogression(metrics, mode = "multi")
+    automatic <- buildWindowMask(metrics, scores = scores, mode = "multi")
+    expect_gt(sum(automatic$mask), 40L)
+    expect_equal(attr(automatic, "recurrence_threshold"), 0.25)
+    expect_identical(attr(automatic, "threshold_source"), "automatic")
 })
 
-test_that("the physical fallback masks contig ends only", {
-    metrics <- synthetic_window_metrics()
-    mask <- buildWindowMask(
-        metrics, mode = "single", physical_fallback_mb = 1
-    )
-    expect_true(mask$mask[mask$group == "1" & mask$iid == 0])
-    expect_true(mask$mask[mask$group == "1" & mask$iid == 199])
-    expect_false(mask$mask[mask$group == "1" & mask$iid == 100])
-    expect_identical(unique(mask$source[mask$mask]), "physical")
+test_that("a single sample returns an unmasked table", {
+    metrics <- synthetic_window_metrics(samples = "P1")
+    scores <- scoreIntrogression(metrics, mode = "single")
+    mask <- buildWindowMask(metrics, scores = scores, mode = "single")
+    expect_false(any(mask$mask))
+    expect_identical(unique(mask$source), "none")
+    expect_true(all(is.na(mask$f)))
+    expect_true(all(is.na(mask$posterior)))
+})
+
+test_that("a multi mode with one sample is still unmasked", {
+    metrics <- synthetic_window_metrics(samples = "P1")
+    scores <- scoreIntrogression(metrics, mode = "single")
+    mask <- buildWindowMask(metrics, scores = scores, mode = "multi")
+    expect_false(any(mask$mask))
+    expect_identical(unique(mask$source), "none")
 })
 
 test_that("applyWindowMask() sets masked scores to NA", {
@@ -143,7 +76,7 @@ test_that("applyWindowMask() sets masked scores to NA", {
     mask <- data.frame(
         group = "1", iid = 0:10, start = 0:10 * 1e6,
         stop = (1:11) * 1e6, f = 1, posterior = 1, mask = TRUE,
-        source = "panel", version = "x", stringsAsFactors = FALSE
+        source = "cohort", version = "x", stringsAsFactors = FALSE
     )
     masked <- applyWindowMask(scores, mask)
     expect_true(all(is.na(masked$score[
@@ -152,4 +85,16 @@ test_that("applyWindowMask() sets masked scores to NA", {
     expect_false(any(is.na(masked$score[
         masked$group == "1" & masked$iid > 10
     ])))
+})
+
+test_that("an all-NA mask leaves scores untouched", {
+    scores <- data.frame(
+        group = "1", iid = 0:2, score = c(1, 2, 3),
+        stringsAsFactors = FALSE
+    )
+    mask <- data.frame(
+        group = "1", iid = 0:2, mask = NA,
+        stringsAsFactors = FALSE
+    )
+    expect_identical(applyWindowMask(scores, mask), scores)
 })

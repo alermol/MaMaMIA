@@ -2,18 +2,13 @@
 % Please edit documentation in R/masks.R
 \name{buildWindowMask}
 \alias{buildWindowMask}
-\title{Build a window mask}
+\title{Build a cohort recurrence mask}
 \usage{
 buildWindowMask(
   metrics,
   scores = NULL,
   mode = c("single", "multi"),
-  panel_mask = NULL,
-  blacklist = NULL,
-  physical_fallback_mb = 1,
-  recurrence_threshold = 0.4,
-  z = 0.5,
-  config = NULL
+  z = 0.5
 )
 }
 \arguments{
@@ -21,24 +16,17 @@ buildWindowMask(
 
 \item{scores}{Optional \code{ScoreTable} used for the cohort recurrence mask.}
 
-\item{mode}{\code{"single"} or \code{"multi"}.}
-
-\item{panel_mask}{Optional panel \code{MaskTable} or TSV path.}
-
-\item{blacklist}{Optional BED path or data frame.}
-
-\item{physical_fallback_mb}{Width in Mb masked at both contig ends when no
-other source applies. \code{0} disables the fallback.}
-
-\item{recurrence_threshold}{Minimum recurrence fraction for a cohort mask.}
+\item{mode}{\code{"single"} or \code{"multi"}. Only \code{"multi"} can compute a mask.}
 
 \item{z}{Score threshold that defines a high residual.}
-
-\item{config}{Optional validated configuration.}
 }
 \value{
-A \code{MaskTable} data frame with one row per window.
+A \code{MaskTable} data frame with one row per window. The derived
+recurrence threshold is stored in the \code{"recurrence_threshold"} attribute.
 }
 \description{
-Build a window mask
+The recurrence mask is the only supported masking method. It requires at
+least two samples in \code{scores}; a single-sample run returns an all-false
+\code{MaskTable} with \code{source = "none"}. The cutoff is derived from the
+fitted two-component mixture.
 }

@@ -21,7 +21,7 @@ test_that("bam_run_parameters() resolves the run controls", {
     )
     expect_named(params, c(
         "resolution", "mapq", "exclude_flags", "cores", "metric", "score",
-        "donor_aggregation", "mask", "control_samples", "calibration",
+        "donor_aggregation", "control_samples", "calibration",
         "profile_name", "profile_base", "profile_parameters",
         "profile_changed"
     ))
@@ -77,7 +77,7 @@ test_that("analysis profiles resolve complete parameter bundles", {
         sensitive$parameters$calibration$floors,
         c(1.5, 1.2, 1.0, 0.8, 0.4)
     )
-    expect_true(is.list(sensitive$parameters$mask))
+    expect_false("mask" %in% names(sensitive$parameters))
     params <- bam_run_parameters(
         list(
             analysis_profile = "sensitive",
@@ -89,7 +89,6 @@ test_that("analysis profiles resolve complete parameter bundles", {
     expect_identical(params$metric, "combined")
     expect_identical(params$profile_name, "sensitive")
     expect_identical(params$profile_base, "sensitive")
-    expect_identical(params$mask$recurrence_threshold, 0.4)
     choices <- mamamia_analysis_profile_choices()
     expect_identical(
         unname(choices[c("Balanced", "Sensitive", "Custom")]),
@@ -177,13 +176,17 @@ test_that("Advanced exposes every profile parameter and marks defaults", {
     html <- as.character(bam_advanced_parameters_ui(config, defaults))
     ids <- c(
         "resolution_ui", "metric", "score", "donor_aggregation", "mapq",
-        "mask_physical_fallback_mb", "mask_recurrence_threshold",
         "calibration_fdr", paste0("calibration_floor_", 1:5),
         "calibration_min_mb", "calibration_merge_gap"
     )
     for (id in ids) {
         expect_match(html, sprintf('id="%s"', id), fixed = TRUE)
     }
+    expect_match(
+        html, "Cohort recurrence cutoff is derived automatically",
+        fixed = TRUE
+    )
+    expect_false(grepl("mask_recurrence_threshold", html, fixed = TRUE))
     expect_match(html, "mamamia-param-floors", fixed = TRUE)
     expect_match(html, "mamamia-param-legend", fixed = TRUE)
     expect_match(html, "reset_profile_parameters", fixed = TRUE)
@@ -196,7 +199,6 @@ test_that("Advanced exposes every profile parameter and marks defaults", {
     expect_match(help_label, "mamamia-param-help", fixed = TRUE)
     help_ids <- c(
         "resolution", "metric", "score", "donor_aggregation", "mapq",
-        "mask_physical_fallback_mb", "mask_recurrence_threshold",
         "calibration_fdr", "calibration_min_mb",
         "calibration_merge_gap", "control_samples"
     )
@@ -241,8 +243,6 @@ test_that("every profile parameter can be overridden into a Custom run", {
             score = "donor_only",
             donor_aggregation = "mean",
             mapq = 30,
-            mask_physical_fallback_mb = 2,
-            mask_recurrence_threshold = 0.5,
             calibration_fdr = 0.02,
             calibration_floor_1 = 1.4,
             calibration_floor_2 = 1.1,
@@ -263,8 +263,6 @@ test_that("every profile parameter can be overridden into a Custom run", {
     expect_identical(params$score, "donor_only")
     expect_identical(params$donor_aggregation, "mean")
     expect_identical(params$mapq, 30L)
-    expect_equal(params$mask$physical_fallback_mb, 2)
-    expect_equal(params$mask$recurrence_threshold, 0.5)
     expect_equal(params$calibration$fdr, 0.02)
     expect_equal(
         params$calibration$floors,
@@ -276,8 +274,7 @@ test_that("every profile parameter can be overridden into a Custom run", {
         params$profile_changed,
         c(
             "windows_per_chromosome", "metric", "score",
-            "donor_aggregation", "mapq", "mask_physical_fallback_mb",
-            "mask_recurrence_threshold", "calibration_fdr",
+            "donor_aggregation", "mapq", "calibration_fdr",
             "calibration_floors", "calibration_min_mb",
             "calibration_merge_gap"
         )
@@ -1068,4 +1065,13 @@ test_that("species pair auto-detection prefers the current donor role", {
     )
     expect_identical(as.character(swapped$recipient), "secale_like")
     expect_identical(as.character(swapped$donor), "triticum_like")
+})
+
+test_that("single-sample runs get a cohort-mask warning", {
+    warning_ui <- as.character(bam_cohort_mask_warning_ui(1L))
+    expect_match(warning_ui, "Cohort recurrence unavailable", fixed = TRUE)
+    expect_match(warning_ui, "at least two samples", fixed = TRUE)
+    expect_null(bam_cohort_mask_warning_ui(2L))
+    expect_null(bam_cohort_mask_warning_ui(0L))
+    expect_null(bam_cohort_mask_warning_ui(NA_integer_))
 })

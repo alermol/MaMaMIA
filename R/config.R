@@ -34,12 +34,6 @@
         score = "paired_log_ratio",
         donor_aggregation = "max",
         recipient_aggregation = "mean",
-        mask = list(
-            panel = NULL,
-            blacklist = NULL,
-            physical_fallback_mb = 1,
-            recurrence_threshold = 0.4
-        ),
         calibration = list(
             length_bins_mb = c(5, 10, 25, 50, 100, Inf),
             fdr = 0.01,
@@ -108,14 +102,6 @@
         path <- file.path(base_dir, path)
     }
     normalizePath(path, winslash = "/", mustWork = FALSE)
-}
-
-.config_path_or_null <- function(path, what, base_dir) {
-    if (is.null(path)) {
-        return(NULL)
-    }
-    value <- .config_string(path, what)
-    .config_path(value, base_dir)
 }
 
 .read_contigs_tsv <- function(path) {
@@ -856,7 +842,7 @@ chr_number <- function(chr_name) {
     supported <- c(
         "windows_per_chromosome", "allowed_windows", "mapq", "exclude_flags",
         "gc_mmap", "gc_validate_crc", "metric", "score", "donor_aggregation",
-        "recipient_aggregation", "mask", "calibration"
+        "recipient_aggregation", "calibration"
     )
     unknown <- setdiff(names(defaults), supported)
     if (length(unknown) > 0L) {
@@ -967,39 +953,6 @@ chr_number <- function(chr_name) {
         }
     }
 
-    if (!is.null(defaults$mask)) {
-        if (!is.list(defaults$mask)) {
-            .config_error("`defaults.mask` must be a mapping")
-        }
-        mask <- defaults$mask
-        unknown <- setdiff(
-            names(mask),
-            c("panel", "blacklist", "physical_fallback_mb",
-              "recurrence_threshold")
-        )
-        if (length(unknown) > 0L) {
-            .config_error("`defaults.mask` has unknown key(s): %s",
-                paste(unknown, collapse = ", "))
-        }
-        out$mask$panel <- .config_path_or_null(
-            mask$panel, "defaults.mask.panel", config_dir
-        )
-        out$mask$blacklist <- .config_path_or_null(
-            mask$blacklist, "defaults.mask.blacklist", config_dir
-        )
-        if (!is.null(mask$physical_fallback_mb)) {
-            out$mask$physical_fallback_mb <- .config_number(
-                mask$physical_fallback_mb, "defaults.mask.physical_fallback_mb",
-                min = 0
-            )
-        }
-        if (!is.null(mask$recurrence_threshold)) {
-            out$mask$recurrence_threshold <- .config_number(
-                mask$recurrence_threshold,
-                "defaults.mask.recurrence_threshold", min = 0, max = 1
-            )
-        }
-    }
     if (!is.null(defaults$calibration)) {
         if (!is.list(defaults$calibration)) {
             .config_error("`defaults.calibration` must be a mapping")
@@ -1236,7 +1189,7 @@ validateMaMaMIAConfig <- function(config) {
                 "MaMaMIA config version 1 is no longer supported. ",
                 "Change `version: 1` to `version: 2` and see MIGRATION.md ",
                 "for the schema changes (multi-component ploidy, metric, score, ",
-                "mask and calibration defaults)."
+                "and calibration defaults)."
             )
         )
     }

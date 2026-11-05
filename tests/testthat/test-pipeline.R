@@ -116,7 +116,10 @@ test_that("the pipeline returns the BamAnalysisResult contract", {
     expect_identical(result$provenance$pipeline_version, "0.1.0")
     expect_identical(result$provenance$breadth_backend, "htslib")
     expect_identical(result$provenance$gc_source, "gcrank")
-    expect_equal(sum(result$masks$mask), 20)
+    expect_identical(sum(result$masks$mask), 0L)
+    expect_identical(unique(result$masks$source), "none")
+    expect_true(is.na(result$provenance$mask_threshold))
+    expect_identical(result$provenance$mask_threshold_source, "none")
     expect_gte(sum(result$calls$pass), 1L)
     expect_true(any(result$calls$class == "addition"))
     expect_silent(validateBamAnalysisResult(result))
@@ -143,6 +146,11 @@ test_that("a cohort analysis keeps the event in the positive sample", {
     expect_gte(sum(result$calls$pass[result$calls$sample == "P"]), 1L)
     expect_equal(sum(result$calls$pass[result$calls$sample == "C"]), 0L)
     expect_true(all(result$scores$mode == "multi"))
+    expect_identical(result$provenance$mask_threshold_source, "automatic")
+    expect_true(
+        is.na(result$provenance$mask_threshold) ||
+            is.finite(result$provenance$mask_threshold)
+    )
 })
 
 test_that("writeCallsToBedpe() writes donor and recipient intervals", {

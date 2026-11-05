@@ -765,10 +765,6 @@ bam_bundle_flat_profile_parameters <- function(parameters) {
     if (!is.list(parameters)) {
         return(NULL)
     }
-    mask <- parameters$mask
-    if (!is.list(mask)) {
-        mask <- list()
-    }
     calibration <- parameters$calibration
     if (!is.list(calibration)) {
         calibration <- list()
@@ -785,8 +781,6 @@ bam_bundle_flat_profile_parameters <- function(parameters) {
             score = parameters$score,
             donor_aggregation = parameters$donor_aggregation,
             mapq = parameters$mapq,
-            mask_physical_fallback_mb = mask$physical_fallback_mb,
-            mask_recurrence_threshold = mask$recurrence_threshold,
             calibration_fdr = calibration$fdr
         ),
         floor_values,
@@ -808,10 +802,6 @@ bam_bundle_profile_parameters <- function(provenance) {
             score = provenance$score,
             donor_aggregation = provenance$donor_aggregation,
             mapq = provenance$mapq,
-            mask = list(
-                physical_fallback_mb = NA_real_,
-                recurrence_threshold = NA_real_
-            ),
             calibration = list(
                 fdr = provenance$fdr,
                 floors = rep(NA_real_, 5L),

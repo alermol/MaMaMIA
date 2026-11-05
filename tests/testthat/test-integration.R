@@ -71,7 +71,6 @@ real_config <- function(root) {
             allowed_windows = c(100L, 1000L, 10000L),
             mapq = 20L,
             exclude_flags = 1796L,
-            mask = list(physical_fallback_mb = 1),
             calibration = list(
                 length_bins_mb = c(5, 10, 25, 50, 100, Inf),
                 fdr = 0.01,
@@ -168,10 +167,6 @@ test_that("the 24-BAM validation recovers all reference events", {
     expect_gte(nrow(sq76_7), 1L)
     expect_lte(abs(min(sq76_7$start_iid) - 750), 20L)
 
-    panel <- buildPanelMask(result$metrics, z = 0.5,
-        recurrence_threshold = 0.4)
-    expect_true(mean(panel$mask) > 0.1 && mean(panel$mask) < 0.2)
-    expect_true(any(panel$mask[panel$group == "7" & panel$iid <= 10]))
     sq76_5 <- calls[calls$sample == "Sq76" & calls$group == "5", ]
     expect_gte(nrow(sq76_5), 1L)
     expect_lt(max(sq76_5$width_bp), 639356089)

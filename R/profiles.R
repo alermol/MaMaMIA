@@ -22,10 +22,6 @@ mamamia_analysis_profiles <- function() {
         score = "paired_log_ratio",
         donor_aggregation = "max",
         mapq = 20L,
-        mask = list(
-            physical_fallback_mb = 1,
-            recurrence_threshold = 0.4
-        ),
         calibration = list(
             fdr = 0.01,
             floors = c(2.0, 1.5, 1.2, 1.0, 0.5),
@@ -131,11 +127,7 @@ mamamia_profile_flat_parameters <- function(parameters) {
     if (!is.list(parameters)) {
         .mamamia_profile_error("Profile parameters must be a list")
     }
-    mask <- parameters$mask
     calibration <- parameters$calibration
-    if (!is.list(mask)) {
-        mask <- list()
-    }
     if (!is.list(calibration)) {
         calibration <- list()
     }
@@ -147,12 +139,6 @@ mamamia_profile_flat_parameters <- function(parameters) {
         score = as.character(parameters$score),
         donor_aggregation = as.character(parameters$donor_aggregation),
         mapq = as.integer(parameters$mapq),
-        mask_physical_fallback_mb = as.numeric(
-            mask$physical_fallback_mb
-        ),
-        mask_recurrence_threshold = as.numeric(
-            mask$recurrence_threshold
-        ),
         calibration_fdr = as.numeric(calibration$fdr),
         calibration_floors = as.numeric(calibration$floors),
         calibration_min_mb = as.numeric(calibration$min_mb),

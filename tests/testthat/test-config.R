@@ -264,8 +264,8 @@ test_that("metric, score and aggregation defaults are validated", {
 
 test_that("mask and calibration defaults are validated", {
     config <- tiny_species_config()
-    config$defaults$mask <- list(recurrence_threshold = 2)
-    expect_error(validateMaMaMIAConfig(config), "recurrence_threshold")
+    config$defaults$mask <- list(recurrence_threshold = 0.4)
+    expect_error(validateMaMaMIAConfig(config), "Unknown `defaults` key")
     config$defaults$mask <- NULL
     config$defaults$calibration <- list(fdr = 0)
     expect_error(validateMaMaMIAConfig(config), "fdr")

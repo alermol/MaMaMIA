@@ -216,7 +216,9 @@
 .pipeline_provenance <- function(config, preflight, indexed, windows, gc,
                                  n_per, mapq, exclude_flags, metric, score,
                                  donor_aggregation, sample_composition,
-                                 mask, calibration, started_at,
+                                 mask, mask_threshold = NA_real_,
+                                 mask_threshold_source = "none",
+                                 calibration, started_at,
                                  analysis_profile = NULL,
                                  analysis_profile_base = NULL,
                                  analysis_profile_parameters = NULL) {
@@ -295,6 +297,17 @@
             "none"
         } else {
             paste(mask_sources, collapse = "+")
+        },
+        mask_threshold = if (length(mask_threshold) == 1L) {
+            as.numeric(mask_threshold)
+        } else {
+            NA_real_
+        },
+        mask_threshold_source = if (length(mask_threshold_source) == 1L &&
+            !is.na(mask_threshold_source) && nzchar(mask_threshold_source)) {
+            as.character(mask_threshold_source)
+        } else {
+            "none"
         },
         mask_version = {
             versions <- unique(stats::na.omit(mask$version))
@@ -413,8 +426,6 @@
 #' @param score `"paired_log_ratio"` or `"donor_only"`.
 #' @param donor_aggregation `"mean"`, `"max"` or `"sum"`. Defaults to the
 #'   registry value; the dashboard exposes it under **Advanced**.
-#' @param mask Optional panel `MaskTable`/TSV path, or a list with `panel`,
-#'   `blacklist`, `physical_fallback_mb` and `recurrence_threshold`.
 #' @param calibration Optional list with `length_bins_mb`, `fdr`, `floors`,
 #'   `controls`, `alpha`, `undo_SD`, `min_width`, `merge_gap`, `merge_floor`
 #'   and `min_mb`.
@@ -456,7 +467,6 @@ analyzeBamInput <- function(bam_paths,
                             metric = NULL,
                             score = NULL,
                             donor_aggregation = NULL,
-                            mask = NULL,
                             calibration = NULL,
                             windows_per_chromosome = 1000L,
                             mapq = NULL,
@@ -513,16 +523,6 @@ analyzeBamInput <- function(bam_paths,
     if (!is.list(calibration_args)) {
         .analysis_error("`calibration` must be NULL or a named list")
     }
-    mask_args <- if (is.null(mask)) list() else {
-        if (is.list(mask) && !is.data.frame(mask) &&
-            any(c("panel", "blacklist", "physical_fallback_mb",
-                  "recurrence_threshold") %in% names(mask))) {
-            mask
-        } else {
-            list(panel = mask)
-        }
-    }
-
     preflight <- preflightBams(bam_paths, config, assembly)
     n_bams <- length(unique(preflight$path))
     n_samples <- nrow(preflight)
@@ -608,16 +608,10 @@ analyzeBamInput <- function(bam_paths,
         n_windows = nrow(scores)
     ))
 
-    mask_spec <- defaults$mask
-    mask_spec[names(mask_args)] <- mask_args
     masks <- buildWindowMask(
         metrics,
         scores = scores,
-        mode = mode,
-        panel_mask = mask_spec$panel,
-        blacklist = mask_spec$blacklist,
-        physical_fallback_mb = mask_spec$physical_fallback_mb,
-        recurrence_threshold = mask_spec$recurrence_threshold
+        mode = mode
     )
     masked_fraction <- mean(masks$mask, na.rm = TRUE)
     .pipeline_progress(progress, "mask", list(
@@ -727,10 +721,6 @@ analyzeBamInput <- function(bam_paths,
         score = score,
         donor_aggregation = donor_aggregation,
         mapq = mapq,
-        mask = list(
-            physical_fallback_mb = mask_spec$physical_fallback_mb,
-            recurrence_threshold = mask_spec$recurrence_threshold
-        ),
         calibration = list(
             fdr = cal$fdr,
             floors = as.numeric(cal_floors),
@@ -752,6 +742,8 @@ analyzeBamInput <- function(bam_paths,
         donor_aggregation = donor_aggregation,
         sample_composition = composition,
         mask = masks,
+        mask_threshold = attr(masks, "recurrence_threshold"),
+        mask_threshold_source = attr(masks, "threshold_source"),
         calibration = calibrated$calibration,
         started_at = started_at,
         analysis_profile = profile,

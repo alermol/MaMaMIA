@@ -32,7 +32,7 @@ preflightBams()
   -> countWindowMetrics()           counts + covered bases in one htslib pass
   -> buildWindowMetrics()           breadth, lambdas
   -> scoreIntrogression()           paired donor/recipient log-ratio
-  -> buildWindowMask()              panel / cohort / blacklist / physical
+  -> buildWindowMask()              cohort recurrence only
   -> segmentScores()                CBS + gap merging
   -> calibrateSegments()            length-stratified empirical null
   -> classifyCalls()                substitution / addition / other
@@ -55,11 +55,6 @@ defaults:
   metric: breadth              # breadth | count | combined
   score: paired_log_ratio      # paired_log_ratio | donor_only
   donor_aggregation: max       # mean | max | sum; default; Advanced panel
-  mask:
-    panel: null
-    blacklist: null
-    physical_fallback_mb: 1.0
-    recurrence_threshold: 0.4
   calibration:
     length_bins_mb: [5, 10, 25, 50, 100, .inf]
     fdr: 0.01
@@ -178,10 +173,12 @@ without the recipient denominator.
 
 # Masks and calibration
 
-A mask is indexed by chromosome group and relative window. Sources are tried in
-order: a fixed panel mask, a cohort recurrence mask (multi-sample), a BED
-blacklist, and a physical terminal fallback. Masked windows are set to `NA`
-before CBS, so segment boundaries and gap merging still see the full grid.
+A mask is indexed by chromosome group and relative window. The only source is
+a cohort recurrence mask computed from the current samples. Multi-sample runs
+mask windows in the recurrent mixture component, with the cutoff derived from
+the fitted component distributions. Single-sample runs have no cohort and are
+analysed without a mask. Masked windows are set to `NA` before CBS, so segment
+boundaries and gap merging still see the full grid.
 
 Calls are calibrated by segment length. The threshold is the empirical
 `1 - fdr` quantile of control segment means, raised to a per-bin floor. A

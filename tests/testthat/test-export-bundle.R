@@ -78,10 +78,6 @@ test_that("the bundle records every effective profile parameter", {
             score = "paired_log_ratio",
             donor_aggregation = "max",
             mapq = 30L,
-            mask = list(
-                physical_fallback_mb = 1,
-                recurrence_threshold = 0.4
-            ),
             calibration = list(
                 fdr = 0.01,
                 floors = c(1.5, 1.2, 1.0, 0.8, 0.4),
@@ -93,8 +89,7 @@ test_that("the bundle records every effective profile parameter", {
     table <- bam_bundle_profile_parameters(provenance)
     expect_true(all(c(
         "windows_per_chromosome", "metric", "score",
-        "donor_aggregation", "mapq", "mask_physical_fallback_mb",
-        "mask_recurrence_threshold", "calibration_fdr",
+        "donor_aggregation", "mapq", "calibration_fdr",
         "calibration_floor_1", "calibration_floor_5",
         "calibration_min_mb", "calibration_merge_gap"
     ) %in% table$parameter))
@@ -457,8 +452,7 @@ test_that("the result bundle contains the table, BEDPE and karyotypes", {
     ) %in% names(profile_parameters)))
     expect_true(all(c(
         "windows_per_chromosome", "metric", "score",
-        "donor_aggregation", "mapq", "mask_physical_fallback_mb",
-        "mask_recurrence_threshold", "calibration_fdr",
+        "donor_aggregation", "mapq", "calibration_fdr",
         "calibration_floor_1", "calibration_floor_5",
         "calibration_min_mb", "calibration_merge_gap"
     ) %in% profile_parameters$parameter))
