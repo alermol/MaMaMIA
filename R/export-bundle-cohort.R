@@ -83,7 +83,7 @@ bam_bundle_cohort_plot_files <- function(bundle, cohort, calls_summary,
     specs <- list(
         list(
             file = "cohort-calls.png",
-            title = "Calls per sample in this cohort",
+            title = "Calls per sample in this run",
             caption = paste(
                 "All calls and confident calls for every sample.",
                 "Raw values: cohort-summary.csv."
@@ -93,7 +93,7 @@ bam_bundle_cohort_plot_files <- function(bundle, cohort, calls_summary,
         ),
         list(
             file = "calls-by-class.png",
-            title = "Calls by class across the cohort",
+            title = "Calls by class across the run",
             caption = paste(
                 "All calls, passing calls and confident calls by class.",
                 "Raw values: calls-summary.csv."
@@ -105,7 +105,7 @@ bam_bundle_cohort_plot_files <- function(bundle, cohort, calls_summary,
             file = "masked-fraction-by-group.png",
             title = "Masked windows by chromosome group",
             caption = paste(
-                "Masked fraction per group across the cohort.",
+                "Masked fraction per group across the run.",
                 "Raw values: qc/masks-summary.csv."
             ),
             plot = bam_bundle_plot_masks(masks_summary),
@@ -279,13 +279,25 @@ bam_bundle_cohort_report_html <- function(result, bundle, samples, folders,
         "<head>",
         "<meta charset=\"utf-8\">",
         "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">",
-        "<title>MaMaMIA cohort results</title>",
+        paste0(
+            "<title>MaMaMIA ",
+            if (length(samples) > 1L) "cohort " else "",
+            "results</title>"
+        ),
         paste0("<style>", bam_bundle_report_css(), "</style>"),
         "</head>",
         "<body><main>",
         "<header>",
-        "<p class=\"eyebrow\">MaMaMIA cohort results bundle</p>",
-        "<h1>Cohort results</h1>",
+        paste0(
+            "<p class=\"eyebrow\">MaMaMIA results bundle",
+            if (length(samples) > 1L) " for a cohort" else "",
+            "</p>"
+        ),
+        paste0(
+            "<h1>",
+            if (length(samples) > 1L) "Cohort results" else "Results",
+            "</h1>"
+        ),
         paste0("<p class=\"lead\">", bam_bundle_html_escape(
             paste(samples, collapse = ", ")
         ), "</p>"),
@@ -298,11 +310,15 @@ bam_bundle_cohort_report_html <- function(result, bundle, samples, folders,
             cohort_table, raw_columns = character()
         ),
         "</section>",
-        "<section><h2>Per-sample bundles</h2>",
+        paste0(
+            "<section><h2>",
+            if (length(samples) > 1L) "Per-sample bundles" else "Sample bundle",
+            "</h2>"
+        ),
         bam_bundle_html_table_cells(sample_table, raw_columns = "Report"),
         "<p class=\"muted\">Each linked folder contains the sample-specific ",
-        "call tables, BEDPE files, karyotypes, tracks and QC. Shared ",
-        "<code>run/</code> and cohort diagnostics live at the archive root.</p>",
+        "call tables, BEDPE files, karyotypes, tracks and QC. Run-wide ",
+        "diagnostics live at the archive root.</p>",
         "</section>",
         "<section><h2>Calls by class</h2>",
         bam_bundle_plot_html(plots, bundle, "calls-by-class.png"),
@@ -334,7 +350,7 @@ bam_bundle_cohort_report_html <- function(result, bundle, samples, folders,
     )
 }
 
-#' README for a multi-sample cohort bundle
+#' README for a run bundle
 #' @noRd
 bam_bundle_cohort_readme <- function(samples, folders, calls,
                                      confident_calls, generated, version) {
@@ -354,8 +370,13 @@ bam_bundle_cohort_readme <- function(samples, folders, calls,
     sample_lines <- vapply(seq_along(samples), function(i) {
         paste0(folders[[i]], "/  ", samples[[i]])
     }, character(1))
+    title <- if (length(samples) > 1L) {
+        "MaMaMIA cohort results bundle"
+    } else {
+        "MaMaMIA results bundle"
+    }
     c(
-        "MaMaMIA cohort results bundle",
+        title,
         "",
         paste0("Samples: ", paste(samples, collapse = ", ")),
         paste0("Generated: ", timestamp),
@@ -373,13 +394,13 @@ bam_bundle_cohort_readme <- function(samples, folders, calls,
         "calls-passing.csv       Calls that pass calibration, all samples.",
         "calls-confident.csv     Passing calls with review_status = confident.",
         "calls-summary.csv       Calls, passing, confident, width and score by",
-        "                        call class across the cohort.",
-        "calls-by-status.csv     Calls by review status across the cohort.",
-        "calls-by-copy-state.csv Calls by copy-number state across the cohort.",
+        "                        call class across the run.",
+        "calls-by-status.csv     Calls by review status across the run.",
+        "calls-by-copy-state.csv Calls by copy-number state across the run.",
         "calls-all.bedpe         Every call in BEDPE format.",
         "calls-passing.bedpe     Calibrated calls in BEDPE format.",
         "calls-confident.bedpe   Confident calls in BEDPE format.",
-        "report.html             Self-contained cohort summary.",
+        "report.html             Self-contained run summary.",
         "manifest.json           File sizes and MD5 checksums.",
         "checksums.md5           MD5 checksums including the manifest.",
         "",
@@ -389,20 +410,21 @@ bam_bundle_cohort_readme <- function(samples, folders, calls,
         "",
         "Sample folders sit at the archive root; the files listed above are",
         "run-wide. Each sample folder contains calls-full.csv,",
-        "calls-confident.csv, calls-review.csv, the call summaries, BEDPE",
+        "calls-passing.csv, calls-confident.csv, calls-review.csv, the call",
+        "summaries, BEDPE",
         "files, karyotype SVGs, tracks, sample-specific qc/ tables and plots,",
         "report.html and README.txt. The sample README repeats the full",
         "column dictionary.",
         "",
-        "Shared files",
-        "------------",
+        "Run-wide files",
+        "--------------",
         "run/                    Provenance, config, parameters, versions,",
         "                        assembly, sample and BAM metadata.",
         "qc/calibration.csv      Calibration thresholds for the run.",
         "qc/masks-summary.csv    Masked windows by chromosome group.",
         "qc/masks-windows.csv.gz Every mask decision.",
         "tracks/masks.bed        Masked windows in group coordinates.",
-        "qc/plots/               Cohort-level call and mask figures.",
+        "qc/plots/               Run-level call and mask figures.",
         "",
         "Confident set",
         "-------------",
@@ -438,9 +460,9 @@ bam_bundle_cohort_readme <- function(samples, folders, calls,
     )
 }
 
-#' Write a multi-sample result bundle
+#' Write a run result bundle
 #'
-#' Builds one ZIP with a top-level cohort summary and one folder per sample.
+#' Builds one ZIP with top-level run summaries and one folder per sample.
 #' Sample-specific calls, BEDPE files, tracks, QC and karyotypes live under
 #' `<sample>/`; run provenance and run-wide mask/calibration tables live once
 #' at the top level.
@@ -552,12 +574,17 @@ bam_write_cohort_bundle <- function(result, file, samples = NULL,
         )
     }
 
-    calls_raw <- result$calls
+    calls_raw <- result$calls[
+        as.character(result$calls$sample) %in% samples, , drop = FALSE
+    ]
     calls <- bam_bundle_descriptive_calls(calls_raw)
     passing <- isTRUE_vec(calls_raw$pass)
     confident_raw <- bam_confident_calls(calls_raw)
     confident_calls <- bam_bundle_descriptive_calls(confident_raw)
     cohort <- bam_cohort_summary(result)
+    cohort <- cohort[
+        as.character(cohort$sample) %in% samples, , drop = FALSE
+    ]
     calls_summary <- bam_bundle_call_summary(calls_raw)
     calls_by_status <- bam_bundle_call_status_summary(calls_raw)
     calls_by_copy_state <- bam_bundle_call_status_summary(
@@ -638,7 +665,9 @@ bam_write_cohort_bundle <- function(result, file, samples = NULL,
         useBytes = TRUE
     )
     manifest <- bam_bundle_manifest(
-        bundle, "cohort", generated, version, samples = samples
+        bundle,
+        if (length(samples) == 1L) samples[[1L]] else "cohort",
+        generated, version, samples = samples
     )
     bam_bundle_checksums(bundle, manifest)
     bam_bundle_archive(staging, bundle_name, file)

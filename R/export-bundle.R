@@ -392,13 +392,13 @@ bam_bundle_stem <- function(sample) {
 #' ZIP filename for the result bundle
 #' @noRd
 bam_bundle_filename <- function(sample = NULL) {
-    paste0("mamamia-", bam_bundle_stem(sample), "-results.zip")
+    "mamamia-results.zip"
 }
 
 #' ZIP filename for a multi-sample cohort bundle
 #' @noRd
 bam_cohort_bundle_filename <- function() {
-    "mamamia-results.zip"
+    bam_bundle_filename()
 }
 
 #' Installed MaMaMIA version for bundle metadata
@@ -1326,34 +1326,13 @@ bam_write_result_bundle <- function(result, file, sample,
     if (length(sample) != 1L || is.na(sample) || !nzchar(sample)) {
         sample <- karyotype_sample(result, NULL)
     }
-    staging <- tempfile("mamamia-bundle-")
-    dir.create(staging)
-    on.exit(unlink(staging, recursive = TRUE, force = TRUE), add = TRUE)
-    bundle_name <- paste0("mamamia-", bam_bundle_stem(sample), "-results")
-    bundle <- file.path(staging, bundle_name)
-    dir.create(bundle)
-
-    parts <- bam_bundle_write_sample_files(
-        result, bundle, sample,
+    bam_write_cohort_bundle(
+        result, file,
+        samples = sample,
+        current_sample = sample,
         current_payload = current_payload,
         full_payload = full_payload,
         confident_payload = confident_payload,
         generated = generated
     )
-    writeLines(
-        bam_bundle_readme(
-            sample, parts$calls, generated, parts$version,
-            bedpe_columns = parts$bedpe_columns,
-            confident_calls = parts$confident_calls,
-            result = result,
-            bundle = bundle
-        ),
-        file.path(bundle, "README.txt"),
-        useBytes = TRUE
-    )
-    manifest <- bam_bundle_manifest(
-        bundle, sample, generated, parts$version
-    )
-    bam_bundle_checksums(bundle, manifest)
-    bam_bundle_archive(staging, bundle_name, file)
 }

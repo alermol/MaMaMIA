@@ -214,9 +214,9 @@ explorer_export_ui <- function(id) {
                 paste(
                     "Download full and confident call tables, all-call,",
                     "passing and confident BEDPE files, and matching",
-                    "karyotype SVGs in one ZIP archive. For a multi-sample",
-                    "BAM the archive has one folder per sample plus",
-                    "top-level cohort summaries."
+                    "karyotype SVGs in one ZIP archive. The archive has one",
+                    "folder per sample plus run-wide summaries at the top",
+                    "level."
                 )
             ),
             explorer_download_button(
@@ -1326,13 +1326,7 @@ explorer_server <- function(id, result, sample = NULL) {
 
         output$download_bundle <- shiny::downloadHandler(
             filename = function() {
-                res <- result_value()
-                if (!is.null(res) &&
-                    length(bam_bundle_samples(res)) > 1L) {
-                    bam_cohort_bundle_filename()
-                } else {
-                    bam_bundle_filename(sample_value())
-                }
+                bam_bundle_filename(sample_value())
             },
             content = function(file) {
                 res <- result_value()
@@ -1379,23 +1373,13 @@ explorer_server <- function(id, result, sample = NULL) {
                     calls = confident_calls,
                     selected_groups = NULL
                 )
-                if (length(bam_bundle_samples(res)) > 1L) {
-                    bam_write_cohort_bundle(
-                        res, file,
-                        current_sample = sample,
-                        current_payload = current_payload,
-                        full_payload = full_payload,
-                        confident_payload = confident_payload
-                    )
-                } else {
-                    bam_write_result_bundle(
-                        res, file,
-                        sample = sample,
-                        current_payload = current_payload,
-                        full_payload = full_payload,
-                        confident_payload = confident_payload
-                    )
-                }
+                bam_write_cohort_bundle(
+                    res, file,
+                    current_sample = sample,
+                    current_payload = current_payload,
+                    full_payload = full_payload,
+                    confident_payload = confident_payload
+                )
             }
         )
 
@@ -1475,8 +1459,8 @@ explorer_server <- function(id, result, sample = NULL) {
 #' confidence and width filters, a vertical karyotype with a score heatmap or
 #' a call map, a brief sortable call table, a selected-call BEDPE export and a
 #' results bundle with the full call table, BEDPE files and karyotype images.
-#' For a multi-sample BAM the results bundle contains one folder per sample
-#' plus cohort summaries at the top level.
+#' The results bundle contains one folder per sample plus run-wide summaries
+#' at the top level.
 #'
 #' @param result A `BamAnalysisResult`.
 #' @param host Host passed to [shiny::runApp()].

@@ -33,9 +33,9 @@
 #' reported with the failing stage and a suggested fix.
 #'
 #' The explorer shows the karyotype, the call table with the BEDPE export,
-#' and, for a cohort, a per-sample selector, a cohort summary, a cohort ZIP
-#' with one folder per sample, and a combined BEDPE download carrying the
-#' `sample` column.
+#' and, for a cohort, a per-sample selector, a cohort summary, and a combined
+#' BEDPE download carrying the `sample` column. The results bundle always has
+#' one folder per sample plus run-wide summaries at the top level.
 #'
 #' Dashboard packages are optional MaMaMIA dependencies. Install them with
 #' `install.packages(c("shiny", "bslib", "DT", "htmlwidgets"))`

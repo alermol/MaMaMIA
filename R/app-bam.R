@@ -7378,9 +7378,9 @@ bam_launcher_server <- function(state) {
                             )
                         } else {
                             paste(
-                                "The results bundle above contains the full",
-                                "call table, BEDPE files and karyotype images",
-                                "for this sample."
+                                "The results bundle above contains a folder",
+                                "for this sample plus run-wide summaries at",
+                                "the top level."
                             )
                         }
                     ),

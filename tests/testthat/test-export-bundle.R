@@ -110,12 +110,12 @@ test_that("the bundle records every effective profile parameter", {
     expect_equal(table$default[table$parameter == "mapq"], "20")
 })
 
-test_that("the bundle filename is safe", {
+test_that("the bundle filename is fixed and sample folders are safe", {
     expect_identical(
-        bam_bundle_filename("Sq 74/7D"), "mamamia-Sq-74-7D-results.zip"
+        bam_bundle_filename("Sq 74/7D"), "mamamia-results.zip"
     )
-    expect_identical(bam_bundle_filename(NULL), "mamamia-sample-results.zip")
-    expect_identical(bam_bundle_filename(""), "mamamia-sample-results.zip")
+    expect_identical(bam_bundle_filename(NULL), "mamamia-results.zip")
+    expect_identical(bam_bundle_filename(""), "mamamia-results.zip")
     expect_identical(
         bam_cohort_bundle_filename(), "mamamia-results.zip"
     )
@@ -217,9 +217,9 @@ test_that("the result bundle contains the table, BEDPE and karyotypes", {
     dir.create(directory)
     on.exit(unlink(directory, recursive = TRUE), add = TRUE)
     utils::unzip(archive, exdir = directory)
-    root <- file.path(
-        directory, paste0("mamamia-", sample, "-results")
-    )
+    root <- file.path(directory, "mamamia-results")
+    sample_folder <- unname(bam_bundle_sample_folders(sample))
+    sample_root <- file.path(root, sample_folder)
     bams <- utils::read.csv(
         file.path(root, "run", "bams.csv"),
         check.names = FALSE, stringsAsFactors = FALSE
@@ -231,7 +231,7 @@ test_that("the result bundle contains the table, BEDPE and karyotypes", {
     )
     expect_false(any(grepl("Rtmp|/root/", indexes$index_path)))
     calls <- utils::read.csv(
-        file.path(root, "calls-full.csv"),
+        file.path(sample_root, "calls-full.csv"),
         check.names = FALSE, stringsAsFactors = FALSE
     )
     expect_identical(nrow(calls), nrow(expected))
@@ -245,7 +245,7 @@ test_that("the result bundle contains the table, BEDPE and karyotypes", {
     ) %in% names(calls)))
     expect_false("recipient_chr_name" %in% names(calls))
     bedpe <- utils::read.delim(
-        file.path(root, "calls-all.bedpe"),
+        file.path(sample_root, "calls-all.bedpe"),
         check.names = FALSE, stringsAsFactors = FALSE
     )
     expect_true(all(c(
@@ -255,7 +255,7 @@ test_that("the result bundle contains the table, BEDPE and karyotypes", {
     ) %in% names(bedpe)))
     expect_true(all(names(bedpe) %in% dictionary$name))
     component_evidence <- utils::read.csv(
-        file.path(root, "qc", "component-evidence.csv"),
+        file.path(sample_root, "qc", "component-evidence.csv"),
         check.names = FALSE, stringsAsFactors = FALSE
     )
     expect_true(all(c(
@@ -264,20 +264,20 @@ test_that("the result bundle contains the table, BEDPE and karyotypes", {
         "supported_fraction", "component_supported"
     ) %in% names(component_evidence)))
     confident_csv <- utils::read.csv(
-        file.path(root, "calls-confident.csv"),
+        file.path(sample_root, "calls-confident.csv"),
         check.names = FALSE, stringsAsFactors = FALSE
     )
     expect_identical(nrow(confident_csv), nrow(confident_calls))
     expect_true(all(confident_csv$passes_calibration))
     expect_true(all(confident_csv$review_status == "confident"))
     confident_bedpe <- utils::read.delim(
-        file.path(root, "calls-confident.bedpe"),
+        file.path(sample_root, "calls-confident.bedpe"),
         check.names = FALSE, stringsAsFactors = FALSE
     )
     expect_identical(nrow(confident_bedpe), nrow(confident_calls))
     expect_true(all(confident_bedpe$passes_calibration))
     readme <- paste(
-        readLines(file.path(root, "README.txt")),
+        readLines(file.path(sample_root, "README.txt")),
         collapse = "\n"
     )
     expect_match(readme, sample, fixed = TRUE)
@@ -288,40 +288,72 @@ test_that("the result bundle contains the table, BEDPE and karyotypes", {
     expect_match(readme, "recipient_mean_depletion", fixed = TRUE)
     expect_match(readme, "donor_to_recipient_width_ratio", fixed = TRUE)
     expect_match(readme, "| Column | CSV | BEDPE | Description |", fixed = TRUE)
-    expect_true(file.info(file.path(root, "karyotype-full.svg"))$size > 0)
     expect_true(
-        file.info(file.path(root, "karyotype-confident.svg"))$size > 0
+        file.info(file.path(sample_root, "karyotype-full.svg"))$size > 0
     )
-    expect_true(file.info(file.path(root, "calls-all.bedpe"))$size > 0)
+    expect_true(
+        file.info(file.path(sample_root, "karyotype-confident.svg"))$size > 0
+    )
+    expect_true(
+        file.info(file.path(sample_root, "calls-all.bedpe"))$size > 0
+    )
 
-    relative <- sub("^[^/]+/", "", listing$Name)
+    relative <- sub("^mamamia-results/", "", listing$Name)
     expect_true(all(c(
-        "qc/cohort-summary.csv", "qc/metrics-summary.csv",
-        "qc/contig-summary.csv", "qc/scores-summary.csv",
-        "qc/metrics-windows.csv.gz", "qc/scores-windows.csv.gz",
-        "qc/masks-summary.csv",
-        "qc/masks-windows.csv.gz", "qc/calibration.csv",
+        "README.txt", "report.html", "cohort-summary.csv",
+        "calls-all.csv", "calls-passing.csv", "calls-confident.csv",
+        "calls-summary.csv", "calls-by-status.csv",
+        "calls-by-copy-state.csv", "calls-all.bedpe",
+        "calls-passing.bedpe", "calls-confident.bedpe",
+        "manifest.json", "checksums.md5",
+        "qc/masks-summary.csv", "qc/masks-windows.csv.gz",
+        "qc/calibration.csv", "qc/plots/masked-fraction-by-group.png",
+        "qc/plots/calls-by-class.png",
         "run/provenance.json", "run/config.yml", "run/parameters.csv",
         "run/profile-parameters.csv",
         "run/versions.csv", "run/session-info.txt", "run/assembly.csv",
         "run/reference-indexes.csv", "run/samples.csv", "run/bams.csv",
-        "tracks/calls-recipient.bed", "tracks/calls-donor.bed",
-        "tracks/masks.bed", "tracks/breadth.bedGraph.gz"
+        "tracks/masks.bed"
     ) %in% relative))
+    expect_true(all(paste0(sample_folder, "/", c(
+        "README.txt", "report.html", "calls-full.csv",
+        "calls-passing.csv", "calls-confident.csv", "calls-review.csv",
+        "calls-summary.csv", "calls-by-group.csv", "calls-by-status.csv",
+        "calls-by-copy-state.csv", "assignment-alternatives.csv",
+        "calls-all.bedpe", "calls-passing.bedpe",
+        "calls-confident.bedpe", "karyotype-current.svg",
+        "karyotype-full.svg", "karyotype-confident.svg",
+        "qc/metrics-summary.csv", "qc/contig-summary.csv",
+        "qc/scores-summary.csv", "qc/metrics-windows.csv.gz",
+        "qc/scores-windows.csv.gz", "qc/component-evidence.csv",
+        "tracks/calls-recipient.bed", "tracks/calls-donor.bed",
+        "tracks/breadth.bedGraph.gz"
+    )) %in% relative))
 
     plot_files <- c(
         "qc/plots/coverage-by-group.png",
         "qc/plots/score-by-group.png",
         "qc/plots/score-profile.png",
         "qc/plots/depth-residuals.png",
+        "qc/plots/calls-by-class.png"
+    )
+    expect_true(all(paste0(sample_folder, "/", plot_files) %in% relative))
+    top_plot_files <- c(
         "qc/plots/masked-fraction-by-group.png",
         "qc/plots/calls-by-class.png"
     )
-    expect_true(all(plot_files %in% relative))
+    expect_true(all(top_plot_files %in% relative))
     png_signature <- as.raw(c(
         0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a
     ))
     for (plot_file in plot_files) {
+        plot_path <- file.path(sample_root, plot_file)
+        expect_true(file.info(plot_path)$size > 0)
+        expect_identical(
+            readBin(plot_path, "raw", n = 8L), png_signature
+        )
+    }
+    for (plot_file in top_plot_files) {
         plot_path <- file.path(root, plot_file)
         expect_true(file.info(plot_path)$size > 0)
         expect_identical(
@@ -330,7 +362,7 @@ test_that("the result bundle contains the table, BEDPE and karyotypes", {
     }
 
     summary <- utils::read.csv(
-        file.path(root, "calls-summary.csv"),
+        file.path(sample_root, "calls-summary.csv"),
         check.names = FALSE, stringsAsFactors = FALSE
     )
     expect_true(all(c(
@@ -340,18 +372,18 @@ test_that("the result bundle contains the table, BEDPE and karyotypes", {
     ) %in% names(summary)))
     expect_identical(sum(summary$calls), nrow(expected))
     by_group <- utils::read.csv(
-        file.path(root, "calls-by-group.csv"),
+        file.path(sample_root, "calls-by-group.csv"),
         check.names = FALSE, stringsAsFactors = FALSE
     )
     expect_identical(sum(by_group$calls), nrow(expected))
     passing_csv <- utils::read.csv(
-        file.path(root, "calls-passing.csv"),
+        file.path(sample_root, "calls-passing.csv"),
         check.names = FALSE, stringsAsFactors = FALSE
     )
     expect_identical(nrow(passing_csv), sum(isTRUE_vec(expected$pass)))
     expect_true(all(passing_csv$passes_calibration))
     review_csv <- utils::read.csv(
-        file.path(root, "calls-review.csv"),
+        file.path(sample_root, "calls-review.csv"),
         check.names = FALSE, stringsAsFactors = FALSE
     )
     expect_false(any(
@@ -360,7 +392,7 @@ test_that("the result bundle contains the table, BEDPE and karyotypes", {
     ))
 
     metrics <- utils::read.csv(
-        gzfile(file.path(root, "qc/metrics-windows.csv.gz")),
+        gzfile(file.path(sample_root, "qc/metrics-windows.csv.gz")),
         check.names = FALSE, stringsAsFactors = FALSE
     )
     expect_identical(
@@ -371,7 +403,7 @@ test_that("the result bundle contains the table, BEDPE and karyotypes", {
         "contig_id", "breadth", "gc_fraction", "high_mapq_read_fraction"
     ) %in% names(metrics)))
     scores <- utils::read.csv(
-        gzfile(file.path(root, "qc/scores-windows.csv.gz")),
+        gzfile(file.path(sample_root, "qc/scores-windows.csv.gz")),
         check.names = FALSE, stringsAsFactors = FALSE
     )
     expect_identical(
@@ -388,7 +420,7 @@ test_that("the result bundle contains the table, BEDPE and karyotypes", {
     )
     expect_identical(nrow(masks), nrow(result$masks))
     metrics_summary <- utils::read.csv(
-        file.path(root, "qc/metrics-summary.csv"),
+        file.path(sample_root, "qc/metrics-summary.csv"),
         check.names = FALSE, stringsAsFactors = FALSE
     )
     expect_true(all(c("donor", "recipient") %in% metrics_summary$role))
@@ -396,7 +428,7 @@ test_that("the result bundle contains the table, BEDPE and karyotypes", {
         "mean_breadth", "mean_gc_fraction", "mean_expected_breadth"
     ) %in% names(metrics_summary)))
     scores_summary <- utils::read.csv(
-        file.path(root, "qc/scores-summary.csv"),
+        file.path(sample_root, "qc/scores-summary.csv"),
         check.names = FALSE, stringsAsFactors = FALSE
     )
     expect_gt(nrow(scores_summary), 0L)
@@ -458,7 +490,7 @@ test_that("the result bundle contains the table, BEDPE and karyotypes", {
     ) %in% names(indexes)))
 
     report <- paste(
-        readLines(file.path(root, "report.html")),
+        readLines(file.path(sample_root, "report.html")),
         collapse = "\n"
     )
     expect_match(report, "<!DOCTYPE html>", fixed = TRUE)
@@ -473,8 +505,28 @@ test_that("the result bundle contains the table, BEDPE and karyotypes", {
     expect_match(report, "manifest.json", fixed = TRUE)
     expect_match(report, "qc/metrics-summary.csv", fixed = TRUE)
 
+    top_report <- paste(
+        readLines(file.path(root, "report.html")),
+        collapse = "\n"
+    )
+    expect_match(top_report, "Run overview", fixed = TRUE)
+    expect_match(top_report, "Sample summary", fixed = TRUE)
+    expect_match(top_report, sample_folder, fixed = TRUE)
+    combined <- utils::read.csv(
+        file.path(root, "calls-all.csv"),
+        check.names = FALSE, stringsAsFactors = FALSE
+    )
+    expect_identical(nrow(combined), nrow(expected))
+    cohort <- utils::read.csv(
+        file.path(root, "cohort-summary.csv"),
+        check.names = FALSE, stringsAsFactors = FALSE
+    )
+    expect_identical(nrow(cohort), 1L)
+    expect_identical(as.character(cohort$sample), sample)
+
     manifest <- jsonlite::fromJSON(file.path(root, "manifest.json"))
     expect_identical(manifest$sample, sample)
+    expect_identical(manifest$samples, sample)
     expect_gt(nrow(manifest$files), 25L)
     expect_true(all(file.exists(
         file.path(root, manifest$files$path)
@@ -493,12 +545,12 @@ test_that("the result bundle contains the table, BEDPE and karyotypes", {
     )
 
     recipient_bed <- readLines(
-        file.path(root, "tracks/calls-recipient.bed")
+        file.path(sample_root, "tracks/calls-recipient.bed")
     )
     expect_match(recipient_bed[[1L]], "track name=", fixed = TRUE)
     expect_gt(length(recipient_bed), 1L)
     breadth_lines <- readLines(
-        gzfile(file.path(root, "tracks/breadth.bedGraph.gz"))
+        gzfile(file.path(sample_root, "tracks/breadth.bedGraph.gz"))
     )
     expect_match(breadth_lines[[1L]], "track type=bedGraph", fixed = TRUE)
     expect_gt(length(breadth_lines), 1L)
@@ -561,11 +613,12 @@ test_that("a relative bundle path is written to the caller's directory", {
     utils::unzip(
         file.path(directory, "relative-bundle.zip"), exdir = unpacked
     )
-    root <- file.path(
-        unpacked, paste0("mamamia-", sample, "-results")
+    root <- file.path(unpacked, "mamamia-results")
+    sample_root <- file.path(
+        root, unname(bam_bundle_sample_folders(sample))
     )
-    readme <- readLines(file.path(root, "README.txt"))
-    expect_false(any(grepl("karyotype-full.svg", readme, fixed = TRUE)))
+    readme <- readLines(file.path(sample_root, "README.txt"))
+    expect_true(any(grepl("karyotype-full.svg", readme, fixed = TRUE)))
     expect_true(any(grepl("report.html", readme, fixed = TRUE)))
 })
 

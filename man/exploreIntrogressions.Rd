@@ -29,6 +29,6 @@ Opens a Shiny application for a \code{BamAnalysisResult} from
 confidence and width filters, a vertical karyotype with a score heatmap or
 a call map, a brief sortable call table, a selected-call BEDPE export and a
 results bundle with the full call table, BEDPE files and karyotype images.
-For a multi-sample BAM the results bundle contains one folder per sample
-plus cohort summaries at the top level.
+The results bundle contains one folder per sample plus run-wide summaries
+at the top level.
 }
