@@ -102,7 +102,7 @@ RUN if [ -n "${BIOC_MIRROR}" ]; then \
         sed -i "s#https://bioconductor.org/packages/#${BIOC_MIRROR}/#g" uvr.lock; \
     fi \
     && uvr r install "${R_VERSION}" --unattended \
-    && uvr sync --frozen --unattended --jobs 4 \
+    && uvr sync --frozen --unattended --jobs "$(nproc)" \
     && uvr doctor --unattended
 
 # httpuv 1.6.17 invokes an R callback for every 16-64 KiB request-body read.
@@ -119,7 +119,7 @@ RUN uvr activate --write-shim \
     && tar -xzf /tmp/httpuv.tar.gz -C /tmp/httpuv-src --strip-components=1 \
     && cd /tmp/httpuv-src \
     && git apply -p1 /tmp/mamamia-patches/httpuv-1.6.17-body-coalescing.patch \
-    && R CMD INSTALL --no-multiarch . \
+    && MAKEFLAGS="-j$(nproc)" R CMD INSTALL --no-multiarch . \
     && cd / \
     && rm -rf /tmp/httpuv.tar.gz /tmp/httpuv-src
 
@@ -145,10 +145,11 @@ COPY --chown=mamamia:mamamia man ./man
 COPY --chown=mamamia:mamamia deployment ./deployment
 
 # Install MaMaMIA into the uvr library. The activation shim puts the
-# uvr-managed R on PATH and R_LIBS_USER on .uvr/library.
+# uvr-managed R on PATH and R_LIBS_USER on .uvr/library. MAKEFLAGS uses all
+# build-host CPUs for the package's C and C++ sources.
 RUN uvr activate --write-shim \
     && . .uvr/activate \
-    && R CMD INSTALL --no-multiarch --with-keep.source . \
+    && MAKEFLAGS="-j$(nproc)" R CMD INSTALL --no-multiarch --with-keep.source . \
     && Rscript -e 'library(MaMaMIA); cat("MaMaMIA", as.character(packageVersion("MaMaMIA")), "installed\n")' \
     && Rscript -e 'library(ggplot2); f <- tempfile(fileext = ".png"); png(f, width = 400, height = 300, type = "cairo"); print(ggplot(data.frame(x = 1:3, y = 1:3), aes(x, y)) + geom_point()); dev.off(); stopifnot(file.exists(f), file.info(f)$size > 0); cat("cairo text metrics OK\n")'
 
