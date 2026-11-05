@@ -1101,12 +1101,11 @@ chr_number <- function(chr_name) {
 #'   `species`, `assemblies` and `server` elements.
 #'
 #' @examples
-#' demo <- system.file("extdata", "bam-demo", package = "MaMaMIA")
+#' demo <- mamamia_path("data", "bam-demo")
 #' config <- readMaMaMIAConfig(file.path(demo, "assemblies.yml"))
 #' names(config$species)
 #' config$defaults$windows_per_chromosome
 #'
-#' @export
 readMaMaMIAConfig <- function(path) {
     if (length(path) != 1L || is.na(path) || !is.character(path) ||
         !nzchar(path)) {
@@ -1157,7 +1156,6 @@ readMaMaMIAConfig <- function(path) {
 #'
 #' @return The validated, normalized configuration, invisibly.
 #'
-#' @export
 validateMaMaMIAConfig <- function(config) {
     if (!is.list(config)) {
         .config_error("`config` must be a list")
@@ -1279,7 +1277,6 @@ validateMaMaMIAConfig <- function(config) {
 #' @return A data frame with `key`, `label`, `description`, `n_donor`,
 #'   `n_recipient`, `n_pairs` and `n_gc_indexes`.
 #'
-#' @export
 listMaMaMIAAssemblies <- function(config) {
     if (is.character(config)) {
         config <- readMaMaMIAConfig(config)
@@ -1329,7 +1326,6 @@ listMaMaMIAAssemblies <- function(config) {
 #' @return A data frame with `key`, `label`, `description`, `components`,
 #'   `default_component`, `n_contigs` and `n_gc_indexes`.
 #'
-#' @export
 listMaMaMIASpecies <- function(config) {
     if (is.character(config)) {
         config <- readMaMaMIAConfig(config)
@@ -1395,7 +1391,6 @@ listMaMaMIASpecies <- function(config) {
 #'   the pair, with a reason), `donor_species`, `recipient_species`,
 #'   `donor_components` and `recipient_components`.
 #'
-#' @export
 resolveSpeciesAssembly <- function(config, donor, recipient,
                                    donor_components = NULL,
                                    recipient_components = NULL,

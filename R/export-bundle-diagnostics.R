@@ -1040,7 +1040,7 @@ bam_bundle_run_files <- function(result, bundle, sample) {
             "config_hash", "calibration_version"
         ),
         version = c(
-            bam_bundle_text(provenance$package_version),
+            bam_bundle_text(provenance$app_version),
             bam_bundle_text(provenance$r_version),
             get_dependency("Rhtslib"),
             get_dependency("GenomicRanges"),
@@ -1268,8 +1268,8 @@ bam_bundle_manifest <- function(bundle, sample, generated, version,
         bundle = basename(bundle),
         sample = sample,
         generated = format(generated, "%Y-%m-%dT%H:%M:%S%z"),
-        package = "MaMaMIA",
-        package_version = version,
+        app = "MaMaMIA",
+        app_version = version,
         files = data.frame(
             path = relative,
             bytes = as.numeric(info$size),

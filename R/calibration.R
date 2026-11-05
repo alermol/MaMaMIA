@@ -123,7 +123,6 @@
 #'
 #' @return A list with `calibration` (`CalibrationTable`) and `calls` (the
 #'   input plus `length_bin`, `threshold` and `pass`).
-#' @export
 calibrateSegments <- function(
     calls,
     controls = NULL,

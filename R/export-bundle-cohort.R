@@ -380,7 +380,7 @@ bam_bundle_cohort_readme <- function(samples, folders, calls,
         "",
         paste0("Samples: ", paste(samples, collapse = ", ")),
         paste0("Generated: ", timestamp),
-        paste0("Package: MaMaMIA ", version),
+        paste0("Version: MaMaMIA ", version),
         paste0(
             "Calls: ", n, " total, ", passing,
             " passing calibration, ", confident_n, " confident"

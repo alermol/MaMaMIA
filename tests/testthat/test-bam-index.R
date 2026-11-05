@@ -26,7 +26,7 @@ test_that("ensureBamIndex() builds a CSI index and countReads() reads it", {
     expect_identical(index, paste0(bam, ".csi"))
     expect_true(file.exists(index))
     expect_gt(file.info(index)$size, 0)
-    expect_true(MaMaMIA:::.bam_index_magic(index))
+    expect_true(.bam_index_magic(index))
     expect_identical(count_tiny_bam(bam), c(8L, 5L))
 })
 
@@ -57,11 +57,11 @@ test_that("ensureBamIndex() replaces corrupt or empty CSI files", {
 
     writeBin(charToRaw("not a csi"), index)
     expect_identical(ensureBamIndex(bam), index)
-    expect_true(MaMaMIA:::.bam_index_magic(index))
+    expect_true(.bam_index_magic(index))
 
     file.create(index)
     expect_identical(ensureBamIndex(bam), index)
-    expect_true(MaMaMIA:::.bam_index_magic(index))
+    expect_true(.bam_index_magic(index))
     expect_identical(count_tiny_bam(bam), c(8L, 5L))
 })
 
@@ -122,7 +122,7 @@ test_that("ensureBamIndex() ignores a BAI sibling and only returns CSI", {
     index <- ensureBamIndex(bam)
     expect_identical(index, paste0(bam, ".csi"))
     expect_true(file.exists(bai))
-    expect_true(MaMaMIA:::.bam_index_magic(index))
+    expect_true(.bam_index_magic(index))
 })
 
 test_that("ensureBamIndex() validates min_shift and threads", {
@@ -156,7 +156,7 @@ test_that("ensureBamIndex() builds a CSI for the real long-contig BAM", {
     staged <- stageBam(bam, session_dir)
     index <- ensureBamIndex(staged)
     expect_true(file.exists(index))
-    expect_true(MaMaMIA:::.bam_index_magic(index))
+    expect_true(.bam_index_magic(index))
 
     header <- bamHeaderInfo(staged)
     contig <- "CP155614.1"

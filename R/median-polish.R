@@ -14,7 +14,6 @@
 #'
 #' @return A list with `residuals` (the same shape as `x`), `row` (window
 #'   effects), `column` (sample effects), `mu`, `iterations` and `converged`.
-#' @export
 medianPolish <- function(x, max_iter = 30L, tol = 1e-6, na.rm = TRUE) {
     if (!is.matrix(x) || !is.numeric(x)) {
         stop("`x` must be a numeric matrix", call. = FALSE)

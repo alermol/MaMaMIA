@@ -9,14 +9,11 @@
 
 #' @noRd
 bam_example_dir <- function() {
-    dir <- system.file("extdata", "example", package = "MaMaMIA")
+    dir <- mamamia_path("data", "example")
     if (!nzchar(dir) || !dir.exists(dir)) {
-        candidate <- file.path("inst", "extdata", "example")
-        if (dir.exists(candidate)) {
-            dir <- normalizePath(candidate, winslash = "/", mustWork = TRUE)
-        }
+        return("")
     }
-    dir
+    normalizePath(dir, winslash = "/", mustWork = TRUE)
 }
 
 #' @noRd
@@ -82,6 +79,20 @@ bam_example_available <- function() {
             result$assembly <- rewrite_assembly(result$assembly)
             provenance <- result$provenance
             if (is.list(provenance)) {
+                ## Results written before the app-only layout used
+                ## `package`/`package_version`.
+                if (is.null(provenance$app)) {
+                    provenance$app <- "MaMaMIA"
+                }
+                if (is.null(provenance$app_version)) {
+                    provenance$app_version <- if (
+                        !is.null(provenance$package_version)
+                    ) {
+                        provenance$package_version
+                    } else {
+                        mamamia_version()
+                    }
+                }
                 provenance$bams <- rewrite_bam(provenance$bams)
                 if ("config_path" %in% names(provenance)) {
                     provenance$config_path <- "example/assemblies.yml"
@@ -108,8 +119,7 @@ bam_example_data <- function() {
         .mamamia_error(
             "MaMaMIAConfigError",
             paste(
-                "The bundled example data is missing;",
-                "reinstall MaMaMIA with inst/extdata/example"
+                "The bundled example data is missing from data/example"
             )
         )
     }
@@ -129,8 +139,7 @@ bam_example_config <- function() {
         .mamamia_error(
             "MaMaMIAConfigError",
             paste(
-                "The bundled example registry is missing;",
-                "reinstall MaMaMIA with inst/extdata/example"
+                "The bundled example registry is missing from data/example"
             )
         )
     }

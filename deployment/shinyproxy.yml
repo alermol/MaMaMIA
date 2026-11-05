@@ -14,16 +14,17 @@
 # the image, and survives atomic replacement of assemblies.yml.
 #
 # See https://github.com/alermol/MaMaMIA/wiki/Deployment for the complete
-# runbook.
+# runbook. ShinyProxy serves the app directly on port 10904; no reverse proxy is
+# part of this deployment.
 
 proxy:
   title: MaMaMIA
   landing-page: /
-  port: 8080
+  port: 10904
 
-  # Put authenticating reverse proxy (or ShinyProxy LDAP/OIDC/simple auth) in
-  # front of this listener before exposing it outside the host.
-  bind-address: 127.0.0.1
+  # ShinyProxy is the public listener. Enable its LDAP/OIDC/simple
+  # authentication before exposing it outside the host.
+  bind-address: 0.0.0.0
   authentication: none
 
   # The analysis blocks the R session, so keep the container alive well past
@@ -68,10 +69,9 @@ proxy:
       max-instances: 1
       max-total-instances: 2
 
-# Uploads are proxied to Shiny and bounded by shiny.maxRequestSize in
-# deployment/start.R. Undertow's own POST limit must be lifted as well.
+# Uploads are bounded by MAMAMIA_MAX_REQUEST_SIZE in app.R. Undertow's own POST
+# limit must be lifted as well.
 server:
-  forward-headers-strategy: native
   servlet:
     session:
       timeout: 43200

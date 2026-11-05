@@ -124,7 +124,6 @@
 #' @param windows Optional `AnalysisWindows` when `x` is a Calls data frame.
 #'
 #' @return The output path, invisibly.
-#' @export
 .bedpe_table <- function(x, samples = NULL, selected = NULL,
                          pass_only = TRUE, windows = NULL) {
     if (inherits(x, "BamAnalysisResult")) {

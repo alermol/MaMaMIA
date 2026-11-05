@@ -1,5 +1,5 @@
 #!/usr/bin/env Rscript
-## Regenerate inst/extdata/example/example.rds and its GC index.
+## Regenerate data/example/example.rds and its GC index.
 ##
 ## The bundled example is a pre-computed BamAnalysisResult replayed by the
 ## Shiny app. Seven chromosome pairs of different lengths demonstrate every
@@ -44,9 +44,19 @@ if (!nzchar(gcrank_build) || !file.exists(gcrank_build)) {
     )
 }
 
-suppressPackageStartupMessages(library(MaMaMIA))
-root <- normalizePath(file.path(getwd()), winslash = "/")
-example_dir <- file.path(root, "inst", "extdata", "example")
+script_arg <- grep("^--file=", commandArgs(FALSE), value = TRUE)
+script_dir <- if (length(script_arg) > 0L) {
+    dirname(normalizePath(
+        sub("^--file=", "", script_arg[[1L]]),
+        winslash = "/", mustWork = TRUE
+    ))
+} else {
+    getwd()
+}
+root <- normalizePath(file.path(script_dir, ".."), winslash = "/", mustWork = TRUE)
+source(file.path(root, "R", "load.R"), local = FALSE)
+mamamia_load(root)
+example_dir <- file.path(root, "data", "example")
 
 chromosome_lengths <- c(
     160000L, 220000L, 180000L, 260000L, 200000L, 240000L, 180000L,

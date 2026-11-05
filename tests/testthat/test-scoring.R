@@ -106,10 +106,10 @@ test_that("combined metric stays in lambda space and produces finite scores", {
     expect_gt(mean(scored$score[
         scored$group == "1" & scored$iid >= 20 & scored$iid <= 40
     ]), 0)
-    lambda <- MaMaMIA:::.scoring_lambda(metrics, "combined")
+    lambda <- .scoring_lambda(metrics, "combined")
     expected <- sqrt(
-        (metrics$lambda_breadth + MaMaMIA:::.scoring_eps) *
-            (metrics$lambda_count + MaMaMIA:::.scoring_eps)
+        (metrics$lambda_breadth + .scoring_eps) *
+            (metrics$lambda_count + .scoring_eps)
     )
     expect_equal(lambda, expected)
 })

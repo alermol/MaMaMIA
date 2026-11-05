@@ -1,5 +1,23 @@
 ## T2.4: route windows to gcrank indexes and build the complete GC table.
 
+## Replace the global gcrankGc() binding for the duration of one test. The
+## source loader keeps application functions in the global environment, so a
+## package-namespace mock would not reach them.
+local_gcrank_mock <- function(fn) {
+    env <- globalenv()
+    had <- exists("gcrankGc", envir = env, inherits = FALSE)
+    old <- if (had) get("gcrankGc", envir = env, inherits = FALSE) else NULL
+    assign("gcrankGc", fn, envir = env)
+    withr::defer({
+        if (had) {
+            assign("gcrankGc", old, envir = env)
+        } else if (exists("gcrankGc", envir = env, inherits = FALSE)) {
+            rm(list = "gcrankGc", envir = env)
+        }
+    }, envir = parent.frame())
+    invisible(fn)
+}
+
 two_index_assembly <- function() {
     list(
         key = "two-index",
@@ -28,7 +46,7 @@ test_that("extractWindowGc() fills a complete GC table in window order", {
         tiny_assembly(config), tiny_contigs(), 100L
     )
 
-    gc <- MaMaMIA:::extractWindowGc(windows, tiny_assembly(config))
+    gc <- extractWindowGc(windows, tiny_assembly(config))
 
     expect_named(gc, c("chr_id", "start", "stop", "gc"))
     expect_identical(nrow(gc), 200L)
@@ -70,7 +88,7 @@ test_that("extractWindowGc() handles a real two-index assembly", {
         stringsAsFactors = FALSE
     )
 
-    gc <- MaMaMIA:::extractWindowGc(list(table = table), assembly)
+    gc <- extractWindowGc(list(table = table), assembly)
     expect_equal(gc$gc, c(0.6, 0.4, 0.6, 0.4), tolerance = 1e-6)
 })
 
@@ -85,19 +103,16 @@ test_that("extractWindowGc() calls gcrank once per index", {
     calls <- new.env(parent = emptyenv())
     calls$args <- list()
 
-    testthat::local_mocked_bindings(
-        gcrankGc = function(index_dir, contig, start, end, ...) {
-            calls$args[[length(calls$args) + 1L]] <- list(
-                index = index_dir, contig = contig,
-                start = start, end = end
-            )
-            value <- if (identical(index_dir, "idx-recipient")) 0.25 else 0.75
-            rep(value, length(contig))
-        },
-        .package = "MaMaMIA"
-    )
+    local_gcrank_mock(function(index_dir, contig, start, end, ...) {
+        calls$args[[length(calls$args) + 1L]] <- list(
+            index = index_dir, contig = contig,
+            start = start, end = end
+        )
+        value <- if (identical(index_dir, "idx-recipient")) 0.25 else 0.75
+        rep(value, length(contig))
+    })
 
-    gc <- MaMaMIA:::extractWindowGc(list(table = table), assembly)
+    gc <- extractWindowGc(list(table = table), assembly)
 
     expect_identical(gc$gc, c(0.25, 0.75, 0.25, 0.75))
     expect_identical(gc$start, c(0L, 0L, 1000L, 1000L))
@@ -123,7 +138,7 @@ test_that("extractWindowGc() rejects duplicate target contigs", {
     )
 
     expect_error(
-        MaMaMIA:::extractWindowGc(list(table = table), assembly),
+        extractWindowGc(list(table = table), assembly),
         "more than one role",
         class = "MaMaMIAWindowError"
     )
@@ -138,7 +153,7 @@ test_that("extractWindowGc() requires an index for every contig", {
     )
 
     expect_error(
-        MaMaMIA:::extractWindowGc(list(table = table), assembly),
+        extractWindowGc(list(table = table), assembly),
         "no gc_index for contig 'd1'",
         class = "MaMaMIAGcrankError"
     )
@@ -154,35 +169,35 @@ test_that("extractWindowGc() validates window coordinates", {
     }
 
     expect_error(
-        MaMaMIA:::extractWindowGc(
+        extractWindowGc(
             make_windows("unknown", 0, 100), assembly
         ),
         "no target contig 'unknown'",
         class = "MaMaMIAWindowError"
     )
     expect_error(
-        MaMaMIA:::extractWindowGc(
+        extractWindowGc(
             make_windows("r1", -1, 100), assembly
         ),
         "start must be non-negative",
         class = "MaMaMIAWindowError"
     )
     expect_error(
-        MaMaMIA:::extractWindowGc(
+        extractWindowGc(
             make_windows("r1", 100, 100), assembly
         ),
         "smaller than stop",
         class = "MaMaMIAWindowError"
     )
     expect_error(
-        MaMaMIA:::extractWindowGc(
+        extractWindowGc(
             make_windows("r1", 0, 20001), assembly
         ),
         "exceeds the contig length",
         class = "MaMaMIAWindowError"
     )
     expect_error(
-        MaMaMIA:::extractWindowGc(
+        extractWindowGc(
             make_windows("r1", 0.5, 100), assembly
         ),
         "whole numbers",
@@ -196,39 +211,30 @@ test_that("extractWindowGc() rejects missing and out-of-range GC", {
         chr_id = "r1", start = 0, stop = 1000, stringsAsFactors = FALSE
     ))
 
-    testthat::local_mocked_bindings(
-        gcrankGc = function(...) NA_real_,
-        .package = "MaMaMIA"
-    )
+    local_gcrank_mock(function(...) NA_real_)
     expect_error(
-        MaMaMIA:::extractWindowGc(table, assembly),
+        extractWindowGc(table, assembly),
         "GC content is missing",
         class = "MaMaMIAGcrankError"
     )
 
-    testthat::local_mocked_bindings(
-        gcrankGc = function(...) 1.5,
-        .package = "MaMaMIA"
-    )
+    local_gcrank_mock(function(...) 1.5)
     expect_error(
-        MaMaMIA:::extractWindowGc(table, assembly),
+        extractWindowGc(table, assembly),
         "outside \\[0, 1\\]",
         class = "MaMaMIAGcrankError"
     )
 
-    testthat::local_mocked_bindings(
-        gcrankGc = function(...) stop("backend failure"),
-        .package = "MaMaMIA"
-    )
+    local_gcrank_mock(function(...) stop("backend failure"))
     expect_error(
-        MaMaMIA:::extractWindowGc(table, assembly),
+        extractWindowGc(table, assembly),
         "GC extraction failed for index 'idx-recipient': backend failure",
         class = "MaMaMIAGcrankError"
     )
 })
 
 test_that("extractWindowGc() handles empty windows", {
-    gc <- MaMaMIA:::extractWindowGc(
+    gc <- extractWindowGc(
         list(table = data.frame(
             chr_id = character(0), start = numeric(0), stop = numeric(0),
             stringsAsFactors = FALSE
@@ -315,7 +321,7 @@ test_that("real GC windows match the reference BED after rounding", {
     ## exact intervals. makeAnalysisWindows() distributes the remainder
     ## (T2.2), which differs from the reference width after the first window
     ## on most contigs.
-    gc <- MaMaMIA:::extractWindowGc(
+    gc <- extractWindowGc(
         list(table = reference[, c("chr_id", "start", "stop")]),
         assembly
     )

@@ -109,7 +109,6 @@
 #'   `iid`, `count`, `covered` and `mapq_high`), `counts`, `covered` and
 #'   `mapq_high` matrices (samples x windows), `read_length` and
 #'   `n_per_chromosome`.
-#' @export
 countWindowMetrics <- function(bam_path, windows, samples, read_groups,
                                mapq = 20L, exclude_flags = 1796L,
                                read_length = 0L, count_deletions = TRUE) {
@@ -268,7 +267,6 @@ countWindowMetrics <- function(bam_path, windows, samples, read_groups,
 #'   one.
 #'
 #' @return A `WindowMetrics` data frame with one row per sample and window.
-#' @export
 buildWindowMetrics <- function(measured, windows, gc, read_length = NULL) {
     validated <- .validate_metric_windows(windows)
     table <- validated$table

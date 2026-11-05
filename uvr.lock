@@ -1,4 +1,4 @@
-manifest_fingerprint = "sha256:e0f15ee78d7c43615ef039b137bd9fcf919672d26379550c5c33c5eccede37ff"
+manifest_fingerprint = "sha256:98d8152830829ea89e47a7d11a4f612ff4fe4ad309e89a9dfa0936fa26e4c7a7"
 
 [r]
 version = "4.6.1"
@@ -37,7 +37,6 @@ requires = [
     "magrittr",
     "promises",
 ]
-dev = true
 
 [[package]]
 name = "GenomicRanges"
@@ -135,16 +134,6 @@ source = "cran"
 raw_version = "0.1-6"
 url = "https://cran.r-project.org/src/contrib/base64enc_0.1-6.tar.gz"
 checksum = "md5:2c4ecc969451a673ee05eb2e725fcbaf"
-dev = true
-
-[[package]]
-name = "brew"
-version = "1.0.10"
-source = "cran"
-raw_version = "1.0-10"
-url = "https://cran.r-project.org/src/contrib/brew_1.0-10.tar.gz"
-checksum = "md5:c1ebbea7284161a8884ffe9ae5ca451f"
-dev = true
 
 [[package]]
 name = "brio"
@@ -175,7 +164,6 @@ requires = [
     "rlang",
     "sass",
 ]
-dev = true
 
 [[package]]
 name = "cachem"
@@ -188,7 +176,6 @@ requires = [
     "rlang",
     "fastmap",
 ]
-dev = true
 
 [[package]]
 name = "callr"
@@ -219,7 +206,6 @@ source = "cran"
 raw_version = "2.0.0"
 url = "https://cran.r-project.org/src/contrib/commonmark_2.0.0.tar.gz"
 checksum = "md5:ac18da7841af62e8c457dd4872cce1ba"
-dev = true
 
 [[package]]
 name = "cpp11"
@@ -251,7 +237,6 @@ requires = [
     "lazyeval",
     "R6",
 ]
-dev = true
 
 [[package]]
 name = "desc"
@@ -283,7 +268,6 @@ source = "cran"
 raw_version = "0.6.39"
 url = "https://cran.r-project.org/src/contrib/digest_0.6.39.tar.gz"
 checksum = "md5:2b7268922b0f86dbc8064ff8e3a1ca1b"
-dev = true
 
 [[package]]
 name = "evaluate"
@@ -292,7 +276,6 @@ source = "cran"
 raw_version = "1.0.5"
 url = "https://cran.r-project.org/src/contrib/evaluate_1.0.5.tar.gz"
 checksum = "md5:64d96fee3845fd96d1eafaba37adf00e"
-dev = true
 
 [[package]]
 name = "farver"
@@ -309,7 +292,6 @@ source = "cran"
 raw_version = "1.2.0"
 url = "https://cran.r-project.org/src/contrib/fastmap_1.2.0.tar.gz"
 checksum = "md5:f53773acd6ba9a86413e8c2dc6441544"
-dev = true
 
 [[package]]
 name = "fontawesome"
@@ -322,7 +304,6 @@ requires = [
     "rlang",
     "htmltools",
 ]
-dev = true
 
 [[package]]
 name = "fs"
@@ -331,7 +312,6 @@ source = "cran"
 raw_version = "2.1.0"
 url = "https://cran.r-project.org/src/contrib/fs_2.1.0.tar.gz"
 checksum = "md5:6011a5e758c21acc297ed8bbcf97e7d9"
-dev = true
 
 [[package]]
 name = "generics"
@@ -380,7 +360,6 @@ requires = [
     "rlang",
     "lifecycle",
 ]
-dev = true
 
 [[package]]
 name = "gtable"
@@ -404,7 +383,6 @@ raw_version = "0.12"
 url = "https://cran.r-project.org/src/contrib/highr_0.12.tar.gz"
 checksum = "md5:006fcfa8e16c72ecd1adffdf0cf87e43"
 requires = ["xfun"]
-dev = true
 
 [[package]]
 name = "htmltools"
@@ -419,7 +397,6 @@ requires = [
     "fastmap",
     "rlang",
 ]
-dev = true
 
 [[package]]
 name = "htmlwidgets"
@@ -435,7 +412,6 @@ requires = [
     "rmarkdown",
     "yaml",
 ]
-dev = true
 
 [[package]]
 name = "httpuv"
@@ -452,7 +428,6 @@ requires = [
     "later",
     "Rcpp",
 ]
-dev = true
 
 [[package]]
 name = "isoband"
@@ -475,7 +450,6 @@ raw_version = "0.1.4"
 url = "https://cran.r-project.org/src/contrib/jquerylib_0.1.4.tar.gz"
 checksum = "md5:3607a34ac45ff420bc325d84eab4b0cb"
 requires = ["htmltools"]
-dev = true
 
 [[package]]
 name = "jsonlite"
@@ -498,7 +472,6 @@ requires = [
     "xfun",
     "yaml",
 ]
-dev = true
 
 [[package]]
 name = "labeling"
@@ -520,7 +493,6 @@ requires = [
     "rlang",
     "Rcpp",
 ]
-dev = true
 
 [[package]]
 name = "lazyeval"
@@ -530,7 +502,6 @@ raw_version = "0.2.3"
 url = "https://cran.r-project.org/src/contrib/lazyeval_0.2.3.tar.gz"
 checksum = "md5:4389f7decad5f4418c3288c7f6101adb"
 requires = ["rlang"]
-dev = true
 
 [[package]]
 name = "lifecycle"
@@ -551,7 +522,6 @@ source = "cran"
 raw_version = "2.0.5"
 url = "https://cran.r-project.org/src/contrib/magrittr_2.0.5.tar.gz"
 checksum = "md5:4ee23a88bc1589527696d777d7e68dfc"
-dev = true
 
 [[package]]
 name = "memoise"
@@ -564,7 +534,6 @@ requires = [
     "rlang",
     "cachem",
 ]
-dev = true
 
 [[package]]
 name = "mime"
@@ -573,7 +542,6 @@ source = "cran"
 raw_version = "0.13"
 url = "https://cran.r-project.org/src/contrib/mime_0.13.tar.gz"
 checksum = "md5:45c3868fb2f5a7f3817d54d1c75799f9"
-dev = true
 
 [[package]]
 name = "otel"
@@ -582,7 +550,6 @@ source = "cran"
 raw_version = "0.2.0"
 url = "https://cran.r-project.org/src/contrib/otel_0.2.0.tar.gz"
 checksum = "md5:cecd0f434a6327dcf5ca0bc2da494d06"
-dev = true
 
 [[package]]
 name = "pkgbuild"
@@ -658,7 +625,6 @@ requires = [
     "R6",
     "rlang",
 ]
-dev = true
 
 [[package]]
 name = "ps"
@@ -676,16 +642,6 @@ source = "cran"
 raw_version = "0.3.4"
 url = "https://cran.r-project.org/src/contrib/rappdirs_0.3.4.tar.gz"
 checksum = "md5:a990a3ddcfa9eb422cd406f78084fbd8"
-dev = true
-
-[[package]]
-name = "rdtools"
-version = "0.1.0"
-source = "cran"
-raw_version = "0.1.0"
-url = "https://cran.r-project.org/src/contrib/rdtools_0.1.0.tar.gz"
-checksum = "md5:15243eafd24d97371d15f573530d9a12"
-dev = true
 
 [[package]]
 name = "rlang"
@@ -714,31 +670,6 @@ requires = [
     "xfun",
     "yaml",
 ]
-dev = true
-
-[[package]]
-name = "roxygen2"
-version = "8.1.1"
-source = "cran"
-raw_version = "8.1.1"
-url = "https://cran.r-project.org/src/contrib/roxygen2_8.1.1.tar.gz"
-checksum = "md5:9c8666c36cdff91561fa7176dae67c98"
-requires = [
-    "brew",
-    "cli",
-    "commonmark",
-    "desc",
-    "knitr",
-    "lifecycle",
-    "pkgload",
-    "R6",
-    "rdtools",
-    "rlang",
-    "withr",
-    "xml2",
-    "cpp11",
-]
-dev = true
 
 [[package]]
 name = "rprojroot"
@@ -763,7 +694,6 @@ requires = [
     "R6",
     "rappdirs",
 ]
-dev = true
 
 [[package]]
 name = "scales"
@@ -813,7 +743,6 @@ requires = [
     "withr",
     "xtable",
 ]
-dev = true
 
 [[package]]
 name = "shinyWidgets"
@@ -830,7 +759,6 @@ requires = [
     "jsonlite",
     "rlang",
 ]
-dev = true
 
 [[package]]
 name = "sourcetools"
@@ -839,7 +767,6 @@ source = "cran"
 raw_version = "0.1.7-2"
 url = "https://cran.r-project.org/src/contrib/sourcetools_0.1.7-2.tar.gz"
 checksum = "md5:b30ed63295fc9659f7526914d6687e0e"
-dev = true
 
 [[package]]
 name = "testthat"
@@ -876,7 +803,6 @@ raw_version = "0.61"
 url = "https://cran.r-project.org/src/contrib/tinytex_0.61.tar.gz"
 checksum = "md5:67e114649aa529e1631baed939110e97"
 requires = ["xfun"]
-dev = true
 
 [[package]]
 name = "vctrs"
@@ -930,20 +856,6 @@ source = "cran"
 raw_version = "0.62"
 url = "https://cran.r-project.org/src/contrib/xfun_0.62.tar.gz"
 checksum = "md5:93bc01d797fcdf1e4014998e4c248bd7"
-dev = true
-
-[[package]]
-name = "xml2"
-version = "1.6.0"
-source = "cran"
-raw_version = "1.6.0"
-url = "https://cran.r-project.org/src/contrib/xml2_1.6.0.tar.gz"
-checksum = "md5:4e005569a935f91400a06533cad641e8"
-requires = [
-    "cli",
-    "rlang",
-]
-dev = true
 
 [[package]]
 name = "xtable"
@@ -952,7 +864,6 @@ source = "cran"
 raw_version = "1.8-8"
 url = "https://cran.r-project.org/src/contrib/xtable_1.8-8.tar.gz"
 checksum = "md5:4d07e6f65181f7227fac2bd3e6122a0b"
-dev = true
 
 [[package]]
 name = "yaml"

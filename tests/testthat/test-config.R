@@ -348,10 +348,9 @@ test_that("the server accepts one BAM by default", {
 })
 
 test_that("the shipped registry example is role-free", {
-    path <- system.file("config", "assemblies.example.yml",
-        package = "MaMaMIA")
+    path <- mamamia_path("config", "assemblies.example.yml")
     skip_if_not(nzchar(path) && file.exists(path),
-        "the example registry is not installed")
+        "the example registry is not available")
     example <- yaml::read_yaml(path, handlers = list(int = as.numeric))
     expect_identical(as.integer(example$version), 2L)
     expect_identical(as.integer(example$server$max_bams), 1L)

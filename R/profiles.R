@@ -14,7 +14,6 @@
 #' @return A named list of profile contracts. Each contract has a `label`, a
 #'   `short_description`, a `description` and a `parameters` list suitable for
 #'   [analyzeBamInput()].
-#' @export
 mamamia_analysis_profiles <- function() {
     balanced <- list(
         windows_per_chromosome = 1000L,
@@ -94,7 +93,6 @@ mamamia_analysis_profiles <- function() {
 #'
 #' @param name Profile name, or `NULL`/`"custom"` for the existing controls.
 #' @return A profile contract, or `NULL` for a custom run.
-#' @export
 mamamia_analysis_profile <- function(name = NULL) {
     if (is.null(name) || length(name) == 0L) {
         return(NULL)

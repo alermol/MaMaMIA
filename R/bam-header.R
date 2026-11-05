@@ -268,12 +268,11 @@
 #'   and `n_targets`.
 #'
 #' @examples
-#' demo <- system.file("extdata", "bam-demo", package = "MaMaMIA")
+#' demo <- mamamia_path("data", "bam-demo")
 #' header <- bamHeaderInfo(file.path(demo, "demo.bam"))
 #' header$samples
 #' header$targets
 #'
-#' @export
 bamHeaderInfo <- function(path) {
     path <- .validate_bam_path(path)
 

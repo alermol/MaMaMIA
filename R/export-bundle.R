@@ -43,7 +43,7 @@ bam_full_karyotype_payload <- function(payload) {
 #'
 #' The CSV and BEDPE files in the bundle use readable column names. The
 #' dictionary is also rendered into README.txt so every field can be looked up
-#' without the package source.
+#' without the application source.
 #' @noRd
 bam_bundle_column_dictionary <- function() {
     data.frame(
@@ -401,13 +401,10 @@ bam_cohort_bundle_filename <- function() {
     bam_bundle_filename()
 }
 
-#' Installed MaMaMIA version for bundle metadata
+#' MaMaMIA version for bundle metadata
 #' @noRd
 bam_bundle_version <- function() {
-    tryCatch(
-        as.character(utils::packageVersion("MaMaMIA")),
-        error = function(e) ""
-    )
+    tryCatch(mamamia_version(), error = function(e) "")
 }
 
 #' Write one karyotype SVG into a bundle
@@ -430,7 +427,7 @@ bam_bundle_write_karyotype <- function(payload, path, sample, label,
     invisible(path)
 }
 
-#' Merge payload palette with the package defaults
+#' Merge payload palette with the application defaults
 #' @noRd
 bam_bundle_palette <- function(payload) {
     palette <- karyotype_palette()
@@ -981,7 +978,7 @@ bam_bundle_readme <- function(sample, calls, generated, version,
         "",
         paste0("Sample: ", sample),
         paste0("Generated: ", timestamp),
-        paste0("Package: MaMaMIA ", version),
+        paste0("Version: MaMaMIA ", version),
         paste0(
             "Calls: ", n, " total, ", passing,
             " passing calibration, ", confident_n, " confident"
@@ -1156,7 +1153,7 @@ bam_bundle_readme <- function(sample, calls, generated, version,
 #' @param generated Timestamp used in the report.
 #'
 #' @return A list with the descriptive call tables, BEDPE columns,
-#'   diagnostics and package version.
+#'   diagnostics and application version.
 #' @noRd
 bam_bundle_write_sample_files <- function(result, bundle, sample,
                                           current_payload = NULL,

@@ -237,7 +237,7 @@
 #'   `missing`, `length_mismatches`, `score` and a human-readable `summary`.
 #'
 #' @examples
-#' demo <- system.file("extdata", "bam-demo", package = "MaMaMIA")
+#' demo <- mamamia_path("data", "bam-demo")
 #' config <- readMaMaMIAConfig(file.path(demo, "assemblies.yml"))
 #' pair <- resolveSpeciesAssembly(
 #'     config, donor = "secale_like", recipient = "triticum_like"
@@ -246,7 +246,6 @@
 #' match <- matchAssembly(header, pair$config)
 #' match$assembly
 #'
-#' @export
 matchAssembly <- function(header, config, assembly = NULL) {
     if (is.character(header)) {
         header <- bamHeaderInfo(header)

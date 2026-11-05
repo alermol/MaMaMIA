@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="inst/www/mamamia-logo.svg" alt="MaMaMIA logo" width="96" height="96">
+  <img src="www/mamamia-logo.svg" alt="MaMaMIA logo" width="96" height="96">
 </p>
 
 <h1 align="center">MaMaMIA</h1>
@@ -9,12 +9,16 @@
   Version 0.1.0 · GPL (>= 3)
 </p>
 
-MaMaMIA is an interactive dashboard for detecting interspecific introgressions
-from Genotyping-by-Sequencing (GBS) coverage. Upload a coordinate-sorted BAM,
-choose a donor and recipient species, run the analysis, and explore the results
-as an interactive karyotype, sortable call table, and downloadable report
-bundle. The method is ploidy-agnostic and supports any number of donor and
-recipient components.
+MaMaMIA is a self-hosted Shiny web service for detecting interspecific
+introgressions from Genotyping-by-Sequencing (GBS) coverage. Upload a
+coordinate-sorted BAM, choose a donor and recipient species, run the analysis,
+and explore the results as an interactive karyotype, sortable call table, and
+downloadable report bundle. The method is ploidy-agnostic and supports any
+number of donor and recipient components.
+
+The supported deployment is the Docker image under ShinyProxy, or the same
+image run directly. MaMaMIA is not distributed as an R package and has no
+separate programmatic API.
 
 ## Quick start
 
@@ -35,7 +39,7 @@ in the [MaMaMIA wiki](https://github.com/alermol/MaMaMIA/wiki).
 
 | Guide | Contents |
 | --- | --- |
-| [Getting Started](https://github.com/alermol/MaMaMIA/wiki/Getting-Started) | First run, Docker, and source setup |
+| [Getting Started](https://github.com/alermol/MaMaMIA/wiki/Getting-Started) | First run, Docker, and source checkout |
 | [Dashboard Guide](https://github.com/alermol/MaMaMIA/wiki/Dashboard-Guide) | Every control, filter, tab, and download |
 | [Inputs and Assemblies](https://github.com/alermol/MaMaMIA/wiki/Inputs-and-Assemblies) | BAM requirements, bamhusk, registry, components, and pairing |
 | [Analysis Profiles](https://github.com/alermol/MaMaMIA/wiki/Analysis-Profiles) | Balanced, Sensitive, CNV robust, Complex, and Custom |
@@ -43,7 +47,7 @@ in the [MaMaMIA wiki](https://github.com/alermol/MaMaMIA/wiki).
 | [Results and Calls](https://github.com/alermol/MaMaMIA/wiki/Results-and-Calls) | Reading classes, status, placement, and dosage |
 | [Export Bundle](https://github.com/alermol/MaMaMIA/wiki/Export-Bundle) | Files, formats, QC, and reproducibility |
 | [Configuration Reference](https://github.com/alermol/MaMaMIA/wiki/Configuration-Reference) | Complete registry schema and defaults |
-| [Deployment](https://github.com/alermol/MaMaMIA/wiki/Deployment) | Docker, ShinyProxy, mounts, limits, and security |
+| [Deployment](https://github.com/alermol/MaMaMIA/wiki/Deployment) | Docker, ShinyProxy, direct port, mounts, and security |
 | [Troubleshooting](https://github.com/alermol/MaMaMIA/wiki/Troubleshooting) | Common failures and fixes |
 
 ## License

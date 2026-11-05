@@ -304,7 +304,6 @@
 #' @return The calls with `class`, `copy_state`, `total_evidence`,
 #'   `class_evidence`, `class_confidence`, `class_status`,
 #'   `component_status`, `mappability_status` and `confidence`.
-#' @export
 classifyCalls <- function(calls, controls = NULL, thresholds = NULL,
                           substitution_cutoff = -0.5,
                           addition_cutoff = 0.5, high = 1.0,

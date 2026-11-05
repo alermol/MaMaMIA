@@ -1468,7 +1468,6 @@ explorer_server <- function(id, result, sample = NULL) {
 #' @param launch.browser Logical passed to [shiny::runApp()].
 #'
 #' @return The return value of [shiny::runApp()].
-#' @export
 exploreIntrogressions <- function(result,
                                   host = "127.0.0.1", port = NULL,
                                   launch.browser = interactive()) {

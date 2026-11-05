@@ -1,27 +1,14 @@
-## T0.2: build system and dependency contract.
+## Build and dependency contract for the web service.
 
-package_root <- function() {
-    candidates <- c(
-        testthat::test_path("..", ".."),
-        getwd()
-    )
+app_root <- function() {
+    candidates <- c(testthat::test_path("..", ".."), getwd())
     for (candidate in candidates) {
-        if (file.exists(file.path(candidate, "DESCRIPTION"))) {
+        if (file.exists(file.path(candidate, "VERSION")) &&
+            file.exists(file.path(candidate, "R", "load.R"))) {
             return(normalizePath(candidate, winslash = "/", mustWork = TRUE))
         }
     }
-    testthat::skip("package root with DESCRIPTION not found")
-}
-
-read_dcf_field <- function(root, field) {
-    description <- read.dcf(file.path(root, "DESCRIPTION"))
-    if (!field %in% colnames(description) || is.na(description[1L, field])) {
-        return(character(0))
-    }
-    items <- strsplit(description[1L, field], ",", fixed = TRUE)[[1L]]
-    items <- trimws(items)
-    items <- sub("\\s*\\(.*$", "", items)
-    sort(unique(items[nzchar(items)]))
+    testthat::skip("application root not found")
 }
 
 read_uvr_sections <- function(root) {
@@ -51,21 +38,17 @@ read_uvr_sections <- function(root) {
     lapply(out, function(x) sort(unique(x)))
 }
 
-test_that("uvr.toml mirrors the DESCRIPTION dependency sets", {
-    root <- package_root()
-    dependencies <- read_uvr_sections(root)
-    runtime <- sort(unique(c(
-        read_dcf_field(root, "Imports"),
-        read_dcf_field(root, "LinkingTo")
-    )))
-    development <- read_dcf_field(root, "Suggests")
-
-    expect_setequal(dependencies$dependencies, runtime)
-    expect_setequal(dependencies$`dev-dependencies`, development)
+test_that("the recorded pipeline version matches VERSION", {
+    root <- app_root()
+    expect_identical(
+        .MaMaMIAPipelineVersion,
+        trimws(readLines(file.path(root, "VERSION"), n = 1L))
+    )
 })
 
-test_that("Bioconductor packages are declared as such in uvr.toml", {
-    root <- package_root()
+test_that("uvr.toml declares the Bioconductor and dashboard packages", {
+    root <- app_root()
+    dependencies <- read_uvr_sections(root)
     lines <- readLines(file.path(root, "uvr.toml"), warn = FALSE)
     bioc <- c("DNAcopy", "GenomicRanges", "IRanges", "Rhtslib")
     for (package in bioc) {
@@ -76,43 +59,35 @@ test_that("Bioconductor packages are declared as such in uvr.toml", {
         expect_length(line, 1L)
         expect_match(line, "bioc\\s*=\\s*true")
     }
+    expect_true(all(c(
+        "shiny", "bslib", "DT", "htmltools", "htmlwidgets",
+        "shinyWidgets", "gridlayout"
+    ) %in% dependencies$dependencies))
 })
 
-test_that("the package is compiled as C++23", {
-    root <- package_root()
-    expect_match(
-        read.dcf(file.path(root, "DESCRIPTION"))[1L, "SystemRequirements"],
-        "C\\+\\+23"
-    )
-    makevars <- readLines(file.path(root, "src", "Makevars"), warn = FALSE)
+test_that("the native bridge is compiled as C++23", {
+    root <- app_root()
+    makevars <- readLines(file.path(root, "src", "Makevars.in"), warn = FALSE)
     expect_true(any(grepl("^\\s*CXX_STD\\s*=\\s*CXX23\\s*$", makevars)))
     expect_true(any(grepl("\\bOBJECTS\\b", makevars)))
     expect_true(any(grepl("gcrank/src/", makevars)))
 })
 
-test_that("the recorded pipeline version matches DESCRIPTION", {
-    root <- package_root()
-    expect_identical(
-        MaMaMIA:::.MaMaMIAPipelineVersion,
-        unname(read.dcf(file.path(root, "DESCRIPTION"))[1L, "Version"])
-    )
-})
-
 test_that("the shared library loads and reports htslib", {
-    version <- MaMaMIA:::htslib_version_cpp()
+    version <- htslib_version_cpp()
     expect_type(version, "character")
     expect_length(version, 1L)
     expect_match(version, "^[0-9]+\\.[0-9]+")
 })
 
 test_that("gcrank is vendored with attribution and a pinned commit", {
-    root <- package_root()
+    root <- app_root()
     vendored <- c(
         file.path(root, "src", "gcrank", "include", "gcrank", "gc_rank.h"),
         file.path(root, "src", "gcrank", "src", "gc_rank.cpp"),
         file.path(root, "src", "gcrank", "LICENSE"),
         file.path(root, "src", "gcrank", "CHANGELOG.md"),
-        file.path(root, "inst", "COPYRIGHTS"),
+        file.path(root, "COPYRIGHTS"),
         file.path(root, "tools", "vendor-gcrank.txt")
     )
     expect_true(all(file.exists(vendored)))

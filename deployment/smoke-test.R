@@ -18,6 +18,11 @@ if (!file.exists(font_probe) || !isTRUE(file.info(font_probe)$size > 0)) {
 }
 unlink(font_probe)
 
+root <- Sys.getenv("MAMAMIA_ROOT", unset = getwd())
+root <- normalizePath(root, winslash = "/", mustWork = TRUE)
+source(file.path(root, "R", "load.R"), local = FALSE)
+mamamia_load(root)
+
 source_bam <- Sys.getenv("MAMAMIA_SMOKE_BAM", unset = "")
 bundled <- !nzchar(source_bam)
 if (nzchar(source_bam)) {
@@ -28,7 +33,7 @@ if (nzchar(source_bam)) {
             call. = FALSE
         )
     }
-    config <- MaMaMIA::readMaMaMIAConfig(config_path)
+    config <- readMaMaMIAConfig(config_path)
     analyze_config <- config
     assembly_key <- NULL
 
@@ -41,7 +46,7 @@ if (nzchar(source_bam)) {
         donor_key <- Sys.getenv(
             "MAMAMIA_SMOKE_DONOR", unset = names(config$species)[[2L]]
         )
-        resolved <- MaMaMIA::resolveSpeciesAssembly(
+        resolved <- resolveSpeciesAssembly(
             config, donor = donor_key, recipient = recipient_key
         )
         analyze_config <- resolved$config
@@ -49,7 +54,7 @@ if (nzchar(source_bam)) {
         cat("species pair:", assembly_key, "\n")
     }
 } else {
-    demo <- system.file("extdata", "bam-demo", package = "MaMaMIA")
+    demo <- mamamia_path("data", "bam-demo")
     if (!nzchar(demo) || !dir.exists(demo)) {
         stop(
             "The bundled bam-demo fixture is missing; ",
@@ -57,8 +62,8 @@ if (nzchar(source_bam)) {
             call. = FALSE
         )
     }
-    config <- MaMaMIA::readMaMaMIAConfig(file.path(demo, "assemblies.yml"))
-    resolved <- MaMaMIA::resolveSpeciesAssembly(
+    config <- readMaMaMIAConfig(file.path(demo, "assemblies.yml"))
+    resolved <- resolveSpeciesAssembly(
         config, donor = "secale_like", recipient = "triticum_like"
     )
     analyze_config <- resolved$config
@@ -97,7 +102,7 @@ if (bundled) {
     calibration <- NULL
 }
 
-result <- MaMaMIA::analyzeBamInput(
+result <- analyzeBamInput(
     staged_bam,
     analyze_config,
     assembly = assembly_key,

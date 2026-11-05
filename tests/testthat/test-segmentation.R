@@ -13,7 +13,7 @@ test_that("merging three segments keeps the window-weighted mean", {
         stringsAsFactors = FALSE
     )
     profile <- stats::setNames(rep(0, 30L), as.character(0:29))
-    merged <- MaMaMIA:::.segment_merge(
+    merged <- .segment_merge(
         calls, profile, merge_gap = 10L, merge_floor = -1, min_mb = 0
     )
     expect_equal(nrow(merged), 1L)

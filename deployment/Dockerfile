@@ -1,6 +1,6 @@
 # MaMaMIA production image.
 #
-# Build from the repository root so the image gets the package sources:
+# Build from the repository root so the image gets the application sources:
 #
 #   docker build -f deployment/Dockerfile -t mamamia:0.1.0 .
 #
@@ -12,7 +12,7 @@
 #     -f deployment/Dockerfile -t mamamia:0.1.0 .
 #
 # The image pins the uvr release, R and every R package (uvr.lock). It runs as
-# an unprivileged user and is meant to be started by ShinyProxy through
+# an unprivileged user and is started by ShinyProxy or directly through
 # `uvr run /app/deployment/start.R`.
 
 FROM debian:trixie-slim
@@ -33,8 +33,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
     LC_ALL=C.UTF-8
 
 # GCC 14 (Debian trixie) provides C++23. The development libraries are needed
-# for source builds of Rhtslib, Bioconductor packages and MaMaMIA itself;
-# pandoc supports the knitr/rmarkdown development dependencies in the lockfile.
+# for source builds of Rhtslib, Bioconductor packages and the MaMaMIA native
+# bridge.
 RUN apt-get update \
     && apt-get install -y --no-install-recommends \
         ca-certificates \
@@ -62,7 +62,6 @@ RUN apt-get update \
         libuv1 \
         libuv1-dev \
         cmake \
-        pandoc \
         libjpeg-dev \
         libpng-dev \
         libtiff-dev \
@@ -79,12 +78,13 @@ RUN curl -fsSL -o /tmp/uvr.tar.gz \
 
 # The runtime user owns the uvr-managed R, the package library and the caches.
 RUN useradd --create-home --shell /bin/bash --uid 1000 mamamia \
-    && mkdir -p /app /tmp/mamamia-cache /srv/mamamia \
+    && mkdir -p /app/tools /tmp/mamamia-cache /srv/mamamia \
     && chown -R mamamia:mamamia /app /tmp/mamamia-cache /srv/mamamia
 
 ENV HOME=/home/mamamia \
     OMP_NUM_THREADS=1 \
     R_USER_CACHE_DIR=/tmp/mamamia-cache \
+    MAMAMIA_ROOT=/app \
     MAMAMIA_CONFIG=/srv/mamamia/config/assemblies.yml
 
 WORKDIR /app
@@ -95,9 +95,8 @@ COPY --chown=mamamia:mamamia deployment/patches /tmp/mamamia-patches
 USER mamamia
 
 # Install the pinned R under the runtime user's home and resolve the full
-# lockfile (runtime and development dependencies; shiny/bslib/DT live in the
-# project's dev-dependencies). P3M binaries are used when available and the
-# GCC 14 toolchain covers the source fallbacks.
+# lockfile. P3M binaries are used when available and the GCC 14 toolchain
+# covers the source fallbacks.
 RUN if [ -n "${BIOC_MIRROR}" ]; then \
         sed -i "s#https://bioconductor.org/packages/#${BIOC_MIRROR}/#g" uvr.lock; \
     fi \
@@ -136,21 +135,23 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 USER mamamia
 
-COPY --chown=mamamia:mamamia DESCRIPTION NAMESPACE LICENSE.md README.md ./
-COPY --chown=mamamia:mamamia configure configure.win ./
+COPY --chown=mamamia:mamamia VERSION LICENSE.md COPYRIGHTS README.md app.R ./
 COPY --chown=mamamia:mamamia R ./R
 COPY --chown=mamamia:mamamia src ./src
-COPY --chown=mamamia:mamamia inst ./inst
-COPY --chown=mamamia:mamamia man ./man
+COPY --chown=mamamia:mamamia www ./www
+COPY --chown=mamamia:mamamia data ./data
+COPY --chown=mamamia:mamamia config ./config
 COPY --chown=mamamia:mamamia deployment ./deployment
+COPY --chown=mamamia:mamamia tools/build-native.R ./tools/build-native.R
 
-# Install MaMaMIA into the uvr library. The activation shim puts the
-# uvr-managed R on PATH and R_LIBS_USER on .uvr/library. MAKEFLAGS uses all
-# build-host CPUs for the package's C and C++ sources.
+# Compile the htslib/gcrank bridge and verify that the source loader, native
+# library and cairo/ggplot stack all work before the image is tagged. The
+# activation shim puts the uvr-managed R on PATH and R_LIBS_USER on
+# .uvr/library.
 RUN uvr activate --write-shim \
     && . .uvr/activate \
-    && MAKEFLAGS="-j$(nproc)" R CMD INSTALL --no-multiarch --with-keep.source . \
-    && Rscript -e 'library(MaMaMIA); cat("MaMaMIA", as.character(packageVersion("MaMaMIA")), "installed\n")' \
+    && Rscript tools/build-native.R \
+    && Rscript -e 'source("R/load.R"); mamamia_load("."); stopifnot(identical(mamamia_version(), readLines("VERSION", n = 1L))); cat("MaMaMIA", mamamia_version(), "ready\n")' \
     && Rscript -e 'library(ggplot2); f <- tempfile(fileext = ".png"); png(f, width = 400, height = 300, type = "cairo"); print(ggplot(data.frame(x = 1:3, y = 1:3), aes(x, y)) + geom_point()); dev.off(); stopifnot(file.exists(f), file.info(f)$size > 0); cat("cairo text metrics OK\n")'
 
 EXPOSE 3838

@@ -68,7 +68,7 @@ test_that("countReads() preserves GRanges order and creates the CSI index", {
     counts <- countReads(fixture$path, gr, exclude_flags = 2308L)
     expect_identical(counts, c(6L, 5L))
     expect_true(file.exists(index))
-    expect_true(MaMaMIA:::.bam_index_magic(index))
+    expect_true(.bam_index_magic(index))
 })
 
 test_that("countReads() assigns forward reads by their 5' end", {

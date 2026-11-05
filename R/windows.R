@@ -27,7 +27,6 @@
 #' @param path Path to `contigs.tsv`.
 #'
 #' @return A data frame with `name`, `length` and `offset`.
-#' @export
 readContigsTsv <- function(path) {
     if (!is.character(path) || length(path) != 1L || is.na(path) ||
         !nzchar(path)) {
@@ -275,7 +274,7 @@ readContigsTsv <- function(path) {
 #'   `n_per_chromosome`.
 #'
 #' @examples
-#' demo <- system.file("extdata", "bam-demo", package = "MaMaMIA")
+#' demo <- mamamia_path("data", "bam-demo")
 #' config <- readMaMaMIAConfig(file.path(demo, "assemblies.yml"))
 #' pair <- resolveSpeciesAssembly(
 #'     config, donor = "secale_like", recipient = "triticum_like"
@@ -285,7 +284,6 @@ readContigsTsv <- function(path) {
 #' nrow(windows$table)
 #' table(windows$table$role)
 #'
-#' @export
 makeAnalysisWindows <- function(assembly, contigs, n_per_chromosome = 1000L) {
     n <- .window_integer(n_per_chromosome, "n_per_chromosome")
     targets <- .assembly_target_contigs(assembly, contigs)

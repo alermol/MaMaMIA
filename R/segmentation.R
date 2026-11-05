@@ -126,7 +126,6 @@
 #' @param lengths Optional named vector of contig lengths by group.
 #'
 #' @return A `Calls` data frame without calibration thresholds.
-#' @export
 segmentScores <- function(scores, mask = NULL, alpha = 0.001, undo_SD = 1,
                           min_width = 5L, merge_gap = 100L,
                           merge_floor = -0.5, min_mb = 5,

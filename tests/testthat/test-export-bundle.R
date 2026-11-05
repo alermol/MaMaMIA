@@ -440,7 +440,7 @@ test_that("the result bundle contains the table, BEDPE and karyotypes", {
     config <- yaml::read_yaml(file.path(root, "run/config.yml"))
     expect_identical(config$version, result$config$version)
     provenance <- jsonlite::fromJSON(file.path(root, "run/provenance.json"))
-    expect_identical(provenance$package, "MaMaMIA")
+    expect_identical(provenance$app, "MaMaMIA")
     expect_identical(provenance$config_hash, result$provenance$config_hash)
     profile_parameters <- utils::read.csv(
         file.path(root, "run/profile-parameters.csv"),

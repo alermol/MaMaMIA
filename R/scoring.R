@@ -332,7 +332,6 @@
 #' @param score_type `"paired_log_ratio"` or `"donor_only"`.
 #'
 #' @return A `ScoreTable` data frame.
-#' @export
 scoreIntrogression <- function(
     metrics,
     mode = c("single", "multi"),

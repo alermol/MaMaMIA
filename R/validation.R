@@ -8,7 +8,6 @@
 #' @param x A `BamAnalysisResult`.
 #'
 #' @return `x`, invisibly.
-#' @export
 validateBamAnalysisResult <- function(x) {
     if (!inherits(x, "BamAnalysisResult") || !is.list(x)) {
         stop("`x` must be a BamAnalysisResult", call. = FALSE)

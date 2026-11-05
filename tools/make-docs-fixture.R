@@ -4,7 +4,7 @@
 ##
 ## Usage:
 ##   Rscript tools/make-docs-fixture.R [--force]
-##       [--out inst/extdata/bam-demo]
+##       [--out data/bam-demo]
 ##       [--samtools /path/to/samtools]
 ##       [--gcrank-build /path/to/gcrank-build]
 ##
@@ -29,7 +29,7 @@ value_after <- function(args, flag) {
 force <- "--force" %in% args
 out_dir <- value_after(args, "--out")
 if (is.null(out_dir)) {
-    out_dir <- file.path("inst", "extdata", "bam-demo")
+    out_dir <- file.path("data", "bam-demo")
 }
 samtools <- value_after(args, "--samtools")
 if (is.null(samtools) || !nzchar(samtools)) {

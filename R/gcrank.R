@@ -107,7 +107,6 @@
 #' @param index_dir Path to the `*.gcrank` index directory.
 #'
 #' @return A data frame with `name`, `length` and `offset`.
-#' @export
 gcrankContigs <- function(index_dir) {
     xptr <- .gcrank_handle(index_dir, mmap = TRUE, validate_crc = FALSE)
     gcrank_contigs_cpp(xptr)
@@ -136,13 +135,12 @@ gcrankContigs <- function(index_dir) {
 #' @return A numeric vector of GC fractions.
 #'
 #' @examples
-#' demo <- system.file("extdata", "bam-demo", package = "MaMaMIA")
+#' demo <- mamamia_path("data", "bam-demo")
 #' gcrankGc(
 #'     file.path(demo, "demo.gcrank"), "d1",
 #'     start = c(0, 1000), end = c(1000, 2000)
 #' )
 #'
-#' @export
 gcrankGc <- function(index_dir, contig, start, end,
                      remove_ambiguous = FALSE, mmap = TRUE,
                      validate_crc = FALSE) {
@@ -379,7 +377,6 @@ extractWindowGc <- function(windows, assembly, mmap = TRUE,
 #' long-lived process to another user.
 #'
 #' @return `NULL`, invisibly.
-#' @export
 gcrankClearCache <- function() {
     keys <- ls(envir = .MaMaMIAgcrankCache, all.names = TRUE)
     for (key in keys) {

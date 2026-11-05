@@ -141,11 +141,11 @@ test_that("the gcrank cache reuses handles and keeps at most two indexes", {
 
     gcrankContigs(index)
     expect_identical(
-        length(ls(MaMaMIA:::.MaMaMIAgcrankCache)), 1L
+        length(ls(.MaMaMIAgcrankCache)), 1L
     )
     gcrankGc(index, "d1", 0, 100)
     expect_identical(
-        length(ls(MaMaMIA:::.MaMaMIAgcrankCache)), 1L
+        length(ls(.MaMaMIAgcrankCache)), 1L
     )
 
     first <- copy_gcrank_index()
@@ -154,14 +154,14 @@ test_that("the gcrank cache reuses handles and keeps at most two indexes", {
     gcrankContigs(first)
     gcrankContigs(second)
     expect_identical(
-        length(ls(MaMaMIA:::.MaMaMIAgcrankCache)), 2L
+        length(ls(.MaMaMIAgcrankCache)), 2L
     )
-    keys <- ls(envir = MaMaMIA:::.MaMaMIAgcrankCache)
+    keys <- ls(envir = .MaMaMIAgcrankCache)
     expect_false(any(startsWith(
         keys,
         paste0(normalizePath(index, winslash = "/", mustWork = TRUE), "\r")
     )))
-    expect_identical(
+    expect_equal(
         gcrankGc(second, "r1", 0, 100),
         0.6,
         tolerance = 1e-6
@@ -176,7 +176,7 @@ test_that("the gcrank cache keys include the open options", {
     gcrankContigs(index)
     gcrankGc(index, "d1", 0, 100, validate_crc = TRUE)
     expect_identical(
-        length(ls(MaMaMIA:::.MaMaMIAgcrankCache)), 2L
+        length(ls(.MaMaMIAgcrankCache)), 2L
     )
 })
 

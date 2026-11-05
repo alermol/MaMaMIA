@@ -687,34 +687,41 @@ karyotype_payload <- function(result, sample = NULL,
     )
 }
 
+#' Asset dependencies for the karyotype widget
+#' @noRd
+mamamia_karyotype_dependencies <- function() {
+    src <- c(file = mamamia_path("www", "htmlwidgets"))
+    list(
+        htmltools::htmlDependency(
+            name = "mamamiaKaryotypeCard-css",
+            version = "0.1.0",
+            src = src,
+            stylesheet = "mamamiaKaryotypeCard.css"
+        ),
+        ## htmlwidgets names its default binding dependency after the widget
+        ## and versions it with the application version. Declaring the same
+        ## name here keeps a single script URL; raise this asset version for a
+        ## widget-only change so the browser cannot keep serving the previous
+        ## file.
+        htmltools::htmlDependency(
+            name = "mamamiaKaryotypeCard-binding",
+            version = "0.1.1",
+            src = src,
+            script = "mamamiaKaryotypeCard.js",
+            all_files = FALSE
+        )
+    )
+}
+
 #' Create the karyotype htmlwidget
 #' @noRd
 mamamia_karyotype <- function(payload, width = NULL, height = NULL) {
-    css <- htmltools::htmlDependency(
-        name = "mamamiaKaryotypeCard-css",
-        version = "0.1.0",
-        src = c(file = system.file("htmlwidgets", package = "MaMaMIA")),
-        stylesheet = "mamamiaKaryotypeCard.css"
-    )
-    ## htmlwidgets names its default binding dependency after the widget and
-    ## versions it with the package version. Declaring the same name here
-    ## keeps a single script URL; raise this asset version for a widget-only
-    ## change so the browser cannot keep serving the previous file.
-    js <- htmltools::htmlDependency(
-        name = "mamamiaKaryotypeCard-binding",
-        version = "0.1.1",
-        src = "htmlwidgets",
-        package = "MaMaMIA",
-        script = "mamamiaKaryotypeCard.js",
-        all_files = FALSE
-    )
     htmlwidgets::createWidget(
         name = "mamamiaKaryotypeCard",
         x = payload,
         width = width,
         height = height,
-        package = "MaMaMIA",
-        dependencies = list(css, js),
+        dependencies = mamamia_karyotype_dependencies(),
         sizingPolicy = htmlwidgets::sizingPolicy(
             viewer.fill = TRUE,
             browser.fill = TRUE,
@@ -727,10 +734,10 @@ mamamia_karyotype <- function(payload, width = NULL, height = NULL) {
 #' @noRd
 mamamia_karyotype_output <- function(outputId, width = "100%",
                                      height = "480px") {
-    htmlwidgets::shinyWidgetOutput(
-        outputId, "mamamiaKaryotypeCard", width, height,
-        package = "MaMaMIA"
+    tag <- htmlwidgets::shinyWidgetOutput(
+        outputId, "mamamiaKaryotypeCard", width, height
     )
+    htmltools::attachDependencies(tag, mamamia_karyotype_dependencies())
 }
 
 #' Shiny renderer for the karyotype

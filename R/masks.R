@@ -101,7 +101,6 @@
 #'
 #' @return A `MaskTable` data frame with one row per window. The derived
 #'   recurrence threshold is stored in the `"recurrence_threshold"` attribute.
-#' @export
 buildWindowMask <- function(metrics, scores = NULL,
                             mode = c("single", "multi"), z = 0.5) {
     if (!is.data.frame(metrics) || nrow(metrics) == 0L) {
@@ -195,7 +194,6 @@ buildWindowMask <- function(metrics, scores = NULL,
 #' @param mask A `MaskTable`.
 #'
 #' @return `scores` with `score` set to `NA` in masked windows.
-#' @export
 applyWindowMask <- function(scores, mask) {
     if (is.null(mask) || nrow(mask) == 0L ||
         !any(mask$mask %in% TRUE)) {

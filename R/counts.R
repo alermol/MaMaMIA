@@ -140,7 +140,7 @@
 
 #' Count reads in genomic ranges
 #'
-#' Counts reads whose 5' end falls inside each range using the package's
+#' Counts reads whose 5' end falls inside each range using the application's
 #' htslib iterator. A valid CSI index is ensured first. This is the public
 #' helper for arbitrary `GRanges`; [analyzeBamInput()] uses the same htslib
 #' filters through [countWindowMetrics()].
@@ -170,7 +170,7 @@
 #' @return An integer vector aligned to `gr`.
 #'
 #' @examples
-#' demo <- system.file("extdata", "bam-demo", package = "MaMaMIA")
+#' demo <- mamamia_path("data", "bam-demo")
 #' bam <- file.path(tempdir(), "demo.bam")
 #' file.copy(file.path(demo, "demo.bam"), bam, overwrite = TRUE)
 #' gr <- GenomicRanges::GRanges(
@@ -179,7 +179,6 @@
 #' )
 #' countReads(bam, gr)
 #'
-#' @export
 countReads <- function(bam_path, gr, mapq = 20L, exclude_flags = 2308L,
                        verbose = FALSE) {
     bam_path <- .validate_bam_path(bam_path)

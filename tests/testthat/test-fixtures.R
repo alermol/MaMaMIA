@@ -53,12 +53,12 @@ test_that("the tiny FASTA has the expected GC content", {
 test_that("the tiny gcrank index answers contig-relative queries", {
     skip_if_no_tiny_fixtures()
 
-    index <- MaMaMIA:::gcrank_open_cpp(
+    index <- gcrank_open_cpp(
         tiny_gcrank_index(), mmap = TRUE, validate_crc = FALSE
     )
-    on.exit(MaMaMIA:::gcrank_close_cpp(index), add = TRUE)
+    on.exit(gcrank_close_cpp(index), add = TRUE)
 
-    contigs <- MaMaMIA:::gcrank_contigs_cpp(index)
+    contigs <- gcrank_contigs_cpp(index)
     expect_named(contigs, c("name", "length", "offset"))
     expect_identical(contigs$name, c("d1", "r1"))
     expect_identical(contigs$length, c(20000, 20000))
@@ -66,12 +66,12 @@ test_that("the tiny gcrank index answers contig-relative queries", {
 
     starts <- seq(0, 19900, by = 100)
     expect_equal(
-        MaMaMIA:::gcrank_gc_cpp(index, "d1", starts, starts + 100),
+        gcrank_gc_cpp(index, "d1", starts, starts + 100),
         rep(0.4, length(starts)),
         tolerance = 1e-6
     )
     expect_equal(
-        MaMaMIA:::gcrank_gc_cpp(index, "r1", starts, starts + 100),
+        gcrank_gc_cpp(index, "r1", starts, starts + 100),
         rep(0.6, length(starts)),
         tolerance = 1e-6
     )
@@ -80,7 +80,7 @@ test_that("the tiny gcrank index answers contig-relative queries", {
 test_that("the tiny BAM header is readable with Rhtslib", {
     skip_if_no_tiny_fixtures()
 
-    header <- MaMaMIA:::bam_header_info_cpp(tiny_bam_path())
+    header <- bam_header_info_cpp(tiny_bam_path())
 
     expect_identical(header$format, "BAM")
     expect_identical(header$n_targets, 2L)

@@ -123,7 +123,6 @@
 #'   `sample`, `sample_source`, `n_samples`, `assembly`, `n_targets`,
 #'   `n_assembly_targets`, `index_path`, `index_status`, `index_action`,
 #'   `warnings` and `valid`.
-#' @export
 preflightBams <- function(paths, config, assembly = NULL) {
     if (is.character(config)) {
         config <- readMaMaMIAConfig(config)

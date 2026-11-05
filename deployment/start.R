@@ -1,13 +1,19 @@
 #!/usr/bin/env Rscript
 
-## ShinyProxy entrypoint. Run through uvr so the pinned R and .uvr/library are
-## active:
+## ShinyProxy and Docker entrypoint. Run through uvr so the pinned R and
+## .uvr/library are active:
 ##
 ##   uvr run /app/deployment/start.R
 ##
 ## The registry is mounted read-only and passed by MAMAMIA_CONFIG (see
-## deployment/shinyproxy.yml). Shiny listens on all interfaces because
-## ShinyProxy connects to the container from the host network.
+## deployment/shinyproxy.yml). The app binds all interfaces because ShinyProxy
+## connects to the container from the host network.
+
+root <- Sys.getenv("MAMAMIA_ROOT", unset = "/app")
+if (!dir.exists(root)) {
+    stop("MAMAMIA_ROOT does not exist: ", root, call. = FALSE)
+}
+root <- normalizePath(root, winslash = "/", mustWork = TRUE)
 
 config <- Sys.getenv("MAMAMIA_CONFIG", unset = "")
 if (!nzchar(config)) {
@@ -21,7 +27,14 @@ if (!file.exists(config)) {
     stop("MAMAMIA_CONFIG does not exist: ", config, call. = FALSE)
 }
 
-message("MaMaMIA ", utils::packageVersion("MaMaMIA"))
+version_file <- file.path(root, "VERSION")
+version <- if (file.exists(version_file)) {
+    trimws(readLines(version_file, n = 1L, warn = FALSE))
+} else {
+    "unknown"
+}
+message("MaMaMIA ", version)
+message("Application root: ", root)
 message("Assembly registry: ", config)
 message("R: ", R.version.string)
 message("Library: ", paste(.libPaths(), collapse = ", "))
@@ -45,13 +58,11 @@ if (capabilities("cairo") && !file.exists(fontconfig)) {
     )
 }
 
-## 5 GiB matches the default server.max_total_bytes; raise both together when
-## the registry allows larger cohorts. Uploads are also bounded by ShinyProxy
-## and the reverse proxy (deployment/nginx.conf).
-MaMaMIA::runMaMaMIA(
+## Uploads are bounded by MAMAMIA_MAX_REQUEST_SIZE (read by app.R) and by the
+## ShinyProxy multipart limits. Raise them together for larger cohorts.
+shiny::runApp(
+    appDir = root,
     host = "0.0.0.0",
     port = 3838L,
-    launch.browser = FALSE,
-    config = config,
-    max_request_size = 5 * 1024^3
+    launch.browser = FALSE
 )

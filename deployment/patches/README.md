@@ -1,7 +1,7 @@
 # Deployment patches
 
-These patches are applied while building the container image. They are not
-part of the MaMaMIA R package and are not covered by `R CMD check`.
+These patches are applied to the pinned dependency sources while building the
+container image. They are not part of the MaMaMIA application sources.
 
 ## `httpuv-1.6.17-body-coalescing.patch`
 

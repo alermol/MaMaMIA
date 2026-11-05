@@ -21,17 +21,18 @@ if (length(args) != 1L) {
 config_path <- args[[1L]]
 options(width = 200L)
 
-if (!requireNamespace("MaMaMIA", quietly = TRUE)) {
-    if (requireNamespace("pkgload", quietly = TRUE)) {
-        pkgload::load_all(".", quiet = TRUE)
-    } else {
-        message(
-            "MaMaMIA is not installed. Run `uvr sync` and install the package, ",
-            "or run this script from the source tree with pkgload available."
-        )
-        quit(status = 2L)
-    }
+script_arg <- grep("^--file=", commandArgs(FALSE), value = TRUE)
+script_dir <- if (length(script_arg) > 0L) {
+    dirname(normalizePath(
+        sub("^--file=", "", script_arg[[1L]]),
+        winslash = "/", mustWork = TRUE
+    ))
+} else {
+    getwd()
 }
+root <- normalizePath(file.path(script_dir, ".."), winslash = "/", mustWork = TRUE)
+source(file.path(root, "R", "load.R"), local = FALSE)
+mamamia_load(root)
 
 fail <- function(fmt, ...) {
     message("ERROR: ", sprintf(fmt, ...))
@@ -39,7 +40,7 @@ fail <- function(fmt, ...) {
 }
 
 config <- tryCatch(
-    MaMaMIA::readMaMaMIAConfig(config_path),
+    readMaMaMIAConfig(config_path),
     error = function(e) e
 )
 if (inherits(config, "condition")) {
@@ -59,13 +60,13 @@ cat("Server limits: max_bams =", config$server$max_bams,
     "| max_total_bytes =", format(config$server$max_total_bytes, scientific = FALSE),
     "\n\n")
 
-summary_table <- MaMaMIA::listMaMaMIAAssemblies(config)
+summary_table <- listMaMaMIAAssemblies(config)
 if (nrow(summary_table) > 0L) {
     print(summary_table, row.names = FALSE)
     cat("\n")
 }
 
-species_table <- MaMaMIA::listMaMaMIASpecies(config)
+species_table <- listMaMaMIASpecies(config)
 if (nrow(species_table) > 0L) {
     cat("Species:\n")
     print(species_table, row.names = FALSE)
@@ -124,7 +125,7 @@ for (recipient_key in species_keys) {
             next
         }
         pair <- tryCatch(
-            MaMaMIA::resolveSpeciesAssembly(
+            resolveSpeciesAssembly(
                 config, donor = donor_key, recipient = recipient_key
             ),
             error = function(e) e

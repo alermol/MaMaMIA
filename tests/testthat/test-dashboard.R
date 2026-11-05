@@ -2,8 +2,7 @@
 
 test_that("bam_run_parameters() resolves the run controls", {
     config <- readMaMaMIAConfig(
-        system.file("extdata", "bam-demo", "assemblies.yml",
-            package = "MaMaMIA")
+        mamamia_path("data", "bam-demo", "assemblies.yml")
     )
     params <- bam_run_parameters(
         list(resolution = 100), config, samples = "demo-sample"
@@ -33,8 +32,7 @@ test_that("bam_run_parameters() resolves the run controls", {
 
 test_that("fractional Advanced integers are rejected", {
     config <- readMaMaMIAConfig(
-        system.file("extdata", "bam-demo", "assemblies.yml",
-            package = "MaMaMIA")
+        mamamia_path("data", "bam-demo", "assemblies.yml")
     )
     expect_error(
         bam_run_parameters(
@@ -58,8 +56,7 @@ test_that("fractional Advanced integers are rejected", {
 
 test_that("analysis profiles resolve complete parameter bundles", {
     config <- readMaMaMIAConfig(
-        system.file("extdata", "bam-demo", "assemblies.yml",
-            package = "MaMaMIA")
+        mamamia_path("data", "bam-demo", "assemblies.yml")
     )
     profiles <- mamamia_analysis_profiles()
     expect_false("component_panel" %in% names(profiles))
@@ -118,8 +115,7 @@ test_that("analysis profiles resolve complete parameter bundles", {
 
 test_that("profile choices follow the configured resolutions", {
     config <- readMaMaMIAConfig(
-        system.file("extdata", "bam-demo", "assemblies.yml",
-            package = "MaMaMIA")
+        mamamia_path("data", "bam-demo", "assemblies.yml")
     )
     choices <- bam_analysis_profile_choices(config)
     expect_identical(
@@ -169,8 +165,7 @@ test_that("profile choices follow the configured resolutions", {
 
 test_that("Advanced exposes every profile parameter and marks defaults", {
     config <- readMaMaMIAConfig(
-        system.file("extdata", "bam-demo", "assemblies.yml",
-            package = "MaMaMIA")
+        mamamia_path("data", "bam-demo", "assemblies.yml")
     )
     defaults <- bam_profile_default_parameters(config, "sensitive")
     html <- as.character(bam_advanced_parameters_ui(config, defaults))
@@ -232,8 +227,7 @@ test_that("Advanced exposes every profile parameter and marks defaults", {
 
 test_that("every profile parameter can be overridden into a Custom run", {
     config <- readMaMaMIAConfig(
-        system.file("extdata", "bam-demo", "assemblies.yml",
-            package = "MaMaMIA")
+        mamamia_path("data", "bam-demo", "assemblies.yml")
     )
     params <- bam_run_parameters(
         list(
@@ -283,8 +277,7 @@ test_that("every profile parameter can be overridden into a Custom run", {
 
 test_that("the resolution picker is a ten-window slider with three ticks", {
     config <- readMaMaMIAConfig(
-        system.file("extdata", "bam-demo", "assemblies.yml",
-            package = "MaMaMIA")
+        mamamia_path("data", "bam-demo", "assemblies.yml")
     )
     range <- bam_resolution_range(config$defaults)
     expect_identical(range$min, 100L)
@@ -312,8 +305,7 @@ test_that("the resolution picker is a ten-window slider with three ticks", {
 
 test_that("the example resolution slider is locked at its precomputed value", {
     config <- readMaMaMIAConfig(
-        system.file("extdata", "bam-demo", "assemblies.yml",
-            package = "MaMaMIA")
+        mamamia_path("data", "bam-demo", "assemblies.yml")
     )
     slider <- as.character(bam_example_resolution_slider_ui(config$defaults))
     expect_match(slider, 'id="resolution"', fixed = TRUE)
@@ -448,8 +440,7 @@ test_that("oversized uploads are rejected with a bamhusk suggestion", {
 
 test_that("donor aggregation defaults from the registry and is set under Advanced", {
     config <- readMaMaMIAConfig(
-        system.file("extdata", "bam-demo", "assemblies.yml",
-            package = "MaMaMIA")
+        mamamia_path("data", "bam-demo", "assemblies.yml")
     )
     expect_identical(config$defaults$donor_aggregation, "max")
     defaults <- bam_run_parameters(
@@ -477,8 +468,7 @@ test_that("donor aggregation defaults from the registry and is set under Advance
 
 test_that("control samples are selected under Advanced", {
     config <- readMaMaMIAConfig(
-        system.file("extdata", "bam-demo", "assemblies.yml",
-            package = "MaMaMIA")
+        mamamia_path("data", "bam-demo", "assemblies.yml")
     )
     samples <- c("S1", "S2", "S3")
     selected <- bam_run_parameters(
@@ -506,8 +496,7 @@ test_that("control samples are selected under Advanced", {
 
 test_that("the analysis key changes with control samples", {
     config <- readMaMaMIAConfig(
-        system.file("extdata", "bam-demo", "assemblies.yml",
-            package = "MaMaMIA")
+        mamamia_path("data", "bam-demo", "assemblies.yml")
     )
     preflight <- list(
         ok = TRUE,
@@ -529,8 +518,7 @@ test_that("the analysis key changes with control samples", {
 
 test_that("the analysis key changes with the donor aggregation", {
     config <- readMaMaMIAConfig(
-        system.file("extdata", "bam-demo", "assemblies.yml",
-            package = "MaMaMIA")
+        mamamia_path("data", "bam-demo", "assemblies.yml")
     )
     preflight <- list(
         ok = TRUE,
@@ -623,8 +611,7 @@ test_that("the preflight recovery card is calm and actionable", {
 
 test_that("the sidebar no longer offers component selectors", {
     config <- readMaMaMIAConfig(
-        system.file("extdata", "bam-demo", "assemblies.yml",
-            package = "MaMaMIA")
+        mamamia_path("data", "bam-demo", "assemblies.yml")
     )
     html <- as.character(bam_sidebar_species_ui(config))
     expect_false(grepl("recipient_component", html, fixed = TRUE))
@@ -971,8 +958,7 @@ test_that("notifications match bslib's specificity to stay compact", {
 })
 
 test_that("the launcher builds with the demo registry", {
-    config <- system.file("extdata", "bam-demo", "assemblies.yml",
-        package = "MaMaMIA")
+    config <- mamamia_path("data", "bam-demo", "assemblies.yml")
     expect_true(file.exists(config))
     app <- bam_launcher_app(config = config)
     expect_s3_class(app, "shiny.appobj")

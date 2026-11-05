@@ -111,7 +111,7 @@ test_that("the pipeline returns the BamAnalysisResult contract", {
     ## label table used to abort the analysis on an unknown name.
     expect_true(all(
         unique(progress) %in%
-            MaMaMIA:::bam_progress_stages(length(unique(result$samples$sample)))
+            bam_progress_stages(length(unique(result$samples$sample)))
     ))
     expect_identical(result$provenance$pipeline_version, "0.1.0")
     expect_identical(result$provenance$breadth_backend, "htslib")
@@ -211,7 +211,7 @@ test_that("the pipeline rejects a version 1 config", {
     fixture <- pipeline_fixture()
     on.exit(unlink(fixture$directory, recursive = TRUE), add = TRUE)
     lines <- readLines(fixture$config_path, warn = FALSE)
-    lines <- sub("^version:.*$", "version: 1", lines)
+    lines <- sub("^version.*$", "version: 1", lines)
     writeLines(lines, fixture$config_path)
     expect_error(
         analyzeBamInput(

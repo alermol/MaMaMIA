@@ -269,7 +269,7 @@ bam_launcher_state <- function(config = NULL) {
                     class = "MaMaMIAConfigError",
                     message = paste(
                         "No MaMaMIA configuration was supplied: set",
-                        "MAMAMIA_CONFIG or pass `config` to runMaMaMIA()."
+                        "MAMAMIA_CONFIG to the mounted registry."
                     ),
                     suggestion = .bam_error_suggestions[["config"]]
                 )
@@ -2698,7 +2698,7 @@ bam_analysis_key <- function(preflight, resolution, donor_aggregation = NULL,
 ## licence text ships next to the font.
 #' @noRd
 mamamia_font_dependency <- function() {
-    path <- system.file("www", package = "MaMaMIA")
+    path <- mamamia_path("www")
     if (!nzchar(path) || !dir.exists(path)) {
         return(NULL)
     }
@@ -2712,11 +2712,8 @@ mamamia_font_dependency <- function() {
 }
 
 #' @noRd
-mamamia_package_version <- function() {
-    tryCatch(
-        as.character(utils::packageVersion("MaMaMIA")),
-        error = function(e) ""
-    )
+mamamia_app_version <- function() {
+    tryCatch(mamamia_version(), error = function(e) "")
 }
 
 #' @noRd
@@ -6046,7 +6043,7 @@ bam_launcher_ui <- function(state) {
                                 shiny::h1("MaMaMIA", class = "mamamia-title"),
                                 shiny::span(
                                     class = "mamamia-version",
-                                    mamamia_package_version()
+                                    mamamia_app_version()
                                 )
                             ),
                             shiny::p(

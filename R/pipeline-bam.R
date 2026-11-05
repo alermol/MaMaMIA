@@ -1,6 +1,6 @@
 ## Cohort pipeline orchestration.
 ##
-## `analyzeBamInput()` is the only BAM-first entrypoint of the package. It runs
+## `analyzeBamInput()` is the only BAM-first entrypoint of the application. It runs
 ## cheap checks first (preflight), indexes, generates group-aware windows,
 ## extracts GC, measures counts and breadth in one htslib pass, builds the
 ## WindowMetrics table, applies a window mask, scores donor/recipient
@@ -11,7 +11,7 @@
 ## `bams`, `samples`, `windows`, `gc`, `metrics`, `scores`, `masks`,
 ## `calibration`, `calls` and `provenance`.
 
-## Synchronized with DESCRIPTION by tests/testthat/test-pipeline.R.
+## Synchronized with VERSION by tests/testthat/test-build.R.
 .MaMaMIAPipelineVersion <- "0.1.0"
 
 ## Synchronized with tools/vendor-gcrank.txt by tests/testthat/test-pipeline.R.
@@ -192,7 +192,7 @@
     candidates <- c(
         Sys.getenv("MAMAMIA_UVRLOCK", unset = ""),
         getOption("MaMaMIA.uvr_lock", ""),
-        system.file("uvr.lock", package = "MaMaMIA"),
+        mamamia_path("uvr.lock"),
         .find_upwards("uvr.lock")
     )
     candidates <- candidates[
@@ -243,8 +243,8 @@
     mask_sources <- unique(mask$source[mask$mask %in% TRUE])
     list(
         pipeline_version = .MaMaMIAPipelineVersion,
-        package = "MaMaMIA",
-        package_version = .safe_package_version("MaMaMIA"),
+        app = "MaMaMIA",
+        app_version = mamamia_version(),
         r_version = as.character(getRversion()),
         dependency_versions = c(
             Rhtslib = .safe_package_version("Rhtslib"),
@@ -446,7 +446,7 @@
 #' @seealso [preflightBams()], [countWindowMetrics()], [buildWindowMetrics()],
 #'   [scoreIntrogression()], [segmentScores()], [calibrateSegments()]
 #' @examples
-#' demo <- system.file("extdata", "bam-demo", package = "MaMaMIA")
+#' demo <- mamamia_path("data", "bam-demo")
 #' config <- readMaMaMIAConfig(file.path(demo, "assemblies.yml"))
 #' pair <- resolveSpeciesAssembly(
 #'     config, donor = "secale_like", recipient = "triticum_like"
@@ -459,7 +459,6 @@
 #' )
 #' result$samples[, c("sample", "n_windows", "n_calls")]
 #'
-#' @export
 analyzeBamInput <- function(bam_paths,
                             config,
                             assembly = NULL,
