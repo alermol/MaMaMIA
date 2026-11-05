@@ -117,7 +117,11 @@ test_that("the bundle filename is safe", {
     expect_identical(bam_bundle_filename(NULL), "mamamia-sample-results.zip")
     expect_identical(bam_bundle_filename(""), "mamamia-sample-results.zip")
     expect_identical(
-        bam_cohort_bundle_filename(), "mamamia-cohort-results.zip"
+        bam_cohort_bundle_filename(), "mamamia-results.zip"
+    )
+    expect_identical(
+        unname(bam_bundle_sample_folders(c("qc", "run", "A", "a"))),
+        c("qc-2", "run-2", "A", "a-2")
     )
 })
 
@@ -607,7 +611,7 @@ test_that("a cohort bundle has per-sample folders and top-level summaries", {
     )
     expect_true(file.exists(archive))
     listing <- utils::unzip(archive, list = TRUE)
-    relative <- sub("^mamamia-cohort-results/", "", listing$Name)
+    relative <- sub("^mamamia-results/", "", listing$Name)
     expect_true(all(c(
         "README.txt", "report.html", "cohort-summary.csv",
         "calls-all.csv", "calls-passing.csv", "calls-confident.csv",
@@ -634,7 +638,7 @@ test_that("a cohort bundle has per-sample folders and top-level summaries", {
         "tracks/calls-donor.bed", "tracks/breadth.bedGraph.gz"
     )
     for (i in seq_along(samples)) {
-        prefix <- paste0("samples/", folders[[i]], "/")
+        prefix <- paste0(folders[[i]], "/")
         expect_true(all(paste0(prefix, sample_files) %in% relative))
         expect_false(any(grepl(
             paste0("^", prefix, "(run/|qc/calibration\\.csv|qc/masks-)"),
@@ -646,7 +650,7 @@ test_that("a cohort bundle has per-sample folders and top-level summaries", {
     dir.create(directory)
     on.exit(unlink(directory, recursive = TRUE), add = TRUE)
     utils::unzip(archive, exdir = directory)
-    root <- file.path(directory, "mamamia-cohort-results")
+    root <- file.path(directory, "mamamia-results")
     cohort <- utils::read.csv(
         file.path(root, "cohort-summary.csv"),
         check.names = FALSE, stringsAsFactors = FALSE
@@ -668,14 +672,14 @@ test_that("a cohort bundle has per-sample folders and top-level summaries", {
 
     for (i in seq_along(samples)) {
         sample_calls <- utils::read.csv(
-            file.path(root, "samples", folders[[i]], "calls-full.csv"),
+            file.path(root, folders[[i]], "calls-full.csv"),
             check.names = FALSE, stringsAsFactors = FALSE
         )
         expect_identical(nrow(sample_calls), nrow(result$calls))
         expect_true(all(as.character(sample_calls$sample_name) == samples[[i]]))
         sample_readme <- paste(
             readLines(file.path(
-                root, "samples", folders[[i]], "README.txt"
+                root, folders[[i]], "README.txt"
             )),
             collapse = "\n"
         )
@@ -690,14 +694,14 @@ test_that("a cohort bundle has per-sample folders and top-level summaries", {
     )
     expect_match(readme, "Per-sample folders", fixed = TRUE)
     expect_match(readme, "cohort-summary.csv", fixed = TRUE)
-    expect_match(readme, "samples/cohort-A/", fixed = TRUE)
+    expect_match(readme, "cohort-A/", fixed = TRUE)
     report <- paste(
         readLines(file.path(root, "report.html")),
         collapse = "\n"
     )
     expect_match(report, "Cohort results", fixed = TRUE)
     expect_match(report, "Per-sample bundles", fixed = TRUE)
-    expect_match(report, "samples/cohort-A/report.html", fixed = TRUE)
+    expect_match(report, "cohort-A/report.html", fixed = TRUE)
 
     manifest <- jsonlite::fromJSON(file.path(root, "manifest.json"))
     expect_identical(manifest$sample, "cohort")

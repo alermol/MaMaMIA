@@ -398,7 +398,7 @@ bam_bundle_filename <- function(sample = NULL) {
 #' ZIP filename for a multi-sample cohort bundle
 #' @noRd
 bam_cohort_bundle_filename <- function() {
-    "mamamia-cohort-results.zip"
+    "mamamia-results.zip"
 }
 
 #' Installed MaMaMIA version for bundle metadata
@@ -1139,7 +1139,7 @@ bam_bundle_readme <- function(sample, calls, generated, version,
 #'
 #' The caller adds the README, manifest, checksums and ZIP archive. Keeping
 #' the sample payload separate lets the cohort bundle write the same files
-#' under `samples/<sample>/` without duplicating the export logic.
+#' under `<sample>/` without duplicating the export logic.
 #'
 #' @param result A `BamAnalysisResult`.
 #' @param bundle Directory that receives the sample files.

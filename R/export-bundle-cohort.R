@@ -21,17 +21,27 @@ bam_bundle_samples <- function(result) {
 bam_bundle_sample_folders <- function(samples) {
     samples <- as.character(samples)
     stems <- vapply(samples, bam_bundle_stem, character(1))
-    used <- character()
+    ## Sample folders sit next to the run-wide files, so they must not
+    ## shadow a top-level entry such as run/, qc/ or report.html.
+    reserved <- c(
+        "README.txt", "report.html", "cohort-summary.csv",
+        "calls-all.csv", "calls-passing.csv", "calls-confident.csv",
+        "calls-summary.csv", "calls-by-status.csv",
+        "calls-by-copy-state.csv", "calls-all.bedpe",
+        "calls-passing.bedpe", "calls-confident.bedpe",
+        "manifest.json", "checksums.md5", "run", "qc", "tracks", "samples"
+    )
+    used <- tolower(reserved)
     out <- character(length(stems))
     for (i in seq_along(stems)) {
         candidate <- stems[[i]]
         suffix <- 1L
-        while (tolower(candidate) %in% tolower(used)) {
+        while (tolower(candidate) %in% used) {
             suffix <- suffix + 1L
             candidate <- paste0(stems[[i]], "-", suffix)
         }
         out[[i]] <- candidate
-        used <- c(used, candidate)
+        used <- c(used, tolower(candidate))
     }
     stats::setNames(out, samples)
 }
@@ -229,7 +239,7 @@ bam_bundle_cohort_report_html <- function(result, bundle, samples, folders,
     sample_table <- data.frame(
         Sample = samples,
         Report = sprintf(
-            "<a href=\"samples/%s/report.html\">samples/%s/report.html</a>",
+            "<a href=\"%s/report.html\">%s/report.html</a>",
             folders, folders
         ),
         Calls = vapply(samples, function(sample) {
@@ -342,7 +352,7 @@ bam_bundle_cohort_readme <- function(samples, folders, calls,
     confident_n <- if (is.null(confident_calls)) 0L else
         nrow(confident_calls)
     sample_lines <- vapply(seq_along(samples), function(i) {
-        paste0("samples/", folders[[i]], "/  ", samples[[i]])
+        paste0(folders[[i]], "/  ", samples[[i]])
     }, character(1))
     c(
         "MaMaMIA cohort results bundle",
@@ -377,7 +387,8 @@ bam_bundle_cohort_readme <- function(samples, folders, calls,
         "------------------",
         sample_lines,
         "",
-        "Each sample folder contains calls-full.csv, calls-passing.csv,",
+        "Sample folders sit at the archive root; the files listed above are",
+        "run-wide. Each sample folder contains calls-full.csv,",
         "calls-confident.csv, calls-review.csv, the call summaries, BEDPE",
         "files, karyotype SVGs, tracks, sample-specific qc/ tables and plots,",
         "report.html and README.txt. The sample README repeats the full",
@@ -431,8 +442,8 @@ bam_bundle_cohort_readme <- function(samples, folders, calls,
 #'
 #' Builds one ZIP with a top-level cohort summary and one folder per sample.
 #' Sample-specific calls, BEDPE files, tracks, QC and karyotypes live under
-#' `samples/<sample>/`; run provenance and run-wide mask/calibration tables
-#' live once at the top level.
+#' `<sample>/`; run provenance and run-wide mask/calibration tables live once
+#' at the top level.
 #'
 #' @param result A `BamAnalysisResult`.
 #' @param file Output ZIP path.
@@ -473,11 +484,9 @@ bam_write_cohort_bundle <- function(result, file, samples = NULL,
     staging <- tempfile("mamamia-cohort-bundle-")
     dir.create(staging)
     on.exit(unlink(staging, recursive = TRUE, force = TRUE), add = TRUE)
-    bundle_name <- "mamamia-cohort-results"
+    bundle_name <- "mamamia-results"
     bundle <- file.path(staging, bundle_name)
     dir.create(bundle)
-    samples_dir <- file.path(bundle, "samples")
-    dir.create(samples_dir)
 
     for (i in seq_along(samples)) {
         sample <- samples[[i]]
@@ -511,7 +520,7 @@ bam_write_cohort_bundle <- function(result, file, samples = NULL,
                 selected_groups = NULL
             )
         }
-        sample_dir <- file.path(samples_dir, folders[[i]])
+        sample_dir <- file.path(bundle, folders[[i]])
         dir.create(sample_dir)
         parts <- bam_bundle_write_sample_files(
             result, sample_dir, sample,
