@@ -40,9 +40,9 @@ preflightBams()
 
 # Configuration
 
-A version 2 registry declares species, their contigs and components, and one or
-more assemblies. Contigs are paired by chromosome group; `group` is read from
-the contig entry or from the first number in `name`.
+A version 2 registry declares species, their contigs and components, and GC
+indexes. Contigs are paired by chromosome group; `group` is read from the
+contig entry or from the first number in `name`.
 
 ```yaml
 version: 2

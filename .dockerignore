@@ -13,7 +13,6 @@
 **/*.so
 test_data/
 tests/
-docs-source/
 vignettes/
 bench-*/
 report/

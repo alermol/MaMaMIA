@@ -13,7 +13,8 @@
 # directory mount makes new indexes visible to new sessions without rebuilding
 # the image, and survives atomic replacement of assemblies.yml.
 #
-# See docs-source/shinyproxy.md for the complete runbook.
+# See https://github.com/alermol/MaMaMIA/wiki/Deployment for the complete
+# runbook.
 
 proxy:
   title: MaMaMIA

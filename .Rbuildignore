@@ -8,7 +8,6 @@
 ^\.uvr$
 ^\.r-version$
 ^\.Rprofile$
-^docs-source$
 ^deployment$
 ^\.dockerignore$
 ^tools$
