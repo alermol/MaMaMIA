@@ -998,3 +998,74 @@ test_that("the result cache keeps a fixed session budget", {
     expect_null(cache$get("a"))
     expect_identical(cache$get("c"), 3)
 })
+
+test_that("species auto-detection matches the BAM header", {
+    path <- test_path("fixtures", "tiny.bam")
+    config <- list(species = list(
+        tiny = list(
+            label = "Tiny species",
+            contigs = data.frame(
+                id = c("d1", "r1"), length = c(20000, 20000),
+                stringsAsFactors = FALSE
+            )
+        ),
+        other = list(
+            label = "Other species",
+            contigs = data.frame(
+                id = "absent", length = 1,
+                stringsAsFactors = FALSE
+            )
+        )
+    ))
+    candidates <- bam_species_candidates(path, config)
+    expect_true("tiny" %in% candidates$key)
+    expect_true(candidates$exact[candidates$key == "tiny"])
+    expect_false(candidates$exact[candidates$key == "other"])
+    detected <- bam_detect_species(path, config)
+    expect_identical(detected$species, "tiny")
+    expect_identical(detected$label, "Tiny species")
+
+    ambiguous <- config
+    ambiguous$species$subset <- list(
+        label = "Subset species",
+        contigs = data.frame(
+            id = "d1", length = 20000,
+            stringsAsFactors = FALSE
+        )
+    )
+    expect_identical(
+        bam_detect_species(path, ambiguous)$species,
+        "tiny"
+    )
+    ambiguous$species$same <- ambiguous$species$tiny
+    expect_null(bam_detect_species(path, ambiguous))
+})
+
+test_that("species pair auto-detection prefers the current donor role", {
+    config <- bam_example_config()
+    recipient <- config$species$triticum_like$contigs
+    donor <- config$species$secale_like$contigs
+    targets <- data.frame(
+        name = c(recipient$id, donor$id),
+        length = c(recipient$length, donor$length),
+        stringsAsFactors = FALSE
+    )
+    candidates <- bam_species_pair_candidate_table(targets, config)
+    expect_true(any(candidates$exact))
+    expect_identical(sum(candidates$exact), 2L)
+    chosen <- bam_choose_species_pair(
+        candidates[candidates$exact, , drop = FALSE],
+        current_recipient = "triticum_like",
+        current_donor = "secale_like"
+    )
+    expect_identical(as.character(chosen$recipient), "triticum_like")
+    expect_identical(as.character(chosen$donor), "secale_like")
+
+    swapped <- bam_choose_species_pair(
+        candidates[candidates$exact, , drop = FALSE],
+        current_recipient = "secale_like",
+        current_donor = "triticum_like"
+    )
+    expect_identical(as.character(swapped$recipient), "secale_like")
+    expect_identical(as.character(swapped$donor), "triticum_like")
+})

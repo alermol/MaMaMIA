@@ -33,8 +33,9 @@ launching the dashboard.
 \description{
 \code{runMaMaMIA()} is the main entry point of the package and opens the
 BAM-first Shiny application. The app reads BAM headers, matches them to the
-configured species registry, stages the file in session temporary storage,
-and runs \code{\link[=analyzeBamInput]{analyzeBamInput()}} before handing the \code{BamAnalysisResult} to the
+configured species registry, preselects the exact recipient/donor pair,
+stages the file in session temporary storage, and runs
+\code{\link[=analyzeBamInput]{analyzeBamInput()}} before handing the \code{BamAnalysisResult} to the
 introgression explorer of \code{\link[=exploreIntrogressions]{exploreIntrogressions()}}. The dashboard accepts
 one BAM per run; a multi-sample BAM is read through its \verb{@RG SM} tags.
 }

@@ -948,6 +948,251 @@ bam_assembly_candidates <- function(path, config) {
     .candidate_table(candidates)
 }
 
+#' Score every configured species against one BAM header
+#'
+#' Used by the dashboard to pick the species that the uploaded BAM actually
+#' comes from. A species is an exact match only when every configured contig is
+#' present with the expected length; extra header contigs are ignored.
+#'
+#' @noRd
+bam_species_candidate_table <- function(targets, config) {
+    species <- config$species
+    if (is.null(species) || length(species) == 0L) {
+        return(NULL)
+    }
+    targets <- data.frame(
+        name = as.character(targets$name),
+        length = as.numeric(targets$length),
+        stringsAsFactors = FALSE
+    )
+    rows <- lapply(names(species), function(key) {
+        entry <- species[[key]]
+        contigs <- entry$contigs
+        if (is.null(contigs) || nrow(contigs) == 0L ||
+            !all(c("id", "length") %in% names(contigs))) {
+            return(NULL)
+        }
+        ids <- as.character(contigs$id)
+        expected <- as.numeric(contigs$length)
+        position <- match(ids, targets$name)
+        present <- !is.na(position)
+        observed <- rep(NA_real_, length(ids))
+        observed[present] <- targets$length[position[present]]
+        mismatch <- present & is.finite(expected) & is.finite(observed) &
+            observed != expected
+        n_targets <- length(ids)
+        n_matched <- sum(present & !mismatch)
+        label <- entry$label
+        if (is.null(label) || length(label) != 1L || is.na(label) ||
+            !nzchar(label)) {
+            label <- key
+        }
+        data.frame(
+            key = key,
+            label = as.character(label),
+            n_targets = n_targets,
+            n_matched = n_matched,
+            n_missing = sum(!present),
+            n_length_mismatches = sum(mismatch),
+            score = if (n_targets > 0L) n_matched / n_targets else 0,
+            exact = n_targets > 0L && !any(!present) && !any(mismatch),
+            stringsAsFactors = FALSE
+        )
+    })
+    rows <- Filter(Negate(is.null), rows)
+    if (length(rows) == 0L) {
+        return(NULL)
+    }
+    out <- do.call(rbind, rows)
+    out[order(-out$score, -out$n_targets, out$key), , drop = FALSE]
+}
+
+#' @noRd
+bam_species_candidates <- function(path, config) {
+    header <- tryCatch(bamHeaderInfo(path), error = function(e) NULL)
+    if (is.null(header)) {
+        return(NULL)
+    }
+    bam_species_candidate_table(header$targets, config)
+}
+
+#' Detect the most specific exact species match for a BAM header
+#' @noRd
+bam_detect_species <- function(path, config) {
+    candidates <- bam_species_candidates(path, config)
+    if (is.null(candidates) || !any(candidates$exact)) {
+        return(NULL)
+    }
+    exact <- candidates[candidates$exact, , drop = FALSE]
+    best <- exact[1L, , drop = FALSE]
+    if (nrow(exact) > 1L &&
+        exact$n_targets[[1L]] == exact$n_targets[[2L]]) {
+        return(NULL)
+    }
+    list(
+        species = as.character(best$key[[1L]]),
+        label = as.character(best$label[[1L]]),
+        candidates = candidates
+    )
+}
+
+#' Score every ordered species pair against one BAM header
+#'
+#' The BAM is usually mapped to the combined recipient + donor reference, so a
+#' single species rarely matches the whole header. This evaluates the assembly
+#' that `resolveSpeciesAssembly()` builds for each ordered pair.
+#'
+#' @noRd
+bam_species_pair_candidate_table <- function(targets, config) {
+    species <- config$species
+    if (is.null(species) || length(species) < 2L) {
+        return(NULL)
+    }
+    targets <- data.frame(
+        name = as.character(targets$name),
+        length = as.numeric(targets$length),
+        stringsAsFactors = FALSE
+    )
+    keys <- names(species)
+    ## Only pairs whose species contribute at least one header target can be
+    ## exact. This keeps the upload-time scan small even for a large registry.
+    present <- vapply(keys, function(key) {
+        contigs <- species[[key]]$contigs
+        is.data.frame(contigs) && "id" %in% names(contigs) &&
+            any(as.character(contigs$id) %in% targets$name)
+    }, logical(1))
+    keys <- keys[present]
+    if (length(keys) < 2L) {
+        return(NULL)
+    }
+    rows <- list()
+    for (recipient in keys) {
+        for (donor in keys) {
+            if (identical(recipient, donor)) {
+                next
+            }
+            pair <- tryCatch(
+                resolveSpeciesAssembly(
+                    config,
+                    donor = donor,
+                    recipient = recipient,
+                    donor_components = bam_species_components(
+                        species[[donor]]
+                    ),
+                    recipient_components = bam_species_components(
+                        species[[recipient]]
+                    )
+                ),
+                error = function(e) NULL
+            )
+            if (is.null(pair) || is.null(pair$assembly)) {
+                next
+            }
+            candidate <- tryCatch(
+                .match_candidate(
+                    targets, pair$assembly, pair$key, "<header>"
+                ),
+                error = function(e) NULL
+            )
+            if (is.null(candidate)) {
+                next
+            }
+            label <- function(key) {
+                value <- species[[key]]$label
+                if (is.null(value) || length(value) != 1L || is.na(value) ||
+                    !nzchar(value)) {
+                    key
+                } else {
+                    as.character(value)
+                }
+            }
+            rows[[length(rows) + 1L]] <- data.frame(
+                recipient = recipient,
+                donor = donor,
+                key = pair$key,
+                recipient_label = label(recipient),
+                donor_label = label(donor),
+                n_targets = candidate$n_targets,
+                n_matched = candidate$n_matched,
+                n_missing = length(candidate$missing),
+                n_length_mismatches = nrow(candidate$length_mismatches),
+                score = candidate$score,
+                exact = candidate$exact,
+                stringsAsFactors = FALSE
+            )
+        }
+    }
+    if (length(rows) == 0L) {
+        return(NULL)
+    }
+    out <- do.call(rbind, rows)
+    out[order(-out$score, -out$n_targets, out$key), , drop = FALSE]
+}
+
+#' @noRd
+bam_species_pair_candidates <- function(path, config) {
+    header <- tryCatch(bamHeaderInfo(path), error = function(e) NULL)
+    if (is.null(header)) {
+        return(NULL)
+    }
+    bam_species_pair_candidate_table(header$targets, config)
+}
+
+#' Detect the most specific exact species pair for a BAM header
+#'
+#' When both orientations of a pair are exact, keep the current donor or the
+#' current recipient if that resolves the role ambiguity. This matches the
+#' dashboard's default where a newly uploaded BAM keeps the selected donor and
+#' changes the recipient.
+#'
+#' @noRd
+bam_choose_species_pair <- function(exact, current_recipient = NULL,
+                                    current_donor = NULL) {
+    if (!is.data.frame(exact) || nrow(exact) == 0L) {
+        return(NULL)
+    }
+    best <- NULL
+    if (!is.null(current_donor) && current_donor %in% exact$donor) {
+        best <- exact[exact$donor == current_donor, , drop = FALSE]
+    }
+    if (is.null(best) && !is.null(current_recipient) &&
+        current_recipient %in% exact$recipient) {
+        best <- exact[exact$recipient == current_recipient, , drop = FALSE]
+    }
+    if (is.null(best)) {
+        max_targets <- max(exact$n_targets)
+        best <- exact[exact$n_targets == max_targets, , drop = FALSE]
+    }
+    best <- best[order(-best$n_targets, best$key), , drop = FALSE]
+    best[1L, , drop = FALSE]
+}
+
+bam_detect_species_pair <- function(path, config,
+                                    current_recipient = NULL,
+                                    current_donor = NULL) {
+    candidates <- bam_species_pair_candidates(path, config)
+    if (is.null(candidates) || !any(candidates$exact)) {
+        return(NULL)
+    }
+    exact <- candidates[candidates$exact, , drop = FALSE]
+    chosen <- bam_choose_species_pair(
+        exact,
+        current_recipient = current_recipient,
+        current_donor = current_donor
+    )
+    if (is.null(chosen)) {
+        return(NULL)
+    }
+    list(
+        recipient = as.character(chosen$recipient[[1L]]),
+        donor = as.character(chosen$donor[[1L]]),
+        recipient_label = as.character(chosen$recipient_label[[1L]]),
+        donor_label = as.character(chosen$donor_label[[1L]]),
+        key = as.character(chosen$key[[1L]]),
+        candidates = candidates
+    )
+}
+
 #' Extract assembly candidates from an error, or compute them from the headers
 #' @noRd
 bam_error_candidates <- function(e, paths, config) {
@@ -5962,6 +6207,7 @@ bam_launcher_server <- function(state) {
         example_mode <- shiny::reactiveVal(FALSE)
         sidebar_unlocked <- shiny::reactiveVal(FALSE)
         upload_epoch <- shiny::reactiveVal(0L)
+        auto_species <- shiny::reactiveVal(NULL)
 
         shiny::observeEvent(example_mode(), {
             if (isTRUE(example_mode())) {
@@ -6181,24 +6427,117 @@ bam_launcher_server <- function(state) {
             if (isTRUE(example_mode())) {
                 return(bam_example_species_selection()$recipient)
             }
-            value <- input$recipient_species
-            if (is.null(value) || length(value) != 1L || is.na(value) ||
-                !value %in% species_keys) {
-                return(default_recipient)
+            detected <- auto_species()
+            if (!is.null(detected$recipient) &&
+                detected$recipient %in% species_keys) {
+                return(detected$recipient)
             }
-            as.character(value)
+            value <- input$recipient_species
+            if (!is.null(value) && length(value) == 1L && !is.na(value) &&
+                value %in% species_keys) {
+                return(as.character(value))
+            }
+            default_recipient
         })
         donor_species <- shiny::reactive({
             if (isTRUE(example_mode())) {
                 return(bam_example_species_selection()$donor)
             }
-            value <- input$donor_species
-            if (is.null(value) || length(value) != 1L || is.na(value) ||
-                !value %in% species_keys) {
-                return(default_donor)
+            detected <- auto_species()
+            if (!is.null(detected$donor) && detected$donor %in% species_keys) {
+                return(detected$donor)
             }
-            as.character(value)
+            value <- input$donor_species
+            if (!is.null(value) && length(value) == 1L && !is.na(value) &&
+                value %in% species_keys) {
+                return(as.character(value))
+            }
+            default_donor
         })
+
+        shiny::observeEvent(input$recipient_species, {
+            value <- input$recipient_species
+            detected <- auto_species()
+            if (is.null(detected) || is.null(detected$recipient) ||
+                is.null(value) || length(value) != 1L || is.na(value) ||
+                identical(as.character(value), detected$recipient)) {
+                return()
+            }
+            detected$recipient <- NULL
+            auto_species(detected)
+        }, ignoreInit = TRUE)
+        shiny::observeEvent(input$donor_species, {
+            value <- input$donor_species
+            detected <- auto_species()
+            if (is.null(detected) || is.null(detected$donor) ||
+                is.null(value) || length(value) != 1L || is.na(value) ||
+                identical(as.character(value), detected$donor)) {
+                return()
+            }
+            detected$donor <- NULL
+            auto_species(detected)
+        }, ignoreInit = TRUE)
+
+        shiny::observeEvent(uploaded_paths(), {
+            paths <- uploaded_paths()
+            if (length(paths) == 0L || isTRUE(example_mode())) {
+                auto_species(NULL)
+                return()
+            }
+            current_recipient <- recipient_species()
+            current_donor <- donor_species()
+            pair <- tryCatch(
+                bam_detect_species_pair(
+                    paths[[1L]], config,
+                    current_recipient = current_recipient,
+                    current_donor = current_donor
+                ),
+                error = function(e) NULL
+            )
+            if (!is.null(pair)) {
+                recipient <- pair$recipient
+                donor <- pair$donor
+                detected_label <- sprintf(
+                    "%s recipient, %s donor",
+                    pair$recipient_label, pair$donor_label
+                )
+            } else {
+                detected <- tryCatch(
+                    bam_detect_species(paths[[1L]], config),
+                    error = function(e) NULL
+                )
+                if (is.null(detected)) {
+                    auto_species(NULL)
+                    return()
+                }
+                recipient <- detected$species
+                donor <- current_donor
+                if (identical(recipient, donor)) {
+                    donor <- current_recipient
+                }
+                if (is.null(donor) || !donor %in% species_keys ||
+                    identical(donor, recipient)) {
+                    alternatives <- setdiff(species_keys, recipient)
+                    donor <- if (length(alternatives) > 0L) {
+                        alternatives[[1L]]
+                    } else {
+                        recipient
+                    }
+                }
+                detected_label <- detected$label
+            }
+            auto_species(list(recipient = recipient, donor = donor))
+            shiny::updateSelectInput(
+                session, "recipient_species", selected = recipient
+            )
+            shiny::updateSelectInput(
+                session, "donor_species", selected = donor
+            )
+            log_line(sprintf(
+                "Detected species from the BAM header: %s.",
+                detected_label
+            ))
+        }, ignoreInit = TRUE)
 
         shiny::observeEvent(input$swap_species, {
             if (!species_available) {
@@ -6209,6 +6548,7 @@ bam_launcher_server <- function(state) {
             if (is.null(recipient_key) || is.null(donor_key)) {
                 return()
             }
+            auto_species(list(recipient = donor_key, donor = recipient_key))
             shiny::updateSelectInput(
                 session, "recipient_species", selected = donor_key
             )
@@ -6886,7 +7226,13 @@ bam_launcher_server <- function(state) {
                     locked = TRUE
                 ))
             }
-            bam_sidebar_species_ui(config)
+            bam_sidebar_species_ui(
+                config,
+                selection = list(
+                    recipient = recipient_species(),
+                    donor = donor_species()
+                )
+            )
         })
 
         output$preflight_table <- shiny::renderTable({
