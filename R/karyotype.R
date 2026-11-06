@@ -737,7 +737,13 @@ mamamia_karyotype_output <- function(outputId, width = "100%",
     tag <- htmlwidgets::shinyWidgetOutput(
         outputId, "mamamiaKaryotypeCard", width, height
     )
-    htmltools::attachDependencies(tag, mamamia_karyotype_dependencies())
+    ## `shinyWidgetOutput()` already carries the htmlwidgets runtime
+    ## dependency. Append the widget's own CSS/binding so the binding script
+    ## loads after `HTMLWidgets` exists; replacing the dependencies here makes
+    ## the browser evaluate `HTMLWidgets.widget()` before htmlwidgets.js.
+    htmltools::attachDependencies(
+        tag, mamamia_karyotype_dependencies(), append = TRUE
+    )
 }
 
 #' Shiny renderer for the karyotype

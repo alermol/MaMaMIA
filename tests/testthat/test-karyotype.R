@@ -257,6 +257,23 @@ test_that("mamamia_karyotype() returns a widget with its stylesheet", {
     )))
 })
 
+test_that("the Shiny karyotype output loads htmlwidgets before its binding", {
+    skip_if_not_installed("htmlwidgets")
+    skip_if_not_installed("htmltools")
+    tag <- mamamia_karyotype_output("karyotype")
+    names <- vapply(
+        htmltools::htmlDependencies(tag),
+        function(dependency) dependency$name,
+        character(1)
+    )
+    expect_true("htmlwidgets" %in% names)
+    expect_true("mamamiaKaryotypeCard-binding" %in% names)
+    expect_lt(
+        match("htmlwidgets", names),
+        match("mamamiaKaryotypeCard-binding", names)
+    )
+})
+
 test_that("the explorer exposes the karyotype tab and mode switch", {
     skip_if_not_installed("htmlwidgets")
     skip_if_not_installed("htmltools")
