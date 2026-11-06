@@ -5850,7 +5850,7 @@ bam_launcher_ui <- function(state) {
                     "    try {",
                     "      input.files = new DataTransfer().files;",
                     "    } catch (error) {",
-                    "      // Fall back to clearing the value below.",
+                    "      /* Fall back to clearing the value below. */",
                     "    }",
                     "    input.value = '';",
                     "  }",
