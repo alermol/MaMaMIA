@@ -79,8 +79,8 @@ bam_example_available <- function() {
             result$assembly <- rewrite_assembly(result$assembly)
             provenance <- result$provenance
             if (is.list(provenance)) {
-                ## Results written before the app-only layout used
-                ## `package`/`package_version`.
+                ## Results written before the app-only layout stored the
+                ## application version under an older field name.
                 if (is.null(provenance$app)) {
                     provenance$app <- "MaMaMIA"
                 }

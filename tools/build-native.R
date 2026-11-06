@@ -7,7 +7,7 @@
 ##
 ## The Rhtslib flags are substituted into src/Makevars, then R CMD SHLIB
 ## compiles every source into lib/MaMaMIA.so. The image build and the test
-## runner call this script; no R package installation is involved.
+## runner call this script directly.
 
 args <- commandArgs(trailingOnly = TRUE)
 script_arg <- grep("^--file=", commandArgs(FALSE), value = TRUE)

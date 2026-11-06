@@ -1,9 +1,8 @@
 ## Source-based runtime for the MaMaMIA web service.
 ##
-## The application is not installed as an R package. `mamamia_load()` sources
-## the application modules into the global environment and loads the compiled
-## native library. The Shiny entrypoint (app.R) and the test runner call it
-## once per process.
+## `mamamia_load()` sources the application modules into the global
+## environment and loads the compiled native library. The Shiny entrypoint
+## (app.R) and the test runner call it once per process.
 
 #' Root of the deployed application
 #'

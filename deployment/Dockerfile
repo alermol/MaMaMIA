@@ -11,7 +11,7 @@
 #     --build-arg BIOC_MIRROR=https://bioconductor.statistik.tu-dortmund.de/packages \
 #     -f deployment/Dockerfile -t mamamia:0.1.0 .
 #
-# The image pins the uvr release, R and every R package (uvr.lock). It runs as
+# The image pins the uvr release, R and every dependency (uvr.lock). It runs as
 # an unprivileged user and is started by ShinyProxy or directly through
 # `uvr run /app/deployment/start.R`.
 
@@ -24,7 +24,7 @@ ARG R_VERSION=4.6.1
 # Optional Bioconductor mirror. The default lockfile points at
 # https://bioconductor.org; set this to a mirror root (for example
 # https://bioconductor.statistik.tu-dortmund.de/packages) when the build host
-# cannot reach bioconductor.org. The package checksums still come from the
+# cannot reach bioconductor.org. The dependency checksums still come from the
 # committed lockfile.
 ARG BIOC_MIRROR=
 
@@ -76,7 +76,7 @@ RUN curl -fsSL -o /tmp/uvr.tar.gz \
     && rm -f /tmp/uvr.tar.gz \
     && uvr --version
 
-# The runtime user owns the uvr-managed R, the package library and the caches.
+# The runtime user owns the uvr-managed R, the dependency library and the caches.
 RUN useradd --create-home --shell /bin/bash --uid 1000 mamamia \
     && mkdir -p /app/tools /tmp/mamamia-cache /srv/mamamia \
     && chown -R mamamia:mamamia /app /tmp/mamamia-cache /srv/mamamia

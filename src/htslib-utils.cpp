@@ -1,6 +1,6 @@
 // htslib helpers used by the BAM-first workflow.
 //
-// The package talks to BAM files through Rhtslib directly. This file reads
+// The application talks to BAM files through Rhtslib directly. This file reads
 // headers, builds CSI indexes and measures reads. bam_metrics_rg_cpp() serves
 // the pipeline; bam_count_ranges_cpp() serves the public countReads() helper
 // and arbitrary GRanges.

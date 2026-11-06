@@ -1,6 +1,6 @@
 #!/usr/bin/env Rscript
 
-## Run the internal test suite without installing an R package.
+## Run the internal test suite directly from the source tree.
 ##
 ## Usage:
 ##   Rscript tests/run-tests.R [filter]

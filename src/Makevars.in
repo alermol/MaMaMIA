@@ -1,7 +1,7 @@
 CXX_STD = CXX23
 
-## Rhtslib ships a static libhts.a; the configure script substitutes its
-## flags so the package keeps working when the library layout changes.
+## Rhtslib ships a static libhts.a; tools/build-native.R substitutes its
+## flags so the build keeps working when the library layout changes.
 PKG_CPPFLAGS = @RHTLIBS_CPPFLAGS@ -I../src/gcrank/include
 
 PKG_LIBS = @RHTLIBS@ -pthread

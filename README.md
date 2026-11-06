@@ -17,8 +17,7 @@ downloadable report bundle. The method is ploidy-agnostic and supports any
 number of donor and recipient components.
 
 The supported deployment is the Docker image under ShinyProxy, or the same
-image run directly. MaMaMIA is not distributed as an R package and has no
-separate programmatic API.
+image run directly.
 
 ## Quick start
 

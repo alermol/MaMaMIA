@@ -2,7 +2,7 @@
 
 ## Replace the global gcrankGc() binding for the duration of one test. The
 ## source loader keeps application functions in the global environment, so a
-## package-namespace mock would not reach them.
+## namespace-level mock would not reach them.
 local_gcrank_mock <- function(fn) {
     env <- globalenv()
     had <- exists("gcrankGc", envir = env, inherits = FALSE)

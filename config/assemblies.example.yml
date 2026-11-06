@@ -10,8 +10,8 @@
 # either side. Contigs are paired by chromosome group, taken from the optional
 # `group` field or from the first number in `name` (1A and 1R are both group
 # 1). Components are arbitrary contig-set labels, not genome types. The
-# dashboard analyses every declared component; `default_component` is only
-# used by API calls that do not name a component explicitly. A single-component
+# dashboard analyses every declared component; `default_component` is used
+# only when a contig does not name a component explicitly. A single-component
 # species may omit `component` on its contigs; it then defaults to
 # `default_component`, or to "default" when no default is declared.
 #
