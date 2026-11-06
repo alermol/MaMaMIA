@@ -194,6 +194,37 @@ HTMLWidgets.widget({
         String(value) !== "" && String(value) !== "NA";
     }
 
+    function hasDonorSupport(call) {
+      if (!call) {
+        return false;
+      }
+      if (call.donor_supported === true || call.donor_supported === false) {
+        return call.donor_supported === true;
+      }
+      if (hasValue(call.class_evidence)) {
+        return String(call.class_evidence).indexOf("donor") !== -1;
+      }
+      return ["substitution", "addition", "complex"].indexOf(
+        String(call.class)
+      ) !== -1;
+    }
+
+    function hasRecipientSupport(call) {
+      if (!call) {
+        return false;
+      }
+      if (call.recipient_supported === true ||
+          call.recipient_supported === false) {
+        return call.recipient_supported === true;
+      }
+      if (hasValue(call.class_evidence)) {
+        return String(call.class_evidence).indexOf("recipient") !== -1;
+      }
+      return ["substitution", "deletion", "complex"].indexOf(
+        String(call.class)
+      ) !== -1;
+    }
+
     function callOpacity(call) {
       var opacity = call.confidence === "high" ? 0.95 :
         (call.confidence === "moderate" ? 0.72 : 0.45);
@@ -457,6 +488,8 @@ HTMLWidgets.widget({
             ? "added donor"
             : "recipient chromosome";
       var status = matched ? resolvedStatus(matched) : "no call";
+      var donorSupported = hasDonorSupport(matched);
+      var recipientSupported = hasRecipientSupport(matched);
       var subParts = [];
       if (hasValue(payload.sample)) {
         subParts.push(payload.sample);
@@ -465,10 +498,9 @@ HTMLWidgets.widget({
         subParts.push("group " + chromosome.group);
       }
       if (matched) {
-        var callSpan = fmtSpan(
-          matched.donor_start_bp,
-          matched.donor_end_bp
-        );
+        var callSpan = donorSupported
+          ? fmtSpan(matched.donor_start_bp, matched.donor_end_bp)
+          : "";
         var spanLabel = "donor ";
         if (!callSpan) {
           callSpan = fmtSpan(matched.start_bp, matched.end_bp);
@@ -520,23 +552,30 @@ HTMLWidgets.widget({
         if (donorSpan) {
           donor += " · " + donorSpan;
         }
-        var placement = [
-          tipRow("Recipient", recipient),
-          tipRow("Donor", donor),
-          tipRow(
+        var placement = [];
+        if (recipientSupported) {
+          placement.push(tipRow("Recipient", recipient));
+        }
+        if (donorSupported) {
+          placement.push(tipRow("Donor", donor));
+        }
+        if (recipientSupported && donorSupported) {
+          placement.push(tipRow(
             "Relation",
             matched.recipient_assignment === "no_recipient_loss"
               ? "not placed"
               : (matched.cross_group ? "cross-group" : "same group")
-          ),
-          tipRow(
+          ));
+        }
+        if (recipientSupported) {
+          placement.push(tipRow(
             "Assignment",
             assignmentLabel(matched.recipient_assignment) +
               (isNumber(matched.recipient_margin)
                 ? " · margin " + fmtSigned(matched.recipient_margin)
                 : "")
-          )
-        ];
+          ));
+        }
         if (hasValue(matched.class_group) &&
             matched.class_group !== matched.class) {
           placement.push(tipRow(
@@ -544,14 +583,21 @@ HTMLWidgets.widget({
             matched.class_group + " → " + matched.class
           ));
         }
-        if (matched.recipient_assignment === "ambiguous" &&
+        if (recipientSupported &&
+            matched.recipient_assignment === "ambiguous" &&
             hasValue(matched.recipient_alternative)) {
           placement.push(tipRow(
             "Alternative",
             matched.recipient_alternative
           ));
         }
-        html += tipSection("Placement", tipGrid(placement));
+        var placementBody = tipGrid(placement);
+        if (!placementBody) {
+          placementBody =
+            '<div class="mamamia-tip-empty">' +
+            "No donor or recipient segment assigned.</div>";
+        }
+        html += tipSection("Placement", placementBody);
 
         var metrics = '<div class="mamamia-tip-metrics">' +
           tipMetric("Score", matched.score) +
@@ -562,14 +608,16 @@ HTMLWidgets.widget({
         var chips = [];
         if (hasValue(matched.class_confidence)) {
           chips.push(tipChip(
-            "class " + matched.class_confidence, "confidence"
+            "class confidence " + matched.class_confidence, "confidence"
           ));
         }
         if (hasValue(matched.class_evidence)) {
-          chips.push(tipChip(matched.class_evidence, "evidence"));
+          chips.push(tipChip(
+            "evidence " + matched.class_evidence, "evidence"
+          ));
         }
         if (hasValue(matched.copy_state)) {
-          chips.push(tipChip(matched.copy_state, "copy"));
+          chips.push(tipChip("copy " + matched.copy_state, "copy"));
         }
         if (hasValue(matched.total_evidence) &&
             matched.total_evidence !== "neutral") {
@@ -593,46 +641,63 @@ HTMLWidgets.widget({
         html += tipSection("Evidence", metrics);
 
         var dosage = [];
-        if (isNumber(matched.affected_copies)) {
+        var hasCopies = isNumber(matched.affected_copies);
+        var hasFraction = isNumber(matched.affected_fraction);
+        var hasDonorCopies = donorSupported &&
+          isNumber(matched.donor_copies);
+        var hasDosageConfidence = hasValue(matched.dosage_confidence) &&
+          matched.dosage_confidence !== "unavailable";
+        if (hasCopies) {
           var copies = matched.affected_copies +
             (isNumber(matched.recipient_copy_number)
               ? " of " + matched.recipient_copy_number + " copies"
               : " copies");
           dosage.push(tipRow("Copies", copies));
-        } else {
-          dosage.push(tipRow("Copies", "unavailable"));
         }
-        if (isNumber(matched.affected_fraction)) {
+        if (hasFraction) {
           dosage.push(tipRow(
             "Estimated fraction", fmtPercent(matched.affected_fraction)
           ));
         }
-        if (isNumber(matched.donor_copies)) {
+        if (hasDonorCopies) {
           dosage.push(tipRow(
             "Estimated donor copies", fmt(matched.donor_copies)
           ));
         }
-        if (hasValue(matched.dosage_confidence)) {
+        if (hasDosageConfidence) {
           dosage.push(tipRow("Confidence", matched.dosage_confidence));
         }
-        html += tipSection("Dosage", tipGrid(dosage));
+        if (!hasCopies && dosage.length > 0) {
+          dosage.unshift(tipRow("Copies", "unavailable"));
+        }
+        var dosageBody = dosage.length
+          ? tipGrid(dosage)
+          : '<div class="mamamia-tip-empty">' +
+            "Dosage not estimated for this call.</div>";
+        html += tipSection("Dosage", dosageBody);
 
         var geometry = [];
         if (isNumber(matched.width_bp)) {
-          geometry.push(tipRow("Donor width", fmtBp(matched.width_bp)));
+          geometry.push(tipRow(
+            donorSupported ? "Donor width" : "Call width",
+            fmtBp(matched.width_bp)
+          ));
         }
-        if (isNumber(matched.recipient_deletion_width_bp)) {
+        if (recipientSupported &&
+            isNumber(matched.recipient_deletion_width_bp)) {
           geometry.push(tipRow(
             "Recipient run", fmtBp(matched.recipient_deletion_width_bp)
           ));
         }
-        if (isNumber(matched.recipient_width_overlap)) {
+        if (donorSupported && recipientSupported &&
+            isNumber(matched.recipient_width_overlap)) {
           geometry.push(tipRow(
             "Overlap",
             fmtPercent(matched.recipient_width_overlap)
           ));
         }
-        if (isNumber(matched.recipient_fraction_ratio)) {
+        if (donorSupported && recipientSupported &&
+            isNumber(matched.recipient_fraction_ratio)) {
           geometry.push(tipRow(
             "Width ratio", fmt(matched.recipient_fraction_ratio)
           ));

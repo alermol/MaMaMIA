@@ -246,7 +246,7 @@ test_that("mamamia_karyotype() returns a widget with its stylesheet", {
         dependencies
     )
     expect_length(binding, 1L)
-    expect_identical(binding[[1L]]$version, "0.1.1")
+    expect_identical(binding[[1L]]$version, "0.1.0")
     expect_true(any(vapply(
         widget$dependencies,
         function(dependency) {
@@ -255,6 +255,55 @@ test_that("mamamia_karyotype() returns a widget with its stylesheet", {
         },
         logical(1)
     )))
+})
+
+test_that("the karyotype marks donor support for the tooltip", {
+    result <- bam_example_result(1000)
+    payload <- karyotype_payload(result, "example-sample", "calls")
+    calls <- unlist(
+        lapply(payload$chromosomes, `[[`, "calls"),
+        recursive = FALSE
+    )
+    classes <- vapply(calls, function(call) call$class, character(1))
+    donor_supported <- vapply(
+        calls, function(call) isTRUE(call$donor_supported), logical(1)
+    )
+    recipient_supported <- vapply(
+        calls, function(call) isTRUE(call$recipient_supported), logical(1)
+    )
+    expect_true(any(classes == "deletion"))
+    expect_false(any(donor_supported[classes == "deletion"]))
+    expect_true(any(recipient_supported[classes == "deletion"]))
+    expect_true(any(classes == "addition"))
+    expect_true(any(donor_supported[classes == "addition"]))
+    expect_false(any(recipient_supported[classes == "addition"]))
+    expect_true(any(classes == "substitution"))
+    expect_true(any(donor_supported[classes == "substitution"]))
+    expect_true(any(recipient_supported[classes == "substitution"]))
+
+    added <- Filter(
+        function(chromosome) isTRUE(chromosome$added),
+        payload$chromosomes
+    )
+    added_classes <- unlist(lapply(added, function(chromosome) {
+        vapply(chromosome$calls, function(call) call$class, character(1))
+    }))
+    expect_true("addition" %in% added_classes)
+    expect_false("deletion" %in% added_classes)
+
+    recipient_bars <- Filter(
+        function(chromosome) !isTRUE(chromosome$added),
+        payload$chromosomes
+    )
+    recipient_classes <- unlist(lapply(
+        recipient_bars,
+        function(chromosome) {
+            vapply(chromosome$calls, function(call) call$class, character(1))
+        }
+    ))
+    ## A partial addition has no donor chromosome bar, so it stays visible on
+    ## the recipient bar; its tooltip uses recipient_supported = FALSE.
+    expect_true("addition" %in% recipient_classes)
 })
 
 test_that("the Shiny karyotype output loads htmlwidgets before its binding", {

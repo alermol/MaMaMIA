@@ -355,6 +355,34 @@ karyotype_payload <- function(result, sample = NULL,
         }
         overlay[[name]][[i]]
     }
+    ## A deletion or a recipient-only event has no donor segment. The donor
+    ## contig fields still describe the homologous donor interval used for
+    ## placement, but the tooltip must not present that as donor evidence.
+    call_donor_supported <- function(i) {
+        evidence <- as.character(
+            call_value("class_evidence", i, NA_character_)
+        )
+        if (length(evidence) == 1L && !is.na(evidence) &&
+            nzchar(evidence)) {
+            return(grepl("donor", evidence, fixed = TRUE))
+        }
+        as.character(call_value("class", i, "")) %in%
+            c("substitution", "addition", "complex")
+    }
+    ## The reciprocal case: an addition has donor support but no recipient
+    ## loss. The recipient contig fields are the homologous host interval used
+    ## for placement, not an observed recipient segment.
+    call_recipient_supported <- function(i) {
+        evidence <- as.character(
+            call_value("class_evidence", i, NA_character_)
+        )
+        if (length(evidence) == 1L && !is.na(evidence) &&
+            nzchar(evidence)) {
+            return(grepl("recipient", evidence, fixed = TRUE))
+        }
+        as.character(call_value("class", i, "")) %in%
+            c("substitution", "deletion", "complex")
+    }
     score_values <- lapply(
         split(scores, as.character(scores$group)),
         function(x) {
@@ -455,6 +483,8 @@ karyotype_payload <- function(result, sample = NULL,
             donor_group = as.character(
                 call_value("group", i, NA_character_)
             ),
+            donor_supported = call_donor_supported(i),
+            recipient_supported = call_recipient_supported(i),
             cross_group = isTRUE(as.logical(
                 call_value("recipient_cross_group", i, FALSE)
             )),
@@ -526,6 +556,9 @@ karyotype_payload <- function(result, sample = NULL,
             recipient_subs == component & call_groups == group
         keep <- is.na(recipient_assignment) |
             recipient_assignment != "no_recipient_loss"
+        ## Partial additions are drawn on the recipient bar because the
+        ## karyotype only adds donor chromosomes for full-chromosome events.
+        ## The tooltip suppresses the recipient row for those calls.
         rows <- which((own | fallback) & keep)
         lapply(rows, function(i) {
             make_call(i, recipient_start[[i]], recipient_end[[i]],
@@ -540,7 +573,10 @@ karyotype_payload <- function(result, sample = NULL,
         own <- !is.na(donor_ids) & donor_ids == chr_id
         fallback <- is.na(donor_ids) & !is.na(donor_subs) &
             donor_subs == component & call_groups == group
-        rows <- which(own | fallback)
+        supported <- vapply(
+            seq_len(nrow(overlay)), call_donor_supported, logical(1)
+        )
+        rows <- which((own | fallback) & supported)
         lapply(rows, function(i) {
             make_call(i, donor_start[[i]], donor_end[[i]],
                 length_bp, n_per
@@ -705,7 +741,7 @@ mamamia_karyotype_dependencies <- function() {
         ## file.
         htmltools::htmlDependency(
             name = "mamamiaKaryotypeCard-binding",
-            version = "0.1.1",
+            version = "0.1.0",
             src = src,
             script = "mamamiaKaryotypeCard.js",
             all_files = FALSE
