@@ -1,4 +1,4 @@
-// htslib helpers used by the BAM-first workflow.
+// htslib helpers used by the BAM analysis workflow.
 //
 // The application talks to BAM files through Rhtslib directly. This file reads
 // headers, builds CSI indexes and measures reads. bam_metrics_rg_cpp() serves
@@ -109,7 +109,7 @@ Rcpp::List bam_header_info_cpp(const std::string& path) {
   if (format->format != bam) {
     Rcpp::stop(
         "Unsupported input format '%s' for '%s'; only coordinate-sorted BAM "
-        "files are accepted (convert SAM/CRAM to BAM first)",
+        "files are accepted (convert SAM/CRAM to BAM before uploading)",
         format_name(format->format), path);
   }
 

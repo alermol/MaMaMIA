@@ -1,6 +1,6 @@
 ## Cohort pipeline orchestration.
 ##
-## `analyzeBamInput()` is the only BAM-first entrypoint of the application. It runs
+## `analyzeBamInput()` is the only BAM analysis entrypoint of the application. It runs
 ## cheap checks first (preflight), indexes, generates group-aware windows,
 ## extracts GC, measures counts and breadth in one htslib pass, builds the
 ## WindowMetrics table, applies a window mask, scores donor/recipient

@@ -8,7 +8,7 @@
 
 #' Construct a MaMaMIA error condition
 #'
-#' Internal helper shared by the BAM-first modules. Every error carries the
+#' Internal helper shared by the BAM input modules. Every error carries the
 #' base `MaMaMIAError` class plus a specific subclass, and may carry structured
 #' data (for example candidate assembly matches) in `$data`.
 #'

@@ -1,4 +1,4 @@
-## BAM-first Shiny application (T6.1-T6.4).
+## Shiny application for BAM input (T6.1-T6.4).
 ##
 ## The app is deliberately thin: configuration, preflight, run orchestration
 ## and cohort export live here, while measurement, scoring, masking,
@@ -5599,7 +5599,7 @@ bam_advanced_parameters_ui <- function(config, defaults, locked = FALSE) {
     )
 }
 
-## The BAM-first result area. The view filters stay visible above all tabs;
+## The result area. The view filters stay visible above all tabs;
 ## call filters belong to the segment table and exports have their own tab.
 #' @noRd
 bam_results_ui <- function() {
