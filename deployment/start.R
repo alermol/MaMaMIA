@@ -58,8 +58,9 @@ if (capabilities("cairo") && !file.exists(fontconfig)) {
     )
 }
 
-## Uploads are bounded by MAMAMIA_MAX_REQUEST_SIZE (read by app.R) and by the
-## ShinyProxy multipart limits. Raise them together for larger cohorts.
+## Upload caps apply in the ShinyProxy deployment, which sets
+## MAMAMIA_DEPLOYMENT_MODE and MAMAMIA_MAX_REQUEST_SIZE. A direct container run
+## has no app-level upload cap.
 shiny::runApp(
     appDir = root,
     host = "0.0.0.0",

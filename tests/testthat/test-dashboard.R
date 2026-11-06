@@ -367,6 +367,32 @@ test_that("the BAM chooser accepts exactly one file", {
     expect_match(help_modal, "mamamia-tooltip-modal", fixed = TRUE)
 })
 
+test_that("upload caps apply only to the ShinyProxy deployment", {
+    config <- readMaMaMIAConfig(
+        mamamia_path("data", "bam-demo", "assemblies.yml")
+    )
+    withr::local_envvar(
+        MAMAMIA_DEPLOYMENT_MODE = "direct",
+        MAMAMIA_MAX_REQUEST_SIZE = NA
+    )
+    direct <- bam_launcher_state(config)
+    expect_true(direct$ok)
+    expect_true(is.infinite(direct$config$server$max_total_bytes))
+    expect_identical(mamamia_max_request_size(), Inf)
+
+    withr::local_envvar(
+        MAMAMIA_DEPLOYMENT_MODE = "shinyproxy",
+        MAMAMIA_MAX_REQUEST_SIZE = "1234"
+    )
+    proxy <- bam_launcher_state(config)
+    expect_true(proxy$ok)
+    expect_identical(
+        proxy$config$server$max_total_bytes,
+        config$server$max_total_bytes
+    )
+    expect_identical(mamamia_max_request_size(), 1234)
+})
+
 test_that("the upload path helper rejects several files", {
     one <- data.frame(datapath = "a.bam", stringsAsFactors = FALSE)
     expect_identical(bam_single_upload_path(one), "a.bam")

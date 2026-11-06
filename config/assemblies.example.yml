@@ -36,6 +36,8 @@ defaults:
 server:
   # The dashboard accepts one BAM per run. A multi-sample BAM is one file.
   max_bams: 1
+  # Enforced only under ShinyProxy (MAMAMIA_DEPLOYMENT_MODE=shinyproxy).
+  # A direct container run ignores this size cap.
   max_total_bytes: 5368709120.0   # 5 GiB
 
 species:

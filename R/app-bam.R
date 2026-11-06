@@ -243,6 +243,27 @@ bam_error_text <- function(info) {
 
 ## Configuration -------------------------------------------------------------
 
+#' Apply the upload policy for the current deployment
+#'
+#' Only the ShinyProxy deployment enforces the registry size cap. A direct
+#' container run removes it, so uploads are bounded only by local disk space.
+#'
+#' @param config A validated configuration list.
+#' @return The configuration with the effective upload cap.
+#' @noRd
+mamamia_apply_upload_policy <- function(config) {
+    if (!is.list(config)) {
+        return(config)
+    }
+    if (identical(mamamia_deployment_mode(), "direct")) {
+        if (is.null(config$server) || !is.list(config$server)) {
+            config$server <- list()
+        }
+        config$server$max_total_bytes <- Inf
+    }
+    config
+}
+
 #' Load and normalize the application configuration
 #'
 #' `config` may be a path to a YAML registry, a validated configuration list,
@@ -303,6 +324,7 @@ bam_launcher_state <- function(config = NULL) {
             )
         ))
     }
+    parsed <- mamamia_apply_upload_policy(parsed)
     list(
         ok = TRUE,
         config = parsed,

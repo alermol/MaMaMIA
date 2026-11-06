@@ -37,6 +37,35 @@ mamamia_version <- function() {
     value
 }
 
+#' Deployment mode for upload limits
+#'
+#' `MAMAMIA_DEPLOYMENT_MODE=shinyproxy` enables the upload caps from the
+#' registry and `MAMAMIA_MAX_REQUEST_SIZE`. Any other value, including the
+#' default, is a direct container run without a size cap.
+#' @noRd
+mamamia_deployment_mode <- function() {
+    mode <- tolower(trimws(Sys.getenv(
+        "MAMAMIA_DEPLOYMENT_MODE", unset = "direct"
+    )))
+    if (identical(mode, "shinyproxy")) "shinyproxy" else "direct"
+}
+
+#' Shiny request-body limit for the current deployment
+#' @noRd
+mamamia_max_request_size <- function() {
+    if (!identical(mamamia_deployment_mode(), "shinyproxy")) {
+        return(Inf)
+    }
+    value <- suppressWarnings(as.numeric(Sys.getenv(
+        "MAMAMIA_MAX_REQUEST_SIZE",
+        unset = as.character(5 * 1024^3)
+    )))
+    if (length(value) != 1L || !is.finite(value) || value <= 0) {
+        value <- 5 * 1024^3
+    }
+    value
+}
+
 #' Path to the compiled native library
 #' @noRd
 mamamia_native_lib <- function(root = mamamia_root()) {

@@ -24,15 +24,7 @@ local({
     source(file.path(root, "R", "load.R"), local = FALSE)
     mamamia_load(root)
 
-    max_request <- suppressWarnings(as.numeric(Sys.getenv(
-        "MAMAMIA_MAX_REQUEST_SIZE",
-        unset = as.character(5 * 1024^3)
-    )))
-    if (length(max_request) != 1L || !is.finite(max_request) ||
-        max_request <= 0) {
-        max_request <- 5 * 1024^3
-    }
-    options(shiny.maxRequestSize = max_request)
+    options(shiny.maxRequestSize = mamamia_max_request_size())
 
     mamamia_app()
 })

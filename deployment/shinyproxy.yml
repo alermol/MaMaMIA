@@ -54,6 +54,9 @@ proxy:
       port: 3838
       container-env:
         MAMAMIA_CONFIG: /srv/mamamia/config/assemblies.yml
+        # Enforce the registry upload cap in this deployment only.
+        MAMAMIA_DEPLOYMENT_MODE: shinyproxy
+        MAMAMIA_MAX_REQUEST_SIZE: "5368709120"
         OMP_NUM_THREADS: "1"
         R_USER_CACHE_DIR: /tmp/mamamia-cache
         HOME: /home/mamamia
@@ -69,8 +72,10 @@ proxy:
       max-instances: 1
       max-total-instances: 2
 
-# Uploads are bounded by MAMAMIA_MAX_REQUEST_SIZE in app.R. Undertow's own POST
-# limit must be lifted as well.
+# This deployment enforces the registry upload cap through
+# MAMAMIA_DEPLOYMENT_MODE and MAMAMIA_MAX_REQUEST_SIZE above. A direct
+# container run has no app-level upload cap. Undertow's own POST limit must be
+# lifted as well.
 server:
   servlet:
     session:
