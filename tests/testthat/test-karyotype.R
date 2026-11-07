@@ -138,6 +138,65 @@ test_that("a partial donor call is not a whole-chromosome addition", {
     )
 })
 
+test_that("split additions covering a donor chromosome add it to the plot", {
+    result <- bam_example_result(1000)
+    donor <- result$assembly$contigs$donor[1L, , drop = FALSE]
+    template <- result$calls[1L, , drop = FALSE]
+    make_segment <- function(start_bp, end_bp) {
+        segment <- template
+        segment$class <- "addition"
+        segment$class_evidence <- "donor"
+        segment$pass <- TRUE
+        segment$donor_mean <- 2
+        segment$recipient_mean <- 0
+        segment$score_mean <- 2
+        segment$start_iid <- 10L
+        segment$end_iid <- 20L
+        segment$width_bp <- 1
+        segment$donor_chr_id <- donor$id
+        segment$donor_chr_name <- donor$name
+        segment$donor_component <- donor$component
+        segment$group <- donor$group
+        segment$donor_start_bp <- start_bp
+        segment$donor_end_bp <- end_bp
+        segment$recipient_chr_id <- NA_character_
+        segment$recipient_chr_name <- NA_character_
+        segment$recipient_component <- NA_character_
+        segment$recipient_start_bp <- NA_real_
+        segment$recipient_end_bp <- NA_real_
+        segment$recipient_assignment <- "no_recipient_loss"
+        segment
+    }
+    result$calls <- rbind(
+        make_segment(0, 80000),
+        make_segment(80001, as.numeric(donor$length))
+    )
+
+    payload <- karyotype_payload(result, "example-sample", "calls")
+    added <- Filter(
+        function(chromosome) isTRUE(chromosome$added),
+        payload$chromosomes
+    )
+    expect_identical(
+        vapply(added, `[[`, "", "name"),
+        rep(as.character(donor$name), 2L)
+    )
+    expect_true(all(vapply(
+        added, function(chromosome) length(chromosome$calls), integer(1)
+    ) == 2L))
+
+    ## One partial segment does not cover the chromosome and adds no bar.
+    result$calls <- result$calls[1L, , drop = FALSE]
+    payload <- karyotype_payload(result, "example-sample", "calls")
+    added <- Filter(
+        function(chromosome) isTRUE(chromosome$added),
+        payload$chromosomes
+    )
+    expect_false(as.character(donor$name) %in% vapply(
+        added, `[[`, "", "name"
+    ))
+})
+
 test_that("a deleted recipient chromosome stays in the karyotype", {
     result <- bam_example_result(1000)
     extra <- result$assembly$contigs$recipient[1, , drop = FALSE]

@@ -247,6 +247,88 @@ karyotype_full_calls <- function(result, sample, n_per = NULL,
     calls[full, , drop = FALSE]
 }
 
+#' Donor chromosomes covered by passed call segments
+#'
+#' A chromosome-scale addition can be split into several adjacent calls when
+#' the score profile dips between them. No single call then starts at the first
+#' window and reaches the coverage threshold, so the full-chromosome test in
+#' [karyotype_full_calls()] misses the event and the donor chromosome is never
+#' added to the plot. Measure the union of the passed donor intervals instead.
+#'
+#' @param calls Calls to inspect, already filtered to one sample.
+#' @param donor Donor contig table with `id` and `length`.
+#' @param minimum Fraction of the donor chromosome that must be covered.
+#' @param start_max Largest allowed start position, as a fraction of the
+#'   chromosome.
+#' @noRd
+karyotype_covered_donor_ids <- function(calls, donor, minimum = 0.95,
+                                        start_max = 0.01) {
+    if (is.null(calls) || !is.data.frame(calls) || nrow(calls) == 0L ||
+        is.null(donor) || !is.data.frame(donor) || nrow(donor) == 0L ||
+        !all(c("donor_chr_id", "donor_start_bp", "donor_end_bp") %in%
+            names(calls)) ||
+        !all(c("id", "length") %in% names(donor))) {
+        return(character())
+    }
+    keep <- rep(TRUE, nrow(calls))
+    if ("pass" %in% names(calls)) {
+        keep <- keep & isTRUE_vec(calls$pass)
+    }
+    if ("class" %in% names(calls)) {
+        keep <- keep & as.character(calls$class) %in%
+            c("addition", "substitution")
+    }
+    if ("donor_mean" %in% names(calls)) {
+        keep <- keep & is.finite(as.numeric(calls$donor_mean)) &
+            as.numeric(calls$donor_mean) > 0.5
+    }
+    ids <- as.character(calls$donor_chr_id)
+    starts <- suppressWarnings(as.numeric(calls$donor_start_bp))
+    ends <- suppressWarnings(as.numeric(calls$donor_end_bp))
+    keep <- keep & !is.na(ids) & nzchar(ids) &
+        is.finite(starts) & is.finite(ends) & ends > starts
+    if (!any(keep)) {
+        return(character())
+    }
+    position <- match(ids[keep], as.character(donor$id))
+    length_bp <- suppressWarnings(as.numeric(donor$length[position]))
+    usable <- is.finite(length_bp) & length_bp > 0
+    if (!any(usable)) {
+        return(character())
+    }
+    ids <- ids[keep][usable]
+    starts <- pmax(0, starts[keep][usable]) / length_bp[usable]
+    ends <- pmin(length_bp[usable], ends[keep][usable]) / length_bp[usable]
+    covered <- character()
+    for (id in unique(ids)) {
+        at <- which(ids == id)
+        from <- starts[at]
+        to <- ends[at]
+        order_at <- order(from, to)
+        from <- from[order_at]
+        to <- to[order_at]
+        span_start <- from[[1L]]
+        span_end <- to[[1L]]
+        total <- 0
+        if (length(from) > 1L) {
+            for (i in 2:length(from)) {
+                if (from[[i]] <= span_end) {
+                    span_end <- max(span_end, to[[i]])
+                } else {
+                    total <- total + span_end - span_start
+                    span_start <- from[[i]]
+                    span_end <- to[[i]]
+                }
+            }
+        }
+        total <- total + span_end - span_start
+        if (total >= minimum && min(from) <= start_max) {
+            covered <- c(covered, id)
+        }
+    }
+    covered
+}
+
 #' Build the karyotype payload
 #'
 #' @param result A `BamAnalysisResult`.
@@ -737,6 +819,13 @@ karyotype_payload <- function(result, sample = NULL,
         }
         added_donor_ids <- union(added_donor_ids, candidates)
     }
+    ## A chromosome-scale addition that was split into adjacent calls never
+    ## satisfies the single-call full-chromosome test. Add the donor
+    ## chromosome when the union of its passed segments covers it.
+    added_donor_ids <- union(
+        added_donor_ids,
+        karyotype_covered_donor_ids(overlay, donor)
+    )
     ## Preserve the registry order for donor chromosomes as well as for the
     ## recipient chromosomes above.
     added_donor <- donor[
