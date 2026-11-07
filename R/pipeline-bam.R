@@ -97,13 +97,14 @@
     contigs
 }
 
-.pipeline_index <- function(preflight) {
+.pipeline_index <- function(preflight, cores = 1L) {
     paths <- unique(as.character(preflight$path))
     representative <- match(paths, preflight$path)
     n <- length(paths)
     working <- character(n)
     index_path <- character(n)
     staged <- logical(n)
+    index_threads <- max(1L, min(as.integer(cores), 8L))
 
     for (i in seq_len(n)) {
         original <- paths[[i]]
@@ -113,7 +114,9 @@
         } else {
             working[[i]] <- original
         }
-        index_path[[i]] <- ensureBamIndex(working[[i]])
+        index_path[[i]] <- ensureBamIndex(
+            working[[i]], threads = index_threads
+        )
     }
 
     list(
@@ -330,13 +333,18 @@
     paths <- as.character(indexed$original_path)
     selected_paths <- as.character(preflight$path)
     n_bams <- length(paths)
-    cores <- min(30L, max(1L, getOption("MaMaMIA.cores", 1L)))
-    ## Split the core budget across BAMs and give each reader a few htslib
-    ## decode threads. `mclapply()` forks inherit this option.
-    threads_per_bam <- max(1L, min(8L, cores %/% max(1L, n_bams)))
-    old_threads <- getOption("MaMaMIA.htslib_threads")
-    options(MaMaMIA.htslib_threads = threads_per_bam)
-    on.exit(options(MaMaMIA.htslib_threads = old_threads), add = TRUE)
+    cores <- min(256L, max(1L, getOption("MaMaMIA.cores", 1L)))
+    ## Each counting worker opens its own BAM handle. When several BAMs run
+    ## under mclapply(), split the budget between them; a single BAM (the UI
+    ## case) gets every core. Forked workers inherit this option.
+    workers_per_bam <- if (.Platform$OS.type == "unix" && n_bams > 1L) {
+        max(1L, cores %/% n_bams)
+    } else {
+        cores
+    }
+    old_workers <- getOption("MaMaMIA.metrics_workers")
+    options(MaMaMIA.metrics_workers = workers_per_bam)
+    on.exit(options(MaMaMIA.metrics_workers = old_workers), add = TRUE)
     count_one <- function(bam_index) tryCatch({
         rows <- which(selected_paths == paths[[bam_index]])
         if (length(rows) == 0L) {
@@ -379,7 +387,6 @@
         measured$metrics
     }, error = function(e) e)
 
-    n_bams <- length(paths)
     if (.Platform$OS.type == "unix" && cores > 1L && n_bams > 1L) {
         pieces <- parallel::mclapply(
             seq_len(n_bams), count_one,
@@ -539,7 +546,7 @@ analyzeBamInput <- function(bam_paths,
         assembly = assembly_key
     ))
 
-    indexed <- .pipeline_index(preflight)
+    indexed <- .pipeline_index(preflight, cores = cores)
     .pipeline_progress(progress, "index", list(
         n_bams = n_bams,
         staged = sum(indexed$staged)

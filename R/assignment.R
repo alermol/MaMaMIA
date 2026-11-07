@@ -44,8 +44,13 @@
     if (!column %in% names(scores)) {
         return(NA_real_)
     }
-    rows <- as.character(scores$sample) == as.character(sample) &
-        as.character(scores$group) == as.character(group) &
+    rows <- if (is.null(sample)) {
+        rep(TRUE, nrow(scores))
+    } else {
+        as.character(scores$sample) == as.character(sample) &
+            as.character(scores$group) == as.character(group)
+    }
+    rows <- rows &
         as.integer(scores$iid) >= as.integer(start_iid) &
         as.integer(scores$iid) <= as.integer(end_iid)
     values <- as.numeric(scores[[column]][rows])
@@ -58,13 +63,16 @@
 
 #' Resolve the donor contig and its coordinates for one call
 #' @noRd
-.assignment_donor_contig <- function(call, scores, assembly, table) {
+.assignment_donor_contig <- function(call, scores, assembly, table,
+                                     table_by_chr = NULL,
+                                     scores_subset = NULL) {
     sample <- as.character(call$sample[[1L]])
     group <- as.character(call$group[[1L]])
     start_iid <- as.integer(call$start_iid[[1L]])
     end_iid <- as.integer(call$end_iid[[1L]])
     donor_component <- .assignment_donor_component(
-        scores, sample, group, start_iid, end_iid
+        if (is.null(scores_subset)) scores else scores_subset,
+        sample, group, start_iid, end_iid
     )
     donor_contigs <- assembly$contigs$donor
     if (is.null(donor_contigs) || nrow(donor_contigs) == 0L) {
@@ -106,12 +114,24 @@
     if (is.na(donor_component)) {
         donor_component <- component
     }
-    windows <- table[
-        as.character(table$chr_id) == chr_id &
-            table$iid >= start_iid & table$iid <= end_iid,
-        ,
-        drop = FALSE
-    ]
+    windows <- if (!is.null(table_by_chr)) {
+        candidate <- table_by_chr[[chr_id]]
+        if (is.null(candidate)) {
+            candidate <- table[0, , drop = FALSE]
+        }
+        candidate[
+            candidate$iid >= start_iid & candidate$iid <= end_iid,
+            ,
+            drop = FALSE
+        ]
+    } else {
+        table[
+            as.character(table$chr_id) == chr_id &
+                table$iid >= start_iid & table$iid <= end_iid,
+            ,
+            drop = FALSE
+        ]
+    }
     length_bp <- suppressWarnings(max(
         as.numeric(rows$length[[1L]]),
         as.numeric(table$stop[as.character(table$chr_id) == chr_id]),
@@ -388,7 +408,7 @@
             -1e6
         }
         score <- score + if (reliable) width_penalty else 0
-        data.frame(
+        list(
             chr_id = chr_id,
             chr_name = as.character(contigs$chr_name[[j]]),
             component = as.character(contigs$component[[j]]),
@@ -420,15 +440,46 @@
                 TRUE
             },
             cross_group = !same_group,
-            score = as.numeric(score),
-            stringsAsFactors = FALSE
+            score = as.numeric(score)
         )
     })
-    rows <- do.call(rbind, rows)
-    if (is.null(rows) || nrow(rows) == 0L) {
+    rows <- Filter(Negate(is.null), rows)
+    if (length(rows) == 0L) {
         return(NULL)
     }
-    rows
+    data.frame(
+        chr_id = vapply(rows, `[[`, character(1), "chr_id"),
+        chr_name = vapply(rows, `[[`, character(1), "chr_name"),
+        component = vapply(rows, `[[`, character(1), "component"),
+        group = vapply(rows, `[[`, character(1), "group"),
+        copy_number = vapply(rows, `[[`, numeric(1), "copy_number"),
+        inside_depletion = vapply(rows, `[[`, numeric(1), "inside_depletion"),
+        inside_se = vapply(rows, `[[`, numeric(1), "inside_se"),
+        inside_lower = vapply(rows, `[[`, numeric(1), "inside_lower"),
+        inside_z = vapply(rows, `[[`, numeric(1), "inside_z"),
+        inside_n = vapply(rows, `[[`, integer(1), "inside_n"),
+        expected_breadth = vapply(rows, `[[`, numeric(1), "expected_breadth"),
+        observed_breadth = vapply(rows, `[[`, numeric(1), "observed_breadth"),
+        mapq_fraction = vapply(rows, `[[`, numeric(1), "mapq_fraction"),
+        run_start_iid = vapply(rows, `[[`, integer(1), "run_start_iid"),
+        run_end_iid = vapply(rows, `[[`, integer(1), "run_end_iid"),
+        run_width_bp = vapply(rows, `[[`, numeric(1), "run_width_bp"),
+        run_fraction = vapply(rows, `[[`, numeric(1), "run_fraction"),
+        donor_width_bp = vapply(rows, `[[`, numeric(1), "donor_width_bp"),
+        donor_fraction = vapply(rows, `[[`, numeric(1), "donor_fraction"),
+        reciprocal_overlap = vapply(
+            rows, `[[`, numeric(1), "reciprocal_overlap"
+        ),
+        fraction_ratio = vapply(rows, `[[`, numeric(1), "fraction_ratio"),
+        width_penalty = vapply(rows, `[[`, numeric(1), "width_penalty"),
+        run_found = vapply(rows, `[[`, logical(1), "run_found"),
+        reliable = vapply(rows, `[[`, logical(1), "reliable"),
+        strong = vapply(rows, `[[`, logical(1), "strong"),
+        pass = vapply(rows, `[[`, logical(1), "pass"),
+        cross_group = vapply(rows, `[[`, logical(1), "cross_group"),
+        score = vapply(rows, `[[`, numeric(1), "score"),
+        stringsAsFactors = FALSE
+    )
 }
 
 #' Do two closed integer intervals overlap?
@@ -962,12 +1013,23 @@ assignCallPositions <- function(
             total_high = Inf
         )
     )
+    ## Index the two large tables once. The per-call loop below otherwise
+    ## rescans every window table and score row for every call.
+    table_by_chr <- split(table, factor(as.character(table$chr_id)))
+    scores_by_key <- split(
+        scores,
+        factor(paste(scores$sample, scores$group, sep = "\r"))
+    )
 
-    for (sample in unique(as.character(calls$sample))) {
+    calls[[".mamamia_row_order"]] <- seq_len(nrow(calls))
+    assign_one_sample <- function(sample) {
         idx <- which(as.character(calls$sample) == sample)
         if (length(idx) == 0L) {
-            next
+            return(NULL)
         }
+        calls <- calls[idx, , drop = FALSE]
+        threshold_table <- threshold_table[idx, , drop = FALSE]
+        idx <- seq_len(nrow(calls))
         recipient_sample <- recipient_residuals[
             as.character(recipient_residuals$sample) == sample, ,
             drop = FALSE
@@ -984,7 +1046,11 @@ assignCallPositions <- function(
         )
         donor <- lapply(idx, function(i) {
             .assignment_donor_contig(
-                calls[i, , drop = FALSE], scores, assembly, table
+                calls[i, , drop = FALSE], scores, assembly, table,
+                table_by_chr = table_by_chr,
+                scores_subset = scores_by_key[[
+                    paste(sample, calls$group[[i]], sep = "\r")
+                ]]
             )
         })
         candidates <- lapply(seq_along(idx), function(k) {
@@ -1071,19 +1137,27 @@ assignCallPositions <- function(
                 as.integer(call$start_iid[[1L]]),
                 as.integer(call$end_iid[[1L]])
             )
-            recipient_rows <- table[
-                as.character(table$chr_id) ==
-                    as.character(best$chr_id[[1L]]) &
-                    table$iid >= call_interval[[1L]] &
-                    table$iid <= call_interval[[2L]],
+            recipient_rows <- table_by_chr[[
+                as.character(best$chr_id[[1L]])
+            ]]
+            if (is.null(recipient_rows)) {
+                recipient_rows <- table[0, , drop = FALSE]
+            }
+            recipient_rows <- recipient_rows[
+                recipient_rows$iid >= call_interval[[1L]] &
+                    recipient_rows$iid <= call_interval[[2L]],
                 ,
                 drop = FALSE
             ]
-            run_rows <- table[
-                as.character(table$chr_id) ==
-                    as.character(best$chr_id[[1L]]) &
-                    table$iid >= as.integer(best$run_start_iid[[1L]]) &
-                    table$iid <= as.integer(best$run_end_iid[[1L]]),
+            run_rows <- table_by_chr[[
+                as.character(best$chr_id[[1L]])
+            ]]
+            if (is.null(run_rows)) {
+                run_rows <- table[0, , drop = FALSE]
+            }
+            run_rows <- run_rows[
+                run_rows$iid >= as.integer(best$run_start_iid[[1L]]) &
+                    run_rows$iid <= as.integer(best$run_end_iid[[1L]]),
                 ,
                 drop = FALSE
             ]
@@ -1184,7 +1258,10 @@ assignCallPositions <- function(
                     as.numeric(candidates$score[[alternative]])
             }
             donor_copies <- .assignment_segment_mean(
-                scores, sample, call$group[[1L]],
+                scores_by_key[[
+                    paste(sample, call$group[[1L]], sep = "\r")
+                ]],
+                NULL, NULL,
                 call$start_iid[[1L]], call$end_iid[[1L]], "donor_copies"
             )
             total_mean <- if ("total_mean" %in% names(call)) {
@@ -1341,6 +1418,18 @@ assignCallPositions <- function(
             calls$class_confidence[[i]] <- assigned_confidence
             calls$class_status[[i]] <- assigned_status
         }
+        calls
     }
+    sample_names <- unique(as.character(calls$sample))
+    pieces <- .mamamia_lapply(sample_names, assign_one_sample)
+    failed <- vapply(pieces, function(x) inherits(x, "try-error"), logical(1))
+    if (any(failed)) {
+        stop(pieces[[which(failed)[[1L]]]])
+    }
+    pieces <- Filter(Negate(is.null), pieces)
+    calls <- do.call(rbind, pieces)
+    calls <- calls[order(calls[[".mamamia_row_order"]]), , drop = FALSE]
+    calls[[".mamamia_row_order"]] <- NULL
+    rownames(calls) <- NULL
     calls
 }

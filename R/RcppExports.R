@@ -37,3 +37,7 @@ bam_count_ranges_cpp <- function(path, contig_names, contig_lengths, range_conti
     .Call("_MaMaMIA_bam_count_ranges_cpp", path, contig_names, contig_lengths, range_contig, range_start, range_end, mapq, exclude_flags, threads)
 }
 
+median_polish_cpp <- function(x, max_iter, tol, na_rm) {
+    .Call("_MaMaMIA_median_polish_cpp", x, max_iter, tol, na_rm)
+}
+

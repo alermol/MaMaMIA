@@ -201,18 +201,22 @@
     recipient_mean[!is.finite(recipient_mean)] <- 0
 
     donor_source <- rep(NA_character_, length(iid))
+    donor_log <- log(donor_matrix + eps)
     if (identical(donor_aggregation, "max")) {
-        donor_mean <- rep(NA_real_, length(iid))
-        for (i in seq_along(iid)) {
-            values <- donor_matrix[i, , drop = TRUE]
-            scores <- log(values + eps) - log(recipient_mean[[i]] + eps)
-            best <- which.max(scores)
-            if (length(best) == 0L || !is.finite(scores[[best]])) {
-                next
-            }
-            donor_mean[[i]] <- values[[best]]
-            donor_source[[i]] <- colnames(donor_matrix)[[best]]
-        }
+        ## Pick the donor component with the best donor/recipient log ratio in
+        ## every window without an R-level loop over windows.
+        delta <- sweep(
+            donor_log, 1L, log(recipient_mean + eps), "-"
+        )
+        delta[!is.finite(delta)] <- -Inf
+        best <- max.col(delta, ties.method = "first")
+        rows <- seq_len(nrow(donor_matrix))
+        best_score <- delta[cbind(rows, best)]
+        valid <- is.finite(best_score)
+        donor_mean <- donor_matrix[cbind(rows, best)]
+        donor_mean[!valid] <- NA_real_
+        donor_source <- colnames(donor_matrix)[best]
+        donor_source[!valid] <- NA_character_
     } else if (identical(donor_aggregation, "sum")) {
         donor_mean <- rowSums(donor_matrix, na.rm = TRUE)
         donor_source[] <- if (ncol(donor_matrix) == 1L) {
@@ -238,7 +242,6 @@
     gc_donor <- .score_window_mean(donor$gc, donor$iid, iid)
     gc_recipient <- .score_window_mean(recipient$gc, recipient$iid, iid)
 
-    donor_log <- log(donor_matrix + eps)
     recipient_log <- log(recipient_matrix + eps)
     ## Component baselines differ by copy set and mappability. Remove each
     ## component's median before measuring spread, so only a component-specific
@@ -251,16 +254,27 @@
     recipient_centered <- sweep(
         recipient_log, 2L, recipient_center, "-"
     )
-    donor_component_spread <- apply(donor_centered, 1L, function(values) {
-        values <- values[is.finite(values)]
-        if (length(values) < 2L) 0 else diff(range(values))
-    })
-    recipient_component_spread <- apply(
-        recipient_centered, 1L, function(values) {
-            values <- values[is.finite(values)]
-            if (length(values) < 2L) 0 else diff(range(values))
+    row_spread <- function(values) {
+        if (ncol(values) < 2L) {
+            return(rep(0, nrow(values)))
         }
-    )
+        lowest <- rep(Inf, nrow(values))
+        highest <- rep(-Inf, nrow(values))
+        count <- integer(nrow(values))
+        for (column in seq_len(ncol(values))) {
+            value <- values[, column]
+            finite <- is.finite(value)
+            count <- count + as.integer(finite)
+            lowest[finite] <- pmin(lowest[finite], value[finite])
+            highest[finite] <- pmax(highest[finite], value[finite])
+        }
+        out <- rep(0, nrow(values))
+        enough <- count >= 2L
+        out[enough] <- highest[enough] - lowest[enough]
+        out
+    }
+    donor_component_spread <- row_spread(donor_centered)
+    recipient_component_spread <- row_spread(recipient_centered)
     n_donor_supported <- rowSums(
         sweep(donor_log, 1L, log(recipient_mean + eps), "-") > 0.5,
         na.rm = TRUE
@@ -362,9 +376,9 @@ scoreIntrogression <- function(
     eps <- .scoring_eps
 
     by_sample <- split(metrics, factor(metrics$sample, levels = samples))
-    pieces <- list()
-    for (sample in samples) {
+    score_sample <- function(sample) {
         x <- by_sample[[sample]]
+        pieces <- list()
         for (group in sort(unique(x$group))) {
             donor <- x[x$role == "donor" & x$group == group, , drop = FALSE]
             recipient <- x[
@@ -413,7 +427,17 @@ scoreIntrogression <- function(
                 stringsAsFactors = FALSE
             )
         }
+        if (length(pieces) == 0L) {
+            return(NULL)
+        }
+        do.call(rbind, pieces)
     }
+    pieces <- .mamamia_lapply(samples, score_sample)
+    failed <- vapply(pieces, function(x) inherits(x, "try-error"), logical(1))
+    if (any(failed)) {
+        stop(pieces[[which(failed)[[1L]]]])
+    }
+    pieces <- Filter(Negate(is.null), pieces)
     if (length(pieces) == 0L) {
         .scoring_error("No donor/recipient group could be scored")
     }

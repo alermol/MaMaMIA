@@ -1818,8 +1818,9 @@ bam_run_parameters <- function(input, config, samples, resolution = NULL,
     exclude_flags <- bam_integer(
         defaults$exclude_flags, "Exclude flags", 0L, 4095L
     )
+    available_cores <- min(256L, bam_max_cores())
     cores <- bam_integer(
-        min(30L, bam_max_cores()), "Cores", 1L, bam_max_cores()
+        available_cores, "Cores", 1L, available_cores
     )
     donor_aggregation <- as.character(current$donor_aggregation)
     if (!donor_aggregation %in% c("mean", "max", "sum")) {

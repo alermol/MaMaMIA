@@ -23,12 +23,15 @@
     as.integer(x)
 }
 
-## htslib worker threads for BAM reading. The pipeline sets this per BAM so
-## forked workers do not oversubscribe the machine; direct callers can set
-## options(MaMaMIA.htslib_threads = n).
+## Counting workers for BAM reading. The pipeline sets this per BAM so forked
+## readers do not oversubscribe the machine; direct callers can set
+## options(MaMaMIA.metrics_workers = n). The older MaMaMIA.htslib_threads
+## option remains accepted for compatibility.
 .bam_htslib_threads <- function() {
     value <- suppressWarnings(as.integer(
-        getOption("MaMaMIA.htslib_threads", 1L)
+        getOption("MaMaMIA.metrics_workers",
+            getOption("MaMaMIA.htslib_threads", 1L)
+        )
     ))
     if (length(value) != 1L || is.na(value) || value < 1L) 1L else value
 }
@@ -348,11 +351,14 @@ buildWindowMetrics <- function(measured, windows, gc, read_length = NULL) {
         .window_metrics_error("Counts and covered bases must be non-negative")
     }
 
-    position <- match(
-        paste(measured$chr_id, measured$iid, sep = ":"),
-        paste(table$chr_id, rep(seq.int(0L, n_per - 1L), times = length(chr_ids)),
-            sep = ":")
-    )
+    contig_position <- match(measured$chr_id, chr_ids)
+    if (anyNA(contig_position)) {
+        .window_metrics_error(
+            "`measured` contains %d window(s) that are not in `windows`",
+            sum(is.na(contig_position))
+        )
+    }
+    position <- (as.double(contig_position) - 1) * n_per + measured$iid + 1
     if (anyNA(position)) {
         .window_metrics_error(
             "`measured` contains %d window(s) that are not in `windows`",

@@ -167,97 +167,105 @@ segmentScores <- function(scores, mask = NULL, alpha = 0.001, undo_SD = 1,
         scores,
         factor(paste(scores$sample, scores$group, sep = "\r"))
     )
-    pieces <- list()
-    for (sample in samples) {
-        for (group in sample_groups) {
-            x <- by_group[[paste(sample, group, sep = "\r")]]
-            if (is.null(x)) {
-                next
-            }
-            if (nrow(x) < max(20L, min_width)) {
-                next
-            }
-            segments <- .segment_one(x, alpha, undo_SD, min_width)
-            if (is.null(segments)) {
-                next
-            }
-            profile <- stats::setNames(x$score, x$iid)
-            segments <- .segment_merge(
-                segments, profile, merge_gap, merge_floor, min_mb, merge_min
+    keys <- unlist(lapply(samples, function(sample) {
+        paste(sample, sample_groups, sep = "\r")
+    }), use.names = FALSE)
+    segment_group <- function(key) {
+        x <- by_group[[key]]
+        if (is.null(x)) {
+            return(NULL)
+        }
+        sample <- as.character(x$sample[[1L]])
+        group <- as.character(x$group[[1L]])
+        if (nrow(x) < max(20L, min_width)) {
+            return(NULL)
+        }
+        segments <- .segment_one(x, alpha, undo_SD, min_width)
+        if (is.null(segments)) {
+            return(NULL)
+        }
+        profile <- stats::setNames(x$score, x$iid)
+        segments <- .segment_merge(
+            segments, profile, merge_gap, merge_floor, min_mb, merge_min
+        )
+        if (nrow(segments) == 0L) {
+            return(NULL)
+        }
+        group_length <- as.numeric(lengths[[group]])
+        n_per <- as.integer(x$n_per_chromosome[[1L]])
+        if (!is.finite(group_length) || group_length <= 0 || n_per < 1L) {
+            .segmentation_error(
+                "No valid length for chromosome group '%s'", group
             )
-            if (nrow(segments) == 0L) {
-                next
-            }
-            group_length <- as.numeric(lengths[[group]])
-            n_per <- as.integer(x$n_per_chromosome[[1L]])
-            if (!is.finite(group_length) || group_length <= 0 || n_per < 1L) {
-                .segmentation_error(
-                    "No valid length for chromosome group '%s'", group
-                )
-            }
-            segments$sample <- sample
-            segments$group <- group
-            segments$mode <- x$mode[[1L]]
-            segments$metric <- x$metric[[1L]]
-            segments$method <- if ("score_type" %in% names(x)) {
-                if (x$score_type[[1L]] %in% c("donor_only", "donor-only")) {
-                    "donor_only"
-                } else {
-                    "paired_lr"
-                }
+        }
+        segments$sample <- sample
+        segments$group <- group
+        segments$mode <- x$mode[[1L]]
+        segments$metric <- x$metric[[1L]]
+        segments$method <- if ("score_type" %in% names(x)) {
+            if (x$score_type[[1L]] %in% c("donor_only", "donor-only")) {
+                "donor_only"
             } else {
                 "paired_lr"
             }
-            segments$start_bp <- floor(segments$start_iid * group_length / n_per)
-            segments$end_bp <- floor(
-                (segments$end_iid + 1L) * group_length / n_per
-            )
-            segments$width_bp <- segments$end_bp - segments$start_bp
-            ## Masked windows have score = NA but keep their residual columns;
-            ## they must not contribute to the per-segment evidence means.
-            valid <- is.finite(x$score)
-            segments$donor_mean <- vapply(seq_len(nrow(segments)), function(i) {
+        } else {
+            "paired_lr"
+        }
+        segments$start_bp <- floor(segments$start_iid * group_length / n_per)
+        segments$end_bp <- floor(
+            (segments$end_iid + 1L) * group_length / n_per
+        )
+        segments$width_bp <- segments$end_bp - segments$start_bp
+        ## Masked windows have score = NA but keep their residual columns;
+        ## they must not contribute to the per-segment evidence means.
+        valid <- is.finite(x$score)
+        segments$donor_mean <- vapply(seq_len(nrow(segments)), function(i) {
+            idx <- x$iid >= segments$start_iid[[i]] &
+                x$iid <= segments$end_iid[[i]] & valid
+            mean(x$donor_residual[idx], na.rm = TRUE)
+        }, numeric(1))
+        segments$recipient_mean <- vapply(
+            seq_len(nrow(segments)), function(i) {
                 idx <- x$iid >= segments$start_iid[[i]] &
                     x$iid <= segments$end_iid[[i]] & valid
-                mean(x$donor_residual[idx], na.rm = TRUE)
-            }, numeric(1))
-            segments$recipient_mean <- vapply(
+                mean(x$recipient_residual[idx], na.rm = TRUE)
+            }, numeric(1)
+        )
+        if ("total_residual" %in% names(x)) {
+            segments$total_mean <- vapply(
                 seq_len(nrow(segments)), function(i) {
                     idx <- x$iid >= segments$start_iid[[i]] &
                         x$iid <= segments$end_iid[[i]] & valid
-                    mean(x$recipient_residual[idx], na.rm = TRUE)
+                    mean(x$total_residual[idx], na.rm = TRUE)
                 }, numeric(1)
             )
-            if ("total_residual" %in% names(x)) {
-                segments$total_mean <- vapply(
+        } else {
+            segments$total_mean <- NA_real_
+        }
+        for (column in c(
+            "donor_component_spread", "recipient_component_spread",
+            "n_donor_supported", "mapq_fraction"
+        )) {
+            if (column %in% names(x)) {
+                segments[[column]] <- vapply(
                     seq_len(nrow(segments)), function(i) {
                         idx <- x$iid >= segments$start_iid[[i]] &
                             x$iid <= segments$end_iid[[i]] & valid
-                        mean(x$total_residual[idx], na.rm = TRUE)
+                        mean(x[[column]][idx], na.rm = TRUE)
                     }, numeric(1)
                 )
             } else {
-                segments$total_mean <- NA_real_
+                segments[[column]] <- NA_real_
             }
-            for (column in c(
-                "donor_component_spread", "recipient_component_spread",
-                "n_donor_supported", "mapq_fraction"
-            )) {
-                if (column %in% names(x)) {
-                    segments[[column]] <- vapply(
-                        seq_len(nrow(segments)), function(i) {
-                            idx <- x$iid >= segments$start_iid[[i]] &
-                                x$iid <= segments$end_iid[[i]] & valid
-                            mean(x[[column]][idx], na.rm = TRUE)
-                        }, numeric(1)
-                    )
-                } else {
-                    segments[[column]] <- NA_real_
-                }
-            }
-            pieces[[length(pieces) + 1L]] <- segments
         }
+        segments
     }
+    pieces <- .mamamia_lapply(keys, segment_group)
+    failed <- vapply(pieces, function(x) inherits(x, "try-error"), logical(1))
+    if (any(failed)) {
+        stop(pieces[[which(failed)[[1L]]]])
+    }
+    pieces <- Filter(Negate(is.null), pieces)
     if (length(pieces) == 0L) {
         return(data.frame(
             sample = character(0), group = character(0),

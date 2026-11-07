@@ -136,6 +136,21 @@ BEGIN_RCPP
 END_RCPP
 }
 
+// median_polish_cpp
+Rcpp::List median_polish_cpp(Rcpp::NumericMatrix x, int max_iter, double tol, bool na_rm);
+RcppExport SEXP _MaMaMIA_median_polish_cpp(SEXP xSEXP, SEXP max_iterSEXP, SEXP tolSEXP, SEXP na_rmSEXP) {
+BEGIN_RCPP
+    Rcpp::RObject rcpp_result_gen;
+    Rcpp::RNGScope rcpp_rngScope_gen;
+    Rcpp::traits::input_parameter< Rcpp::NumericMatrix >::type x(xSEXP);
+    Rcpp::traits::input_parameter< int >::type max_iter(max_iterSEXP);
+    Rcpp::traits::input_parameter< double >::type tol(tolSEXP);
+    Rcpp::traits::input_parameter< bool >::type na_rm(na_rmSEXP);
+    rcpp_result_gen = Rcpp::wrap(median_polish_cpp(x, max_iter, tol, na_rm));
+    return rcpp_result_gen;
+END_RCPP
+}
+
 static const R_CallMethodDef CallEntries[] = {
     {"_MaMaMIA_gcrank_open_cpp", (DL_FUNC) &_MaMaMIA_gcrank_open_cpp, 3},
     {"_MaMaMIA_gcrank_close_cpp", (DL_FUNC) &_MaMaMIA_gcrank_close_cpp, 1},
@@ -146,6 +161,7 @@ static const R_CallMethodDef CallEntries[] = {
     {"_MaMaMIA_bam_index_build_cpp", (DL_FUNC) &_MaMaMIA_bam_index_build_cpp, 4},
     {"_MaMaMIA_bam_metrics_rg_cpp", (DL_FUNC) &_MaMaMIA_bam_metrics_rg_cpp, 12},
     {"_MaMaMIA_bam_count_ranges_cpp", (DL_FUNC) &_MaMaMIA_bam_count_ranges_cpp, 9},
+    {"_MaMaMIA_median_polish_cpp", (DL_FUNC) &_MaMaMIA_median_polish_cpp, 4},
     {NULL, NULL, 0}
 };
 

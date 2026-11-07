@@ -217,10 +217,15 @@
             apply(matrix_dep, 2L, stats::sd, na.rm = TRUE)
         )
         spread[!is.finite(spread)] <- 0
+        valid <- is.finite(profile)
         profiles[[chr_id]] <- list(
             dep = profile,
             spread = spread,
-            valid = is.finite(profile)
+            valid = valid,
+            valid_starts = which(valid),
+            dep_prefix = c(0, cumsum(ifelse(valid, profile, 0))),
+            spread_prefix = c(0, cumsum(ifelse(valid, spread, 0))),
+            valid_prefix = c(0L, cumsum(as.integer(valid)))
         )
     }
     if (length(profiles) == 0L) {
@@ -252,12 +257,11 @@
     modes[is.na(modes) | !nzchar(modes)] <- "all"
     key <- paste(modes, keys, sep = "|")
 
-    null_rows <- vector("list", nrow(calls))
-    for (i in seq_len(nrow(calls))) {
+    null_for_call <- function(i) {
         width <- as.integer(calls$end_iid[[i]]) -
             as.integer(calls$start_iid[[i]]) + 1L
         if (!is.finite(width) || width < 1L || width > n_per) {
-            next
+            return(NULL)
         }
         group <- as.character(calls$group[[i]])
         best <- numeric(0)
@@ -272,7 +276,7 @@
                     values[[j]] <- NA_real_
                     next
                 }
-                starts <- which(profile$valid)
+                starts <- profile$valid_starts
                 starts <- starts[starts + width - 1L <= n_per]
                 if (length(starts) == 0L) {
                     values[[j]] <- NA_real_
@@ -282,16 +286,18 @@
                     length(starts) + 1L
                 lo <- starts[[index]]
                 hi <- lo + width - 1L
-                active <- profile$valid[lo:hi]
-                n <- sum(active)
+                n <- profile$valid_prefix[[hi + 1L]] -
+                    profile$valid_prefix[[lo]]
                 if (n < 1L) {
                     values[[j]] <- NA_real_
                     next
                 }
-                dep <- profile$dep[lo:hi][active]
-                est <- mean(dep)
-                se <- mean(profile$spread[lo:hi][active], na.rm = TRUE) /
-                    sqrt(n)
+                dep_sum <- profile$dep_prefix[[hi + 1L]] -
+                    profile$dep_prefix[[lo]]
+                spread_sum <- profile$spread_prefix[[hi + 1L]] -
+                    profile$spread_prefix[[lo]]
+                est <- dep_sum / n
+                se <- (spread_sum / n) / sqrt(n)
                 if (!is.finite(se)) {
                     se <- 0
                 }
@@ -323,7 +329,7 @@
             }
         }
         if (length(best) < min_null) {
-            next
+            return(NULL)
         }
         margin <- best - second[seq_len(min(length(best), length(second)))]
         cross_margin <- if (length(cross) > 0L && length(best_same) > 0L) {
@@ -332,7 +338,7 @@
         } else {
             numeric(0)
         }
-        null_rows[[i]] <- data.frame(
+        data.frame(
             key = key[[i]],
             mode = modes[[i]],
             min_depletion = as.numeric(stats::quantile(
@@ -360,7 +366,12 @@
             stringsAsFactors = FALSE
         )
     }
-    null_rows <- null_rows[!vapply(null_rows, is.null, logical(1))]
+    null_rows <- .mamamia_lapply(seq_len(nrow(calls)), null_for_call)
+    failed <- vapply(null_rows, function(x) inherits(x, "try-error"), logical(1))
+    if (any(failed)) {
+        stop(null_rows[[which(failed)[[1L]]]])
+    }
+    null_rows <- Filter(Negate(is.null), null_rows)
     if (length(null_rows) == 0L) {
         return(NULL)
     }
