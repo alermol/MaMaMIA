@@ -847,6 +847,16 @@ mamamia_analysis_loader_ui <- function() {
             class = "mamamia-analysis-stage", "Preparing analysis"
         ),
         shiny::div(
+            class = "mamamia-analysis-timer",
+            `aria-live` = "off",
+            shiny::span(
+                class = "mamamia-analysis-timer-label", "Processing time"
+            ),
+            shiny::span(
+                class = "mamamia-analysis-timer-value", "00:00"
+            )
+        ),
+        shiny::div(
             class = "mamamia-analysis-track",
             shiny::tags$span(class = "mamamia-analysis-fill")
         )

@@ -4266,6 +4266,26 @@ bam_dashboard_css <- function() {
         font-weight: 650;
         line-height: 1.3;
     }
+    .mamamia-analysis-timer {
+        display: flex;
+        align-items: baseline;
+        gap: .4rem;
+        color: var(--mm-muted);
+        font-size: .72rem;
+        letter-spacing: .04em;
+    }
+    .mamamia-analysis-timer-label {
+        font-weight: 600;
+        text-transform: uppercase;
+    }
+    .mamamia-analysis-timer-value {
+        min-width: 4.2em;
+        color: var(--mm-ink);
+        font-weight: 650;
+        font-variant-numeric: tabular-nums;
+        letter-spacing: .02em;
+        text-align: left;
+    }
     .mamamia-analysis-track {
         width: min(240px, 72%);
         height: 3px;
@@ -5750,6 +5770,47 @@ bam_launcher_ui <- function(state) {
                     "$(function() { mamamiaResultTabs(false); });",
                     "Shiny.addCustomMessageHandler('mamamia-result-tabs',",
                     "function(x) { mamamiaResultTabs(!!x.enabled); });",
+                    "var mamamiaAnalysisStartedAt = null;",
+                    "var mamamiaAnalysisTimerId = null;",
+                    "function mamamiaFormatElapsed(ms) {",
+                    "  var total = Math.max(0, Math.floor(ms / 1000));",
+                    "  var hours = Math.floor(total / 3600);",
+                    "  var minutes = Math.floor((total % 3600) / 60);",
+                    "  var seconds = total % 60;",
+                    "  var pad = function(value) {",
+                    "    return (value < 10 ? '0' : '') + value;",
+                    "  };",
+                    "  if (hours > 0) {",
+                    "    return hours + ':' + pad(minutes) + ':' + pad(seconds);",
+                    "  }",
+                    "  return pad(minutes) + ':' + pad(seconds);",
+                    "}",
+                    "function mamamiaWriteAnalysisTimer(text) {",
+                    "  var value = document.querySelectorAll(",
+                    "    '.mamamia-analysis-timer-value');",
+                    "  Array.prototype.forEach.call(value, function(node) {",
+                    "    node.textContent = text;",
+                    "  });",
+                    "}",
+                    "function mamamiaTickAnalysisTimer() {",
+                    "  if (mamamiaAnalysisStartedAt === null) return;",
+                    "  mamamiaWriteAnalysisTimer(",
+                    "    mamamiaFormatElapsed(Date.now() - mamamiaAnalysisStartedAt));",
+                    "}",
+                    "function mamamiaStartAnalysisTimer() {",
+                    "  if (mamamiaAnalysisTimerId !== null) return;",
+                    "  mamamiaAnalysisStartedAt = Date.now();",
+                    "  mamamiaWriteAnalysisTimer('00:00');",
+                    "  mamamiaAnalysisTimerId = window.setInterval(",
+                    "    mamamiaTickAnalysisTimer, 250);",
+                    "}",
+                    "function mamamiaStopAnalysisTimer() {",
+                    "  if (mamamiaAnalysisTimerId !== null) {",
+                    "    window.clearInterval(mamamiaAnalysisTimerId);",
+                    "    mamamiaAnalysisTimerId = null;",
+                    "  }",
+                    "  mamamiaAnalysisStartedAt = null;",
+                    "}",
                     "function mamamiaAnalysisState(x) {",
                     "  var loading = document.querySelectorAll(",
                     "    '.mamamia-analysis-loading');",
@@ -5764,6 +5825,11 @@ bam_launcher_ui <- function(state) {
                     "      node.style.display = 'none';",
                     "    }",
                     "  });",
+                    "  if (x.running) {",
+                    "    mamamiaStartAnalysisTimer();",
+                    "  } else {",
+                    "    mamamiaStopAnalysisTimer();",
+                    "  }",
                     "  if (x.stage) {",
                     "    var stage = document.querySelectorAll(",
                     "      '.mamamia-analysis-stage');",
