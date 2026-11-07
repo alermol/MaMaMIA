@@ -15,6 +15,52 @@ hash_object <- function(x) {
     if (is.null(x)) y else x
 }
 
+#' Compare key for natural ordering
+#'
+#' Pads every run of digits to a fixed width so that a lexicographic comparison
+#' puts `sample2` before `sample10`. Non-numeric runs are lower-cased, so the
+#' order does not depend on capitalisation.
+#' @noRd
+mamamia_natural_key <- function(x) {
+    vapply(x, function(value) {
+        if (is.na(value)) {
+            return("")
+        }
+        parts <- strsplit(
+            value,
+            "(?<=\\D)(?=\\d)|(?<=\\d)(?=\\D)",
+            perl = TRUE
+        )[[1L]]
+        if (length(parts) == 0L) {
+            return("")
+        }
+        digits <- grepl("^[0-9]+$", parts)
+        if (any(digits)) {
+            parts[digits] <- paste0(
+                strrep("0", pmax(0L, 20L - nchar(parts[digits]))),
+                parts[digits]
+            )
+        }
+        paste(tolower(parts), collapse = "\u0001")
+    }, character(1), USE.NAMES = FALSE)
+}
+
+#' Sort labels in natural order
+#'
+#' Sorts names containing numbers the way a person reads them: the digit runs
+#' are compared as numbers and the text is compared case-insensitively.
+#' Missing values stay at the end and ties keep their original order.
+#' @noRd
+mamamia_natural_sort <- function(x) {
+    x <- as.character(x)
+    if (length(x) < 2L) {
+        return(x)
+    }
+    key <- mamamia_natural_key(x)
+    key[is.na(x)] <- "\uffff"
+    x[order(key, tolower(x), x, seq_along(x), na.last = TRUE)]
+}
+
 #' Cores available to this process
 #'
 #' `parallel::detectCores()` reports host CPUs even when a container has a

@@ -1995,7 +1995,7 @@ bam_sample_choices <- function(result) {
         !"sample" %in% names(result$samples)) {
         return(character())
     }
-    unique(as.character(result$samples$sample))
+    mamamia_natural_sort(unique(as.character(result$samples$sample)))
 }
 
 #' Brief cohort-table columns for the Export tab
@@ -7314,6 +7314,7 @@ bam_launcher_server <- function(state) {
             }
             samples <- unique(as.character(pf$table$sample))
             samples <- samples[!is.na(samples) & nzchar(samples)]
+            samples <- mamamia_natural_sort(samples)
             if (length(samples) < 2L) {
                 return(shiny::p(
                     class = "text-muted small mb-0",
@@ -7622,7 +7623,7 @@ bam_launcher_server <- function(state) {
                 !"sample" %in% names(pf$table)) {
                 return(character())
             }
-            unique(as.character(pf$table$sample))
+            mamamia_natural_sort(unique(as.character(pf$table$sample)))
         })
 
         shiny::observeEvent(result_samples(), {
