@@ -3535,6 +3535,35 @@ bam_dashboard_css <- function() {
         text-indent: -9999px;
         white-space: nowrap;
     }
+    .mamamia-upload-timer {
+        display: none;
+        align-items: baseline;
+        gap: .4rem;
+        margin-top: .35rem;
+        color: var(--mm-muted);
+        font-size: .64rem;
+        letter-spacing: .04em;
+    }
+    .mamamia-upload-timer.is-visible {
+        display: flex;
+    }
+    .mamamia-upload-timer.is-running .mamamia-upload-timer-value {
+        color: var(--mm-accent);
+    }
+    .mamamia-upload-timer.is-error .mamamia-upload-timer-value {
+        color: var(--mm-warm);
+    }
+    .mamamia-upload-timer-label {
+        font-weight: 600;
+        text-transform: uppercase;
+    }
+    .mamamia-upload-timer-value {
+        min-width: 4.2em;
+        color: var(--mm-ink);
+        font-weight: 650;
+        font-variant-numeric: tabular-nums;
+        letter-spacing: .02em;
+    }
 
     .mamamia-sidebar .accordion {
         --bs-accordion-bg: transparent;
@@ -4968,6 +4997,14 @@ bam_single_file_input <- function(max_bytes = NULL) {
             width = "100%",
             buttonLabel = "Choose BAM file",
             placeholder = "No BAM selected"
+        ),
+        shiny::div(
+            class = "mamamia-upload-timer",
+            `aria-live` = "off",
+            shiny::span(
+                class = "mamamia-upload-timer-label", "Upload time"
+            ),
+            shiny::span(class = "mamamia-upload-timer-value", "00:00")
         )
     )
 }
@@ -5777,9 +5814,9 @@ bam_launcher_ui <- function(state) {
                     "  var hours = Math.floor(total / 3600);",
                     "  var minutes = Math.floor((total % 3600) / 60);",
                     "  var seconds = total % 60;",
-                    "  var pad = function(value) {",
+                    "  function pad(value) {",
                     "    return (value < 10 ? '0' : '') + value;",
-                    "  };",
+                    "  }",
                     "  if (hours > 0) {",
                     "    return hours + ':' + pad(minutes) + ':' + pad(seconds);",
                     "  }",
@@ -5810,6 +5847,53 @@ bam_launcher_ui <- function(state) {
                     "    mamamiaAnalysisTimerId = null;",
                     "  }",
                     "  mamamiaAnalysisStartedAt = null;",
+                    "}",
+                    "function mamamiaUploadTimerNode() {",
+                    "  var input = document.getElementById('bams');",
+                    "  if (!input) return null;",
+                    "  var zone = input.closest('.mamamia-upload');",
+                    "  return zone ? zone.querySelector('.mamamia-upload-timer') : null;",
+                    "}",
+                    "function mamamiaWriteUploadTimer(node, text) {",
+                    "  if (!node) return;",
+                    "  var value = node.querySelector('.mamamia-upload-timer-value');",
+                    "  if (value) value.textContent = text;",
+                    "}",
+                    "function mamamiaStopUploadTimer(node, failed) {",
+                    "  if (node) {",
+                    "    if (node.mamamiaUploadTimerId) {",
+                    "      window.clearInterval(node.mamamiaUploadTimerId);",
+                    "      node.mamamiaUploadTimerId = null;",
+                    "    }",
+                    "    if (node.mamamiaUploadStartedAt !== null &&",
+                    "        node.mamamiaUploadStartedAt !== undefined) {",
+                    "      mamamiaWriteUploadTimer(node, mamamiaFormatElapsed(",
+                    "        Date.now() - node.mamamiaUploadStartedAt));",
+                    "      node.mamamiaUploadStartedAt = null;",
+                    "    }",
+                    "    node.classList.remove('is-running');",
+                    "    node.classList.toggle('is-error', !!failed);",
+                    "  }",
+                    "}",
+                    "function mamamiaStartUploadTimer(node) {",
+                    "  if (!node) return;",
+                    "  mamamiaStopUploadTimer(node, false);",
+                    "  node.mamamiaUploadStartedAt = Date.now();",
+                    "  node.classList.add('is-visible', 'is-running');",
+                    "  node.classList.remove('is-error');",
+                    "  mamamiaWriteUploadTimer(node, '00:00');",
+                    "  node.mamamiaUploadTimerId = window.setInterval(function() {",
+                    "    if (node.mamamiaUploadStartedAt === null ||",
+                    "        node.mamamiaUploadStartedAt === undefined) return;",
+                    "    var bar = document.querySelector(",
+                    "      '#bams_progress .progress-bar');",
+                    "    if (bar && bar.classList.contains('progress-bar-danger')) {",
+                    "      mamamiaStopUploadTimer(node, true);",
+                    "      return;",
+                    "    }",
+                    "    mamamiaWriteUploadTimer(node, mamamiaFormatElapsed(",
+                    "      Date.now() - node.mamamiaUploadStartedAt));",
+                    "  }, 250);",
                     "}",
                     "function mamamiaAnalysisState(x) {",
                     "  var loading = document.querySelectorAll(",
@@ -5947,7 +6031,16 @@ bam_launcher_ui <- function(state) {
                     "    if (rejectOversized(",
                     "      input, input.files[0], uploadZone(input), event",
                     "    )) return;",
+                    "    if (input.files[0]) {",
+                    "      mamamiaStartUploadTimer(mamamiaUploadTimerNode());",
+                    "    }",
                     "  }, true);",
+                    "  document.addEventListener('shiny:inputchanged', function(event) {",
+                    "    var name = event.detail && event.detail.name;",
+                    "    var type = event.detail && event.detail.inputType;",
+                    "    if (name !== id || type !== 'shiny.fileupload') return;",
+                    "    mamamiaStopUploadTimer(mamamiaUploadTimerNode(), false);",
+                    "  });",
                     "  document.addEventListener('dragover', function(event) {",
                     "    var zone = uploadZone(event.target);",
                     "    if (!zone) return;",

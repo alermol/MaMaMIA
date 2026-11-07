@@ -346,6 +346,10 @@ test_that("the BAM chooser accepts exactly one file", {
     expect_false(grepl("multiple", chooser, fixed = TRUE))
     expect_false(grepl("data-max-bytes", chooser, fixed = TRUE))
     expect_false(grepl("bam_upload_help", chooser, fixed = TRUE))
+    expect_match(chooser, "mamamia-upload-timer", fixed = TRUE)
+    expect_match(chooser, "mamamia-upload-timer-value", fixed = TRUE)
+    expect_match(chooser, "Upload time", fixed = TRUE)
+    expect_match(chooser, "00:00", fixed = TRUE)
 
     limited <- as.character(bam_single_file_input(5 * 1024^3))
     expect_match(
@@ -365,6 +369,14 @@ test_that("the BAM chooser accepts exactly one file", {
     help_modal <- as.character(bam_upload_help_modal(5 * 1024^3))
     expect_match(help_modal, "BAM upload limit", fixed = TRUE)
     expect_match(help_modal, "mamamia-tooltip-modal", fixed = TRUE)
+
+    css <- bam_dashboard_css()
+    expect_match(css, ".mamamia-upload-timer.is-visible", fixed = TRUE)
+    expect_match(
+        css, ".mamamia-upload-timer.is-running .mamamia-upload-timer-value",
+        fixed = TRUE
+    )
+    expect_match(css, "font-variant-numeric: tabular-nums", fixed = TRUE)
 })
 
 test_that("upload caps apply only to the ShinyProxy deployment", {
