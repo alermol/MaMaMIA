@@ -61,3 +61,12 @@ test_that("bam_sample_choices returns samples in natural order", {
     )
     expect_identical(bam_sample_choices(NULL), character())
 })
+
+test_that("the bundle worker budget respects the container memory limit", {
+    gib <- 1024^3
+    expect_identical(mamamia_memory_worker_cap(16 * gib), 6L)
+    expect_identical(mamamia_memory_worker_cap(64 * gib), 30L)
+    expect_identical(mamamia_memory_worker_cap(4 * gib), 1L)
+    expect_identical(mamamia_memory_worker_cap(2 * gib), 1L)
+    expect_true(is.infinite(mamamia_memory_worker_cap(Inf)))
+})

@@ -465,7 +465,8 @@ bam_bundle_cohort_readme <- function(samples, folders, calls,
 #' Per-sample export is independent, so it is forked on Unix when more than one
 #' worker is allowed. `options(MaMaMIA.bundle_workers = n)` overrides the
 #' default; `MaMaMIA.cores` is honoured as a fallback. The default is every
-#' available core except one, and the same budget drives 7-Zip compression.
+#' available core except one, capped by the container memory limit so the
+#' workers do not swap, and the same budget drives 7-Zip compression.
 #' @noRd
 bam_bundle_workers <- function() {
     value <- getOption("MaMaMIA.bundle_workers", NULL)
@@ -474,7 +475,10 @@ bam_bundle_workers <- function() {
     }
     if (is.null(value) || length(value) != 1L || is.na(value) ||
         !is.numeric(value) || value < 1L) {
-        value <- mamamia_default_cores()
+        value <- min(
+            mamamia_default_cores(),
+            mamamia_memory_worker_cap()
+        )
     }
     value <- as.integer(value)
     if (is.na(value) || value < 1L) 1L else value
@@ -523,6 +527,25 @@ bam_write_cohort_bundle <- function(result, file, samples = NULL,
     }
     folders <- bam_bundle_sample_folders(samples)
     version <- bam_bundle_version()
+    workers <- bam_bundle_workers()
+    memory_limit <- mamamia_memory_limit()
+    started_at <- proc.time()
+    message(sprintf(
+        "Result bundle: %d samples, %d workers, memory limit %s",
+        length(samples), workers,
+        if (is.finite(memory_limit)) {
+            sprintf("%.1f GiB", memory_limit / 1024^3)
+        } else {
+            "unlimited"
+        }
+    ))
+    on.exit(
+        message(sprintf(
+            "Result bundle finished in %.1f s",
+            (proc.time() - started_at)[["elapsed"]]
+        )),
+        add = TRUE
+    )
     staging <- tempfile("mamamia-cohort-bundle-")
     dir.create(staging)
     on.exit(unlink(staging, recursive = TRUE, force = TRUE), add = TRUE)

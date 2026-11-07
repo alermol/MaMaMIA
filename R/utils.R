@@ -122,6 +122,64 @@ mamamia_default_cores <- function(available = mamamia_available_cores()) {
     as.integer(min(256L, max(1L, available - 1L)))
 }
 
+#' Memory limit available to this process
+#'
+#' `memory.max` (cgroup v2) and `memory.limit_in_bytes` (cgroup v1) cap a
+#' container below the host's RAM. Bundle export forks one process per worker,
+#' so the limit decides how many workers can run without swapping.
+#' @noRd
+mamamia_memory_limit <- function() {
+    v2 <- "/sys/fs/cgroup/memory.max"
+    if (file.exists(v2)) {
+        value <- readLines(v2, n = 1L, warn = FALSE)
+        if (length(value) == 1L && !identical(trimws(value), "max")) {
+            limit <- suppressWarnings(as.numeric(value))
+            if (is.finite(limit) && limit > 0) {
+                return(limit)
+            }
+        }
+        return(Inf)
+    }
+    v1 <- "/sys/fs/cgroup/memory/memory.limit_in_bytes"
+    if (file.exists(v1)) {
+        limit <- suppressWarnings(as.numeric(
+            readLines(v1, n = 1L, warn = FALSE)
+        ))
+        ## cgroup v1 often reports a sentinel close to the 64-bit maximum.
+        if (is.finite(limit) && limit > 0 && limit < 2^60) {
+            return(limit)
+        }
+    }
+    Inf
+}
+
+#' Memory-based cap on forked bundle workers
+#'
+#' Each bundle worker carries a copy-on-write view of the Shiny process heap.
+#' Forking more workers than fit in the container memory limit pushes the run
+#' into swap, which is far slower than using fewer workers. Reserve memory for
+#' the app and the operating system, then allow roughly `per_worker` bytes per
+#' worker.
+#' @noRd
+mamamia_memory_worker_cap <- function(
+    memory_limit = mamamia_memory_limit(),
+    reserve = 4 * 1024^3,
+    per_worker = 2 * 1024^3
+) {
+    if (length(memory_limit) != 1L || !is.numeric(memory_limit) ||
+        is.na(memory_limit) || memory_limit <= 0) {
+        return(1L)
+    }
+    if (!is.finite(memory_limit)) {
+        return(Inf)
+    }
+    usable <- memory_limit - reserve
+    if (!is.finite(usable) || usable < per_worker) {
+        return(1L)
+    }
+    as.integer(max(1, floor(usable / per_worker)))
+}
+
 #' Apply over independent tasks with the configured worker budget
 #'
 #' Forks on Unix when more than one worker is allowed. Falls back to a serial

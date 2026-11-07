@@ -770,12 +770,18 @@ test_that("bundle workers follow the explicit option first", {
     expect_identical(bam_bundle_workers(), 2L)
 })
 
-test_that("bundle workers default to every available core except one", {
+test_that("bundle workers default to the CPU and memory budget", {
     withr::local_options(
         MaMaMIA.bundle_workers = NULL,
         MaMaMIA.cores = NULL
     )
-    expect_identical(bam_bundle_workers(), mamamia_default_cores())
+    expect_identical(
+        bam_bundle_workers(),
+        as.integer(min(
+            mamamia_default_cores(),
+            mamamia_memory_worker_cap()
+        ))
+    )
 })
 
 test_that("the archive uses 7-Zip at maximum compression and the worker budget", {
