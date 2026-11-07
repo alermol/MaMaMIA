@@ -153,7 +153,8 @@ test_that("the confident set is calibrated and reviewed as confident", {
 })
 
 test_that("the result bundle contains the table, BEDPE and karyotypes", {
-    skip_if_not(nzchar(Sys.which("zip")), "the zip command is unavailable")
+    skip_if(inherits(try(bam_bundle_zip_tool(), silent = TRUE),
+        "try-error"), "the 7z command is unavailable")
     result <- bam_example_result(1000)
     sample <- unique(as.character(result$calls$sample))[[1L]]
     expected <- result$calls[
@@ -617,7 +618,8 @@ test_that("a relative bundle path is written to the caller's directory", {
 })
 
 test_that("a cohort bundle has per-sample folders and top-level summaries", {
-    skip_if_not(nzchar(Sys.which("zip")), "the zip command is unavailable")
+    skip_if(inherits(try(bam_bundle_zip_tool(), silent = TRUE),
+        "try-error"), "the 7z command is unavailable")
     result <- bam_example_result(1000)
     samples <- c("cohort A", "cohort B")
     multi <- result
@@ -766,4 +768,19 @@ test_that("bundle workers follow the explicit option first", {
 
     withr::local_options(MaMaMIA.bundle_workers = NULL)
     expect_identical(bam_bundle_workers(), 2L)
+})
+
+test_that("bundle workers default to every available core except one", {
+    withr::local_options(
+        MaMaMIA.bundle_workers = NULL,
+        MaMaMIA.cores = NULL
+    )
+    expect_identical(bam_bundle_workers(), mamamia_default_cores())
+})
+
+test_that("the archive uses 7-Zip at maximum compression and the worker budget", {
+    args <- bam_bundle_archive_args("bundle.zip", "results", workers = 11L)
+    expect_true("-tzip" %in% args)
+    expect_true("-mx=9" %in% args)
+    expect_true("-mmt=11" %in% args)
 })

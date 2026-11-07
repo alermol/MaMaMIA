@@ -1255,19 +1255,59 @@ bam_bundle_write_sample_files <- function(result, bundle, sample,
     )
 }
 
+#' Locate the 7-Zip executable
+#'
+#' Bundles are archived with 7-Zip so compression itself uses the worker
+#' budget. Both the `7z` name (Debian's `7zip` package) and the standalone
+#' `7zz`/`7za` names are accepted.
+#' @noRd
+bam_bundle_zip_tool <- function() {
+    paths <- Sys.which(c("7z", "7zz", "7za"))
+    paths <- paths[!is.na(paths) & nzchar(paths)]
+    if (length(paths) == 0L) {
+        stop(
+            "Could not create the results ZIP archive. ",
+            "The `7z` command is required.",
+            call. = FALSE
+        )
+    }
+    unname(paths[[1L]])
+}
+
+#' 7-Zip arguments for a result bundle
+#' @noRd
+bam_bundle_archive_args <- function(zipfile, bundle_name,
+                                    workers = bam_bundle_workers()) {
+    workers <- suppressWarnings(as.integer(workers))
+    if (length(workers) != 1L || is.na(workers) || workers < 1L) {
+        workers <- 1L
+    }
+    c(
+        "a",
+        "-tzip",
+        "-mx=9",
+        paste0("-mmt=", workers),
+        "-bso0",
+        "-bsp0",
+        shQuote(zipfile),
+        shQuote(bundle_name)
+    )
+}
+
 #' Build a bundle ZIP from a staging directory
 #' @noRd
 bam_bundle_archive <- function(staging, bundle_name, file) {
     old <- getwd()
-    ## `utils::zip()` runs inside the staging directory, so a relative output
-    ## path would land in staging and be deleted with it.
+    ## 7-Zip runs inside the staging directory, so a relative output path
+    ## would land in staging and be deleted with it.
     file <- if (grepl("^(/|[A-Za-z]:[/\\\\])", file)) {
         file
     } else {
         file.path(old, file)
     }
+    tool <- bam_bundle_zip_tool()
     ## Build the archive next to the destination first; only replace the
-    ## previous bundle once `zip` has succeeded.
+    ## previous bundle once 7-Zip has succeeded.
     tmp_zip <- tempfile(tmpdir = dirname(file), fileext = ".zip")
     on.exit({
         setwd(old)
@@ -1275,16 +1315,19 @@ bam_bundle_archive <- function(staging, bundle_name, file) {
     }, add = TRUE)
     setwd(staging)
     status <- tryCatch(
-        utils::zip(
-            zipfile = tmp_zip, files = bundle_name, flags = "-q -r"
+        system2(
+            tool,
+            bam_bundle_archive_args(tmp_zip, bundle_name),
+            stdout = FALSE,
+            stderr = FALSE
         ),
         error = function(e) e
     )
     setwd(old)
-    if (inherits(status, "error") || !identical(as.integer(status), 0L)) {
+    if (inherits(status, "error") ||
+        !identical(as.integer(status), 0L)) {
         stop(
-            "Could not create the results ZIP archive. ",
-            "Check that the `zip` command is available.",
+            "Could not create the results ZIP archive with 7-Zip.",
             call. = FALSE
         )
     }

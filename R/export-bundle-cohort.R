@@ -464,7 +464,8 @@ bam_bundle_cohort_readme <- function(samples, folders, calls,
 #'
 #' Per-sample export is independent, so it is forked on Unix when more than one
 #' worker is allowed. `options(MaMaMIA.bundle_workers = n)` overrides the
-#' default; `MaMaMIA.cores` is honoured as a fallback.
+#' default; `MaMaMIA.cores` is honoured as a fallback. The default is every
+#' available core except one, and the same budget drives 7-Zip compression.
 #' @noRd
 bam_bundle_workers <- function() {
     value <- getOption("MaMaMIA.bundle_workers", NULL)
@@ -473,7 +474,7 @@ bam_bundle_workers <- function() {
     }
     if (is.null(value) || length(value) != 1L || is.na(value) ||
         !is.numeric(value) || value < 1L) {
-        value <- min(8L, parallel::detectCores())
+        value <- mamamia_default_cores()
     }
     value <- as.integer(value)
     if (is.na(value) || value < 1L) 1L else value
