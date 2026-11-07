@@ -340,6 +340,10 @@ test_that("the explorer exposes the karyotype tab and mode switch", {
     expect_match(html, "mamamia-analysis-loading", fixed = TRUE)
     expect_match(html, "mamamia-analysis-stage", fixed = TRUE)
     expect_match(html, "Preparing analysis", fixed = TRUE)
+    expect_match(html, "mamamia-analysis-timer", fixed = TRUE)
+    expect_match(html, "mamamia-analysis-timer-value", fixed = TRUE)
+    expect_match(html, "Processing time", fixed = TRUE)
+    expect_match(html, "00:00", fixed = TRUE)
 })
 
 test_that("the karyotype export payload carries every call", {
@@ -410,6 +414,33 @@ test_that("a full substitution splits into a lost recipient and added donor", {
             identical(call$class, "substitution")
         }, logical(1)))
     }, logical(1))))
+})
+
+test_that("a full substitution follows the donor scale and adds only its donor", {
+    result <- bam_example_result(1000)
+    ## Donor group 8 is 200 kb, while the recipient group maximum is longer.
+    ## The call width comes from the donor windows, so the full-chromosome test
+    ## must not divide it by the recipient length.
+    result$scores$length[as.character(result$scores$group) == "8"] <- 250000
+    extra_donor <- result$assembly$contigs$donor[
+        result$assembly$contigs$donor$id == "d8", , drop = FALSE
+    ]
+    extra_donor$id <- "d8b"
+    extra_donor$name <- "8S"
+    extra_donor$component <- "S"
+    result$assembly$contigs$donor <- rbind(
+        result$assembly$contigs$donor, extra_donor
+    )
+
+    payload <- karyotype_payload(result, "example-sample", "calls")
+    labels <- vapply(payload$chromosomes, function(x) x$name, character(1))
+    added <- vapply(
+        payload$chromosomes, function(x) isTRUE(x$added), logical(1)
+    )
+    expect_identical(
+        labels[added], c("5R", "5R", "8R", "8R")
+    )
+    expect_false("8S" %in% labels)
 })
 
 test_that("a full substitution only deletes its assigned recipient", {

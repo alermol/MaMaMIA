@@ -106,7 +106,9 @@ karyotype_deleted <- function(result, sample, deletion_breadth = 0.001,
 #' Full-chromosome calls
 #'
 #' A call is full-chromosome when it passes calibration, starts at the first
-#' window, ends at the last window and covers at least 95% of the group.
+#' window and covers at least 95% of the donor chromosome. A substitution is
+#' judged on the recipient loss instead when that measurement is available, so
+#' a terminus that the donor read stops short of does not hide the replacement.
 #' @noRd
 karyotype_full_calls <- function(result, sample, n_per = NULL,
                                  calls = NULL) {
@@ -133,19 +135,111 @@ karyotype_full_calls <- function(result, sample, n_per = NULL,
     }
     scores <- result$scores
     scores <- scores[as.character(scores$sample) == sample, , drop = FALSE]
-    group_length <- tapply(
+    score_length <- tapply(
         scores$length, as.character(scores$group),
         function(x) {
             x <- x[is.finite(x)]
             if (length(x) == 0L) NA_real_ else max(x)
         }
     )
-    length_bp <- group_length[as.character(calls$group)]
-    fraction <- calls$width_bp / unname(length_bp)
+    ## `width_bp` comes from the donor windows (segmentScores() uses the donor
+    ## group length), so the full-chromosome fraction must use the same
+    ## coordinate system. Dividing by the recipient group maximum makes a full
+    ## donor chromosome look partial whenever the donor group is shorter.
+    donor_length <- if (!is.null(result$windows) &&
+        is.data.frame(result$windows$table) &&
+        nrow(result$windows$table) > 0L &&
+        all(c("role", "group", "stop") %in%
+            names(result$windows$table))) {
+        donor_windows <- result$windows$table[
+            as.character(result$windows$table$role) == "donor", ,
+            drop = FALSE
+        ]
+        tapply(
+            as.numeric(donor_windows$stop),
+            as.character(donor_windows$group),
+            function(x) {
+                x <- x[is.finite(x)]
+                if (length(x) == 0L) NA_real_ else max(x)
+            }
+        )
+    } else {
+        numeric()
+    }
+    length_bp <- donor_length[as.character(calls$group)]
+    missing_length <- !is.finite(length_bp)
+    if (any(missing_length)) {
+        length_bp[missing_length] <- score_length[
+            as.character(calls$group)[missing_length]
+        ]
+    }
+    donor_fraction <- calls$width_bp / unname(length_bp)
+
+    ## A substitution removes a recipient chromosome. When assignment measured
+    ## that loss, use its fraction of the assigned recipient contig: the donor
+    ## segment can stop a few percent short at a low-mappability terminus while
+    ## the recipient chromosome is still fully replaced. Additions and older
+    ## calls without recipient coordinates keep the donor fraction.
+    recipient_length_bp <- rep(NA_real_, nrow(calls))
+    recipient_contigs <- result$assembly$contigs$recipient
+    if (is.data.frame(recipient_contigs) &&
+        nrow(recipient_contigs) > 0L &&
+        all(c("id", "length") %in% names(recipient_contigs))) {
+        if ("recipient_chr_id" %in% names(calls)) {
+            position <- match(
+                as.character(calls$recipient_chr_id),
+                as.character(recipient_contigs$id)
+            )
+            recipient_length_bp <- as.numeric(
+                recipient_contigs$length[position]
+            )
+        }
+        if (anyNA(recipient_length_bp) &&
+            "recipient_chr_name" %in% names(calls) &&
+            "group" %in% names(recipient_contigs) &&
+            "name" %in% names(recipient_contigs)) {
+            missing <- which(is.na(recipient_length_bp))
+            for (i in missing) {
+                name <- as.character(calls$recipient_chr_name[[i]])
+                group <- as.character(calls$group[[i]])
+                if (length(name) != 1L || is.na(name) || !nzchar(name)) {
+                    next
+                }
+                hit <- which(
+                    as.character(recipient_contigs$name) == name &
+                        as.character(recipient_contigs$group) == group
+                )
+                if (length(hit) == 1L) {
+                    recipient_length_bp[[i]] <-
+                        as.numeric(recipient_contigs$length[[hit]])
+                }
+            }
+        }
+    }
+    missing_recipient <- !is.finite(recipient_length_bp)
+    if (any(missing_recipient)) {
+        recipient_length_bp[missing_recipient] <- score_length[
+            as.character(calls$group)[missing_recipient]
+        ]
+    }
+    recipient_fraction <- rep(NA_real_, nrow(calls))
+    if ("recipient_deletion_width_bp" %in% names(calls)) {
+        recipient_fraction <- as.numeric(calls$recipient_deletion_width_bp) /
+            unname(recipient_length_bp)
+    }
+    class <- if ("class" %in% names(calls)) {
+        as.character(calls$class)
+    } else {
+        rep(NA_character_, nrow(calls))
+    }
+    use_recipient <- class == "substitution" & is.finite(recipient_fraction)
+    fraction <- donor_fraction
+    fraction[use_recipient] <- recipient_fraction[use_recipient]
+
     ## A full-chromosome event starts at the first window and covers at least
-    ## 95% of the group. The end is allowed to fall a few windows short: real
-    ## terminal segments (for example the 7S addition in the study data) end
-    ## at 99% of the profile rather than exactly at the last window.
+    ## 95% of the chromosome. The end is allowed to fall a few windows short:
+    ## real terminal segments (for example the 7S addition in the study data)
+    ## end at 99% of the profile rather than exactly at the last window.
     full <- calls$start_iid == 0L & is.finite(fraction) & fraction >= 0.95
     calls$group_length <- unname(length_bp)
     calls$fraction <- fraction
@@ -584,16 +678,6 @@ karyotype_payload <- function(result, sample = NULL,
         })
     }
 
-    added_groups <- if (nrow(full) > 0L) {
-        keep <- !is.na(full$donor_mean) & full$donor_mean > 0.5
-        if ("class" %in% names(full)) {
-            keep <- keep & as.character(full$class) %in%
-                c("addition", "substitution")
-        }
-        unique(as.character(full$group[keep]))
-    } else {
-        character()
-    }
     if (is.null(donor) || nrow(donor) == 0L) {
         donor <- data.frame(
             id = character(), name = character(), component = character(),
@@ -601,10 +685,62 @@ karyotype_payload <- function(result, sample = NULL,
             copy_number = numeric(), stringsAsFactors = FALSE
         )
     }
+    added_calls <- if (nrow(full) > 0L) {
+        keep <- !is.na(full$donor_mean) & full$donor_mean > 0.5
+        if ("class" %in% names(full)) {
+            keep <- keep & as.character(full$class) %in%
+                c("addition", "substitution")
+        }
+        full[keep, , drop = FALSE]
+    } else {
+        full[0, , drop = FALSE]
+    }
+    ## Add only the donor chromosome named by the call. A donor group can hold
+    ## several components (for example J02, St02 and V02); adding every contig
+    ## in the group would invent the components the caller did not observe.
+    added_donor_ids <- character()
+    for (i in seq_len(nrow(added_calls))) {
+        group <- as.character(added_calls$group[[i]])
+        candidates <- character()
+        if ("donor_chr_id" %in% names(added_calls)) {
+            id <- as.character(added_calls$donor_chr_id[[i]])
+            if (length(id) == 1L && !is.na(id) && nzchar(id) &&
+                id %in% as.character(donor$id)) {
+                candidates <- id
+            }
+        }
+        if (length(candidates) == 0L &&
+            "donor_chr_name" %in% names(added_calls)) {
+            name <- as.character(added_calls$donor_chr_name[[i]])
+            if (length(name) == 1L && !is.na(name) && nzchar(name)) {
+                candidates <- as.character(donor$id[
+                    as.character(donor$name) == name &
+                        as.character(donor$group) == group
+                ])
+            }
+        }
+        if (length(candidates) == 0L &&
+            "donor_component" %in% names(added_calls)) {
+            component <- as.character(added_calls$donor_component[[i]])
+            if (length(component) == 1L && !is.na(component) &&
+                nzchar(component)) {
+                candidates <- as.character(donor$id[
+                    as.character(donor$component) == component &
+                        as.character(donor$group) == group
+                ])
+            }
+        }
+        if (length(candidates) == 0L) {
+            candidates <- as.character(donor$id[
+                as.character(donor$group) == group
+            ])
+        }
+        added_donor_ids <- union(added_donor_ids, candidates)
+    }
     ## Preserve the registry order for donor chromosomes as well as for the
     ## recipient chromosomes above.
     added_donor <- donor[
-        as.character(donor$group) %in% added_groups, , drop = FALSE
+        as.character(donor$id) %in% added_donor_ids, , drop = FALSE
     ]
     chromosome_payload <- list()
     for (i in seq_len(nrow(recipient))) {
