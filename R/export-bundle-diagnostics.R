@@ -1358,18 +1358,120 @@ bam_bundle_html_value <- function(value) {
     }
 }
 
-bam_bundle_html_table <- function(x) {
+#' Brief descriptions for report table columns
+#' @noRd
+bam_bundle_column_descriptions <- function(columns) {
+    columns <- as.character(columns)
+    out <- rep("", length(columns))
+    dictionary <- bam_bundle_column_dictionary()
+    hit <- match(columns, dictionary$name)
+    found <- !is.na(hit)
+    out[found] <- dictionary$description[hit[found]]
+    extra <- c(
+        Item = "Row label in the run overview.",
+        Value = "Value for the overview row.",
+        Sample = "Sample name read from the BAM @RG SM tag.",
+        Report = "Link to the per-sample report inside this bundle.",
+        Calls = "Number of calls before calibration filtering.",
+        Passing = "Calls whose score passes the calibrated threshold.",
+        Confident = "Passing calls with confident class assignment.",
+        sample = "Sample name read from the BAM @RG SM tag.",
+        sample_name = "Sample name read from the BAM @RG SM tag.",
+        call_class = "Final call class: addition, deletion, substitution, complex or other.",
+        calls = "Number of calls in this group.",
+        passing_calls = "Calls that pass calibration.",
+        confident_calls = "Calls with confident class assignment.",
+        share = "Share of all calls in the run, from 0 to 1.",
+        mode = "Analysis mode: single for one sample, or multi for a cohort.",
+        analysis_mode = "Analysis mode: single for one sample, or multi for a cohort.",
+        n_windows = "Number of analysis windows for the sample.",
+        windows = "Number of analysis windows in the group or sample.",
+        n_contigs = "Number of contigs observed for the sample.",
+        contigs = "Number of contigs in the group or sample.",
+        n_groups = "Number of chromosome homology groups.",
+        groups = "Number of chromosome homology groups.",
+        reads_donor = "Reads assigned to donor contigs.",
+        reads_recipient = "Reads assigned to recipient contigs.",
+        reads_total = "Donor plus recipient reads.",
+        n_all_calls = "All calls before calibration filtering.",
+        n_high_confidence = "Calls with high donor confidence.",
+        n_class_confident = "Calls with confident class assignment.",
+        pass_rate = "Fraction of all calls that pass calibration.",
+        masked_fraction = "Fraction of analysis windows masked by the run.",
+        total_width_mb = "Total call width in megabases.",
+        mean_width_mb = "Mean call width in megabases.",
+        max_width_mb = "Largest call width in megabases.",
+        mean_call_score = "Mean introgression score across calls.",
+        max_call_score = "Largest introgression score across calls.",
+        mean_breadth = "Mean breadth across windows in the group.",
+        median_breadth = "Median breadth across windows in the group.",
+        sd_breadth = "Standard deviation of breadth across windows.",
+        windows_in_call = "Number of analysis windows covered by the call.",
+        call_width_bp = "Call width in base pairs.",
+        mean_introgression_score = "Mean introgression score across the call.",
+        review_status = "Confident, ambiguous or needs_review.",
+        copy_number_state = "Copy-number interpretation for the call.",
+        group_level_call_class = "Call class before recipient assignment.",
+        donor_chromosome = "Display name of the donor contig.",
+        recipient_chromosome = "Display name of the assigned recipient contig."
+    )
+    missing <- !nzchar(out)
+    hit_extra <- match(columns[missing], names(extra))
+    found_extra <- !is.na(hit_extra)
+    if (any(found_extra)) {
+        target <- which(missing)[found_extra]
+        out[target] <- unname(extra[hit_extra[found_extra]])
+    }
+    out
+}
+
+#' Rendering shell for an interactive report table
+#' @noRd
+bam_bundle_html_table_shell <- function(x, rows, descriptions = NULL) {
+    labels <- names(x)
+    types <- vapply(x, function(column) {
+        if (is.numeric(column)) "number" else "text"
+    }, character(1))
+    if (is.null(descriptions)) {
+        descriptions <- bam_bundle_column_descriptions(labels)
+    }
+    descriptions <- rep_len(as.character(descriptions), length(labels))
+    header <- vapply(seq_along(labels), function(i) {
+        help <- if (nzchar(descriptions[[i]])) {
+            paste0(
+                '<span class="help" tabindex="0" role="note" title="',
+                bam_bundle_html_escape(descriptions[[i]]),
+                '" data-help="',
+                bam_bundle_html_escape(descriptions[[i]]),
+                '">?</span>'
+            )
+        } else {
+            ""
+        }
+        paste0(
+            '<th scope="col" data-type="', types[[i]],
+            '" aria-sort="none"><button type="button" class="sort">',
+            bam_bundle_html_escape(labels[[i]]), help,
+            "</button></th>"
+        )
+    }, character(1))
+    paste0(
+        '<div class="table-block">',
+        '<div class="table-tools"><input type="search" class="table-filter" ',
+        'placeholder="Filter rows\u2026" aria-label="Filter table rows">',
+        '<span class="table-count"></span></div>',
+        '<div class="scroll"><table class="bundle-table"><thead><tr>',
+        paste(header, collapse = ""),
+        "</tr></thead><tbody>",
+        paste(rows, collapse = ""),
+        "</tbody></table></div></div>"
+    )
+}
+
+bam_bundle_html_table <- function(x, descriptions = NULL) {
     if (!is.data.frame(x) || nrow(x) == 0L || ncol(x) == 0L) {
         return("<p class=\"muted\">No data for this section.</p>")
     }
-    header <- paste0(
-        "<tr>",
-        paste0(
-            "<th>", bam_bundle_html_escape(names(x)), "</th>",
-            collapse = ""
-        ),
-        "</tr>"
-    )
     rows <- vapply(seq_len(nrow(x)), function(i) {
         cells <- vapply(x, function(column) {
             bam_bundle_html_value(column[[i]])
@@ -1377,10 +1479,7 @@ bam_bundle_html_table <- function(x) {
         paste0("<tr><td>", paste(cells, collapse = "</td><td>"),
             "</td></tr>")
     }, character(1))
-    paste0(
-        "<div class=\"scroll\"><table>", header, paste(rows, collapse = ""),
-        "</table></div>"
-    )
+    bam_bundle_html_table_shell(x, rows, descriptions)
 }
 
 bam_bundle_report_css <- function() {
@@ -1417,7 +1516,127 @@ bam_bundle_report_css <- function() {
         "font-size:12px}",
         "footer{margin-top:36px;padding-top:14px;",
         "border-top:1px solid #dfe5e0;color:#65736a;font-size:11px}",
+        ".table-block{margin:0 0 16px}",
+        ".table-tools{display:flex;align-items:center;gap:10px;",
+        "margin:0 0 6px}",
+        ".table-filter{flex:1 1 240px;max-width:360px;padding:6px 9px;",
+        "border:1px solid #cdd8d1;border-radius:5px;font:inherit;",
+        "background:#fff;color:#1f2a24}",
+        ".table-filter:focus{outline:2px solid #9cc3d5;outline-offset:1px}",
+        ".table-count{color:#65736a;font-size:11px}",
+        "table.bundle-table th{padding:0}",
+        "table.bundle-table th .sort{all:unset;box-sizing:border-box;",
+        "display:flex;align-items:center;gap:5px;width:100%;padding:6px 8px;",
+        "cursor:pointer;font:inherit;color:inherit;text-transform:inherit;",
+        "letter-spacing:inherit}",
+        "table.bundle-table th .sort:hover{background:#e4ece6}",
+        "table.bundle-table th[aria-sort='ascending'] .sort::after{",
+        "content:'\\25B2';font-size:8px}",
+        "table.bundle-table th[aria-sort='descending'] .sort::after{",
+        "content:'\\25BC';font-size:8px}",
+        ".help{display:inline-flex;align-items:center;justify-content:center;",
+        "width:14px;height:14px;border-radius:50%;background:#dbe6e0;",
+        "color:#3f5a4d;font-size:9px;font-weight:700;position:relative;",
+        "cursor:help;flex:none}",
+        ".help:hover::after,.help:focus::after{content:attr(data-help);",
+        "position:absolute;left:0;top:130%;z-index:20;width:260px;",
+        "padding:8px 10px;border-radius:5px;background:#1f2a24;color:#fff;",
+        "font-size:11px;font-weight:400;line-height:1.4;text-transform:none;",
+        "letter-spacing:0;box-shadow:0 4px 14px rgba(0,0,0,.22)}",
+        "figure.wide{overflow-x:auto}",
+        "figure.wide img{max-width:none;width:auto}",
         sep = ""
+    )
+}
+
+#' Inline script for sortable, filterable report tables
+#' @noRd
+bam_bundle_report_script <- function() {
+    paste0(
+        "<script>\n",
+        paste(
+            "(function(){",
+            "function cellText(row,index){",
+            "  var cell=row.cells[index];",
+            "  return cell ? (cell.textContent||'').trim() : '';",
+            "}",
+            "function toNumber(text){",
+            "  var value=Number(text.replace(/[,\\s%]/g,''));",
+            "  return isFinite(value) ? value : null;",
+            "}",
+            "document.querySelectorAll('table.bundle-table').forEach(",
+            "function(table){",
+            "  var block=table.closest('.table-block');",
+            "  var tbody=table.tBodies[0];",
+            "  if(!tbody) return;",
+            "  var rows=Array.prototype.slice.call(tbody.rows);",
+            "  var filter=block ? block.querySelector('.table-filter') : null;",
+            "  var count=block ? block.querySelector('.table-count') : null;",
+            "  if(block){",
+            "    block.querySelectorAll('.help').forEach(function(help){",
+            "      help.addEventListener('click',function(event){",
+            "        event.stopPropagation();",
+            "      });",
+            "    });",
+            "  }",
+            "  function refresh(){",
+            "    if(!count) return;",
+            "    var visible=rows.filter(function(row){",
+            "      return row.style.display!=='none';",
+            "    }).length;",
+            "    count.textContent=visible+' of '+rows.length+' rows';",
+            "  }",
+            "  if(filter){",
+            "    filter.addEventListener('input',function(){",
+            "      var query=filter.value.trim().toLowerCase();",
+            "      rows.forEach(function(row){",
+            "        var text=(row.textContent||'').toLowerCase();",
+            "        row.style.display=(!query || text.indexOf(query)!==-1)",
+            "          ? '' : 'none';",
+            "      });",
+            "      refresh();",
+            "    });",
+            "  }",
+            "  var headers=table.tHead",
+            "    ? Array.prototype.slice.call(table.tHead.rows[0].cells)",
+            "    : [];",
+            "  headers.forEach(function(th,index){",
+            "    var button=th.querySelector('button.sort');",
+            "    if(!button) return;",
+            "    button.addEventListener('click',function(){",
+            "      var ascending=th.getAttribute('aria-sort')!=='ascending';",
+            "      var numeric=th.getAttribute('data-type')==='number';",
+            "      rows.sort(function(a,b){",
+            "        var left=cellText(a,index);",
+            "        var right=cellText(b,index);",
+            "        var result;",
+            "        if(numeric){",
+            "          var l=toNumber(left);",
+            "          var r=toNumber(right);",
+            "          if(l===null && r===null) result=0;",
+            "          else if(l===null) result=1;",
+            "          else if(r===null) result=-1;",
+            "          else result=l-r;",
+            "        } else {",
+            "          result=left.localeCompare(right,undefined,",
+            "            {numeric:true,sensitivity:'base'});",
+            "        }",
+            "        return ascending ? result : -result;",
+            "      });",
+            "      rows.forEach(function(row){ tbody.appendChild(row); });",
+            "      headers.forEach(function(header){",
+            "        header.setAttribute('aria-sort','none');",
+            "      });",
+            "      th.setAttribute('aria-sort',",
+            "        ascending ? 'ascending' : 'descending');",
+            "    });",
+            "  });",
+            "  refresh();",
+            "});",
+            "})();",
+            sep = "\n"
+        ),
+        "\n</script>"
     )
 }
 
@@ -1502,15 +1721,6 @@ bam_bundle_report_html <- function(result, bundle, sample, calls_raw,
         ),
         stringsAsFactors = FALSE
     )
-
-    files <- list.files(bundle, recursive = TRUE, full.names = FALSE)
-    file_info <- file.info(file.path(bundle, files))
-    file_table <- data.frame(
-        path = gsub("\\\\", "/", files),
-        bytes = as.numeric(file_info$size),
-        stringsAsFactors = FALSE
-    )
-    file_table <- file_table[order(file_table$path), , drop = FALSE]
 
     cohort <- diagnostics$cohort
     if (is.data.frame(cohort) && nrow(cohort) > 1L) {
@@ -1659,7 +1869,8 @@ bam_bundle_report_html <- function(result, bundle, sample, calls_raw,
             c(
                 "<section><h2>All samples in this run</h2>",
                 bam_bundle_plot_html(
-                    diagnostics$plots, bundle, "cohort-calls.png"
+                    diagnostics$plots, bundle, "cohort-calls.png",
+                    wide = TRUE
                 ),
                 bam_bundle_html_table(cohort),
                 "</section>"
@@ -1667,20 +1878,14 @@ bam_bundle_report_html <- function(result, bundle, sample, calls_raw,
         } else {
             character()
         },
-        "<section><h2>Files in this bundle</h2>",
-        "<p class=\"muted\">Payload files written before this report are ",
-        "listed here. <code>report.html</code>, <code>manifest.json</code> ",
-        "and <code>checksums.md5</code> are generated after this table; ",
-        "the manifest records sizes and MD5 checksums, and ",
-        "<code>checksums.md5</code> covers the manifest as well.</p>",
-        bam_bundle_html_table(file_table),
-        "</section>",
         paste0(
             "<footer>Generated ", bam_bundle_html_escape(
                 format(generated, "%Y-%m-%d %H:%M:%S %Z")
             ),
             " by MaMaMIA ", bam_bundle_html_escape(version), ".</footer>"
         ),
-        "</main></body></html>"
+        "</main>",
+        bam_bundle_report_script(),
+        "</body></html>"
     )
 }

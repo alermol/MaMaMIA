@@ -311,59 +311,118 @@ bam_bundle_plot_masks <- function(masks_summary) {
         bam_bundle_plot_theme()
 }
 
-bam_bundle_plot_calls <- function(calls_summary) {
+#' Counts per call class for the calls-by-class donut
+#' @noRd
+bam_bundle_class_totals <- function(calls_summary) {
     if (!is.data.frame(calls_summary) || nrow(calls_summary) == 0L ||
-        !all(c(
-            "call_class", "calls", "passing_calls", "confident_calls"
-        ) %in% names(calls_summary))) {
+        !all(c("call_class", "calls") %in% names(calls_summary))) {
         return(NULL)
     }
-    x <- calls_summary
-    classes <- unique(as.character(x$call_class))
-    classes <- classes[!is.na(classes) & nzchar(classes)]
-    if (length(classes) == 0L) {
+    classes <- as.character(calls_summary$call_class)
+    values <- suppressWarnings(as.numeric(calls_summary$calls))
+    keep <- !is.na(classes) & nzchar(classes) &
+        is.finite(values) & values > 0
+    if (!any(keep)) {
         return(NULL)
     }
-    series <- c("All calls", "Passing calibration", "Confident")
-    long <- do.call(rbind, lapply(seq_along(classes), function(i) {
-        data.frame(
-            call_class = classes[[i]],
-            series = series,
-            value = c(
-                x$calls[[i]], x$passing_calls[[i]], x$confident_calls[[i]]
-            ),
-            stringsAsFactors = FALSE
-        )
-    }))
-    long$call_class <- factor(long$call_class, levels = classes)
-    long$series <- factor(long$series, levels = series)
+    preferred <- c(
+        "addition", "deletion", "substitution", "complex", "other"
+    )
+    present <- unique(classes[keep])
+    levels <- c(
+        preferred[preferred %in% present],
+        sort(present[!present %in% preferred])
+    )
+    totals <- vapply(levels, function(class) {
+        sum(values[keep & classes == class])
+    }, numeric(1))
+    data.frame(
+        call_class = factor(levels, levels = levels),
+        calls = as.numeric(totals),
+        stringsAsFactors = FALSE
+    )
+}
+
+bam_bundle_plot_calls <- function(calls_summary) {
+    totals <- bam_bundle_class_totals(calls_summary)
+    if (is.null(totals) || nrow(totals) == 0L) {
+        return(NULL)
+    }
+    total <- sum(totals$calls)
+    totals$share <- totals$calls / total
+    legend_labels <- sprintf(
+        "%s (%s, %.0f%%)",
+        totals$call_class,
+        format(totals$calls, big.mark = ",", trim = TRUE),
+        100 * totals$share
+    )
+    palette <- karyotype_palette()
+    colours <- vapply(
+        as.character(totals$call_class),
+        function(class) bam_bundle_colour(palette, class, "other"),
+        character(1)
+    )
     ggplot2::ggplot(
-        long,
-        ggplot2::aes(x = .data$call_class, y = .data$value, fill = .data$series)
+        totals,
+        ggplot2::aes(x = 2, y = .data$calls, fill = .data$call_class)
     ) +
         ggplot2::geom_col(
-            position = ggplot2::position_dodge(width = 0.82),
-            width = 0.74
+            width = 1, colour = "#ffffff", linewidth = 0.7
         ) +
+        ggplot2::coord_polar(theta = "y", start = 0) +
+        ggplot2::xlim(0.5, 2.5) +
         ggplot2::scale_fill_manual(
-            values = c(
-                `All calls` = "#b9c6bf",
-                `Passing calibration` = "#2f6f5e",
-                Confident = "#8a6d3b"
+            values = stats::setNames(colours, as.character(totals$call_class)),
+            labels = stats::setNames(
+                legend_labels, as.character(totals$call_class)
             ),
             drop = FALSE
         ) +
         ggplot2::labs(
-            x = "Call class",
-            y = "Calls",
-            title = "Calls by class and review tier",
+            x = NULL,
+            y = NULL,
+            fill = NULL,
+            title = "Calls by class",
             subtitle = paste(
-                "Every call, calls passing calibration, and confident",
-                "calls."
+                "All calls by final class.",
+                "Raw values: calls-summary.csv."
             ),
-            caption = "Raw values: calls-summary.csv."
+            caption = paste(
+                "Total calls:",
+                format(total, big.mark = ",", trim = TRUE)
+            )
         ) +
-        bam_bundle_plot_theme()
+        ggplot2::theme_void(base_size = 11) +
+        ggplot2::theme(
+            plot.title = ggplot2::element_text(
+                size = 12.5, face = "bold", colour = "#1f2a24"
+            ),
+            plot.subtitle = ggplot2::element_text(
+                size = 9.5, colour = "#4f5f55",
+                margin = ggplot2::margin(b = 6)
+            ),
+            plot.caption = ggplot2::element_text(
+                size = 8.5, colour = "#65736a", hjust = 0
+            ),
+            legend.position = "right",
+            legend.text = ggplot2::element_text(size = 9.5),
+            plot.margin = ggplot2::margin(10, 10, 10, 10)
+        )
+}
+
+#' Width for the calls-per-sample plot
+#'
+#' Gives each sample enough horizontal room for its label instead of squeezing
+#' every sample into a fixed 10-inch panel.
+#' @noRd
+bam_bundle_cohort_plot_width <- function(n_samples, minimum = 10,
+                                         per_sample = 0.22,
+                                         maximum = 40) {
+    n <- suppressWarnings(as.integer(n_samples))
+    if (length(n) != 1L || is.na(n) || n < 1L) {
+        return(minimum)
+    }
+    min(maximum, max(minimum, 4 + per_sample * n))
 }
 
 bam_bundle_plot_cohort <- function(cohort) {
@@ -397,6 +456,13 @@ bam_bundle_plot_cohort <- function(cohort) {
     }
     samples <- unique(as.character(x$sample))
     long$sample <- factor(long$sample, levels = samples)
+    label_size <- if (length(samples) > 40L) {
+        6
+    } else if (length(samples) > 20L) {
+        7
+    } else {
+        8.5
+    }
     ggplot2::ggplot(
         long,
         ggplot2::aes(x = .data$sample, y = .data$value, fill = .data$series)
@@ -422,7 +488,7 @@ bam_bundle_plot_cohort <- function(cohort) {
         bam_bundle_plot_theme() +
         ggplot2::theme(
             axis.text.x = ggplot2::element_text(
-                angle = 30, hjust = 1, vjust = 1
+                angle = 45, hjust = 1, vjust = 1, size = label_size
             )
         )
 }
@@ -539,7 +605,12 @@ bam_bundle_plot_files <- function(bundle, qc, calls_summary,
                 "Raw values: qc/cohort-summary.csv."
             ),
             plot = bam_bundle_plot_cohort(qc$cohort),
-            width = 10, height = 5.2
+            width = if (is.data.frame(qc$cohort)) {
+                bam_bundle_cohort_plot_width(nrow(qc$cohort))
+            } else {
+                10
+            },
+            height = 5.2
         )
     )
     drop <- character()
@@ -593,7 +664,7 @@ bam_bundle_png_data_uri <- function(path) {
     )
 }
 
-bam_bundle_plot_html <- function(plots, bundle, file) {
+bam_bundle_plot_html <- function(plots, bundle, file, wide = FALSE) {
     if (!is.data.frame(plots) || nrow(plots) == 0L ||
         !all(c("path", "title", "caption") %in% names(plots))) {
         return(character())
@@ -608,7 +679,7 @@ bam_bundle_plot_html <- function(plots, bundle, file) {
         return(character())
     }
     c(
-        "<figure>",
+        paste0("<figure", if (isTRUE(wide)) " class=\"wide\"" else "", ">"),
         paste0(
             "<img src=\"", uri, "\" alt=\"",
             bam_bundle_html_escape(plots$title[[index]]), "\">"

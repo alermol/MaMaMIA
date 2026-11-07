@@ -485,7 +485,7 @@ bam_svg_text <- function(text, x, y, size = 11, weight = 400,
 #' @noRd
 bam_svg_rect <- function(x, y, width, height, fill, stroke = "none",
                          stroke_width = 0.7, opacity = NULL,
-                         dash = NULL, rx = 2) {
+                         dash = NULL, rx = 2, title = NULL) {
     dash_attr <- if (is.null(dash)) {
         ""
     } else {
@@ -496,15 +496,22 @@ bam_svg_rect <- function(x, y, width, height, fill, stroke = "none",
     } else {
         sprintf(' opacity="%s"', bam_svg_number(opacity, 2))
     }
+    close <- if (is.null(title)) {
+        "/>"
+    } else {
+        paste0(
+            "><title>", bam_svg_escape(title), "</title></rect>"
+        )
+    }
     sprintf(
         paste0(
             '<rect x="%s" y="%s" width="%s" height="%s" rx="%s" ',
-            'fill="%s" stroke="%s" stroke-width="%s"%s%s/>'
+            'fill="%s" stroke="%s" stroke-width="%s"%s%s%s'
         ),
         bam_svg_number(x), bam_svg_number(y), bam_svg_number(width),
         bam_svg_number(height), bam_svg_number(rx, 1),
         bam_svg_escape(fill), bam_svg_escape(stroke),
-        bam_svg_number(stroke_width, 2), dash_attr, opacity_attr
+        bam_svg_number(stroke_width, 2), dash_attr, opacity_attr, close
     )
 }
 
@@ -767,6 +774,33 @@ bam_karyotype_static_svg <- function(payload, width = 1600, height = 900,
         x <- group_left + (copy - 1L) * (bar_width + pair_gap)
         pair_center <- margin_left + (group_index[[i]] - 0.5) * slot
         bar_height <- max(3, plot_height * lengths[[i]] / max_length)
+        bar_label <- chromosome$label
+        if (is.null(bar_label) || !nzchar(as.character(bar_label))) {
+            bar_label <- chromosome$name
+        }
+        if (is.null(bar_label) || !nzchar(as.character(bar_label))) {
+            bar_label <- chromosome$component
+        }
+        if (is.null(bar_label) || !nzchar(as.character(bar_label))) {
+            bar_label <- chromosome$id
+        }
+        bar_state <- if (deleted) {
+            " (deleted)"
+        } else if (added) {
+            " (added)"
+        } else {
+            ""
+        }
+        bar_title <- paste0(
+            as.character(bar_label), " copy ", copy,
+            if (copies > 1L) paste0("/", copies) else "",
+            bar_state,
+            if (length(calls) > 0L) {
+                paste0(" \u00b7 ", length(calls), " calls")
+            } else {
+                ""
+            }
+        )
         added_class <- if (added && length(calls) == 1L) {
             calls[[1L]]$class
         } else {
@@ -796,7 +830,8 @@ bam_karyotype_static_svg <- function(payload, width = 1600, height = 900,
                 x, top, bar_width, bar_height,
                 fill = base_fill, stroke = base_stroke,
                 stroke_width = if (deleted) 1.4 else if (added) 1.8 else 0.7,
-                dash = if (deleted) "4 3" else NULL
+                dash = if (deleted) "4 3" else NULL,
+                title = bar_title
             )
         )
         for (call in calls) {
@@ -812,6 +847,49 @@ bam_karyotype_static_svg <- function(payload, width = 1600, height = 900,
             call_y <- top + start * bar_height
             call_height <- max(1.5, (end - start) * bar_height)
             cross <- isTRUE(call$cross_group)
+            call_bp <- {
+                from_bp <- suppressWarnings(as.numeric(call$start_bp))
+                to_bp <- suppressWarnings(as.numeric(call$end_bp))
+                if (length(from_bp) == 1L && length(to_bp) == 1L &&
+                    is.finite(from_bp) && is.finite(to_bp)) {
+                    paste0(
+                        format(from_bp, big.mark = ",", scientific = FALSE,
+                            trim = TRUE),
+                        "\u2013",
+                        format(to_bp, big.mark = ",", scientific = FALSE,
+                            trim = TRUE),
+                        " bp"
+                    )
+                } else {
+                    paste0(
+                        sprintf("%.1f%%", 100 * start), "\u2013",
+                        sprintf("%.1f%%", 100 * end)
+                    )
+                }
+            }
+            call_state <- as.character(call$class_status)
+            if (length(call_state) != 1L || is.na(call_state)) {
+                call_state <- as.character(call$confidence)
+            }
+            if (length(call_state) != 1L || is.na(call_state)) {
+                call_state <- ""
+            }
+            call_score <- suppressWarnings(as.numeric(call$score))
+            call_title <- paste0(
+                "Call: ", as.character(call$class),
+                if (length(call_score) == 1L && is.finite(call_score)) {
+                    paste0(" \u00b7 score ",
+                        format(call_score, digits = 3, trim = TRUE))
+                } else {
+                    ""
+                },
+                " \u00b7 ", call_bp,
+                if (nzchar(call_state)) {
+                    paste0(" \u00b7 ", call_state)
+                } else {
+                    ""
+                }
+            )
             group <- paste0(
                 group,
                 bam_svg_rect(
@@ -821,7 +899,8 @@ bam_karyotype_static_svg <- function(payload, width = 1600, height = 900,
                     stroke_width = if (cross) 1.3 else 0.5,
                     opacity = bam_svg_call_opacity(call),
                     dash = if (cross) "3 2" else NULL,
-                    rx = 0
+                    rx = 0,
+                    title = call_title
                 )
             )
         }

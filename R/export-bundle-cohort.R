@@ -1,7 +1,7 @@
 ## Multi-sample result bundle: one ZIP with a folder per sample and
 ## run-wide summaries at the top level.
 
-#' Sample names in a result, in metadata order
+#' Sample names in a result, in natural order
 #' @noRd
 bam_bundle_samples <- function(result) {
     samples <- if (is.data.frame(result$samples) &&
@@ -13,7 +13,7 @@ bam_bundle_samples <- function(result) {
     } else {
         character()
     }
-    unique(samples[!is.na(samples) & nzchar(samples)])
+    mamamia_natural_sort(unique(samples[!is.na(samples) & nzchar(samples)]))
 }
 
 #' Safe, unique folder names for the samples in a cohort bundle
@@ -89,7 +89,8 @@ bam_bundle_cohort_plot_files <- function(bundle, cohort, calls_summary,
                 "Raw values: cohort-summary.csv."
             ),
             plot = bam_bundle_plot_cohort(cohort),
-            width = 10, height = 5.2
+            width = bam_bundle_cohort_plot_width(nrow(cohort)),
+            height = 5.2
         ),
         list(
             file = "calls-by-class.png",
@@ -138,18 +139,11 @@ bam_bundle_cohort_plot_files <- function(bundle, cohort, calls_summary,
 
 #' HTML table with pre-rendered cells
 #' @noRd
-bam_bundle_html_table_cells <- function(x, raw_columns = character()) {
+bam_bundle_html_table_cells <- function(x, raw_columns = character(),
+                                        descriptions = NULL) {
     if (!is.data.frame(x) || nrow(x) == 0L || ncol(x) == 0L) {
         return("<p class=\"muted\">No data for this section.</p>")
     }
-    header <- paste0(
-        "<tr>",
-        paste0(
-            "<th>", bam_bundle_html_escape(names(x)), "</th>",
-            collapse = ""
-        ),
-        "</tr>"
-    )
     rows <- vapply(seq_len(nrow(x)), function(i) {
         cells <- vapply(names(x), function(column) {
             value <- x[[column]][[i]]
@@ -164,10 +158,7 @@ bam_bundle_html_table_cells <- function(x, raw_columns = character()) {
             "</td></tr>"
         )
     }, character(1))
-    paste0(
-        "<div class=\"scroll\"><table>", header, paste(rows, collapse = ""),
-        "</table></div>"
-    )
+    bam_bundle_html_table_shell(x, rows, descriptions)
 }
 
 #' Self-contained HTML report for a cohort bundle
@@ -264,15 +255,6 @@ bam_bundle_cohort_report_html <- function(result, bundle, samples, folders,
         stringsAsFactors = FALSE
     )
 
-    files <- list.files(bundle, recursive = TRUE, full.names = FALSE)
-    file_info <- file.info(file.path(bundle, files))
-    file_table <- data.frame(
-        path = gsub("\\\\", "/", files),
-        bytes = as.numeric(file_info$size),
-        stringsAsFactors = FALSE
-    )
-    file_table <- file_table[order(file_table$path), , drop = FALSE]
-
     c(
         "<!DOCTYPE html>",
         "<html lang=\"en\">",
@@ -325,20 +307,14 @@ bam_bundle_cohort_report_html <- function(result, bundle, samples, folders,
         bam_bundle_html_table(calls_summary),
         "</section>",
         "<section><h2>Calls per sample</h2>",
-        bam_bundle_plot_html(plots, bundle, "cohort-calls.png"),
+        bam_bundle_plot_html(
+            plots, bundle, "cohort-calls.png", wide = TRUE
+        ),
         "</section>",
         "<section><h2>Masked windows</h2>",
         bam_bundle_plot_html(
             plots, bundle, "masked-fraction-by-group.png"
         ),
-        "</section>",
-        "<section><h2>Files in this bundle</h2>",
-        "<p class=\"muted\">Payload files written before this report are ",
-        "listed here. <code>report.html</code>, <code>manifest.json</code> ",
-        "and <code>checksums.md5</code> are generated after this table; ",
-        "the manifest records sizes and MD5 checksums, and ",
-        "<code>checksums.md5</code> covers the manifest as well.</p>",
-        bam_bundle_html_table(file_table),
         "</section>",
         paste0(
             "<footer>Generated ", bam_bundle_html_escape(
@@ -346,7 +322,9 @@ bam_bundle_cohort_report_html <- function(result, bundle, samples, folders,
             ),
             " by MaMaMIA ", bam_bundle_html_escape(version), ".</footer>"
         ),
-        "</main></body></html>"
+        "</main>",
+        bam_bundle_report_script(),
+        "</body></html>"
     )
 }
 
@@ -559,6 +537,9 @@ bam_write_cohort_bundle <- function(result, file, samples = NULL,
     cohort <- cohort[
         as.character(cohort$sample) %in% samples, , drop = FALSE
     ]
+    cohort <- cohort[
+        order(match(as.character(cohort$sample), samples)), , drop = FALSE
+    ]
     row_index <- function(x) {
         if (!is.data.frame(x) || !"sample" %in% names(x) ||
             nrow(x) == 0L) {
@@ -656,6 +637,10 @@ bam_write_cohort_bundle <- function(result, file, samples = NULL,
 
     calls_raw <- result$calls[
         as.character(result$calls$sample) %in% samples, , drop = FALSE
+    ]
+    calls_raw <- calls_raw[
+        order(match(as.character(calls_raw$sample), samples)),
+        , drop = FALSE
     ]
     calls <- bam_bundle_descriptive_calls(calls_raw)
     passing <- isTRUE_vec(calls_raw$pass)

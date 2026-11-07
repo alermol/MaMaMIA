@@ -497,8 +497,10 @@ test_that("the result bundle contains the table, BEDPE and karyotypes", {
     expect_match(report, "Depth residuals", fixed = TRUE)
     expect_match(report, "Coverage breadth by chromosome group", fixed = TRUE)
     expect_match(report, "data:image/png;base64,", fixed = TRUE)
-    expect_match(report, "manifest.json", fixed = TRUE)
-    expect_match(report, "qc/metrics-summary.csv", fixed = TRUE)
+    expect_match(report, "table-filter", fixed = TRUE)
+    expect_match(report, "bundle-table", fixed = TRUE)
+    expect_match(report, "data-help=", fixed = TRUE)
+    expect_false(grepl("Files in this bundle", report, fixed = TRUE))
 
     top_report <- paste(
         readLines(file.path(root, "report.html")),
@@ -507,6 +509,8 @@ test_that("the result bundle contains the table, BEDPE and karyotypes", {
     expect_match(top_report, "Run overview", fixed = TRUE)
     expect_match(top_report, "Sample summary", fixed = TRUE)
     expect_match(top_report, sample_folder, fixed = TRUE)
+    expect_match(top_report, "table-filter", fixed = TRUE)
+    expect_false(grepl("Files in this bundle", top_report, fixed = TRUE))
     combined <- utils::read.csv(
         file.path(root, "calls-all.csv"),
         check.names = FALSE, stringsAsFactors = FALSE
@@ -789,4 +793,77 @@ test_that("the archive uses 7-Zip at maximum compression and the worker budget",
     expect_true("-tzip" %in% args)
     expect_true("-mx=9" %in% args)
     expect_true("-mmt=11" %in% args)
+})
+
+test_that("bundle samples are listed in natural order", {
+    result <- list(samples = data.frame(
+        sample = c("sample10", "sample2", "sample1"),
+        stringsAsFactors = FALSE
+    ))
+    samples <- bam_bundle_samples(result)
+    expect_identical(samples, c("sample1", "sample2", "sample10"))
+    expect_identical(
+        unname(bam_bundle_sample_folders(samples)),
+        c("sample1", "sample2", "sample10")
+    )
+    from_calls <- list(calls = data.frame(
+        sample = c("sample10", "sample2", "sample1"),
+        stringsAsFactors = FALSE
+    ))
+    expect_identical(
+        bam_bundle_samples(from_calls),
+        c("sample1", "sample2", "sample10")
+    )
+})
+
+test_that("report tables are filterable and carry column help", {
+    table <- data.frame(
+        call_class = c("addition", "deletion"),
+        calls = c(10L, 2L),
+        stringsAsFactors = FALSE
+    )
+    html <- bam_bundle_html_table(table)
+    expect_match(html, "table-filter", fixed = TRUE)
+    expect_match(html, "bundle-table", fixed = TRUE)
+    expect_match(html, "data-help=", fixed = TRUE)
+    expect_match(html, 'data-type="number"', fixed = TRUE)
+    expect_true(nzchar(bam_bundle_column_descriptions("call_class")))
+    expect_true(nzchar(bam_bundle_column_descriptions("passes_calibration")))
+})
+
+test_that("the calls-by-class plot is a donut over call classes", {
+    summary <- data.frame(
+        call_class = c("addition", "deletion", "other"),
+        calls = c(5, 3, 2),
+        passing_calls = c(4, 2, 1),
+        confident_calls = c(3, 1, 0),
+        stringsAsFactors = FALSE
+    )
+    totals <- bam_bundle_class_totals(summary)
+    expect_identical(
+        as.character(totals$call_class),
+        c("addition", "deletion", "other")
+    )
+    expect_identical(totals$calls, c(5, 3, 2))
+    plot <- bam_bundle_plot_calls(summary)
+    expect_s3_class(plot, "ggplot")
+    expect_s3_class(plot$coordinates, "CoordPolar")
+})
+
+test_that("the calls-per-sample plot grows with the cohort", {
+    expect_identical(bam_bundle_cohort_plot_width(64), 4 + 0.22 * 64)
+    expect_gt(
+        bam_bundle_cohort_plot_width(64),
+        bam_bundle_cohort_plot_width(10)
+    )
+    expect_identical(bam_bundle_cohort_plot_width(500), 40)
+})
+
+test_that("karyotype SVGs expose tooltips for chromosomes and calls", {
+    result <- bam_example_result(1000)
+    payload <- karyotype_payload(result, "example-sample", "calls")
+    svg <- bam_karyotype_static_svg(payload)
+    expect_match(svg, "<title>", fixed = TRUE)
+    expect_match(svg, "copy 1", fixed = TRUE)
+    expect_match(svg, "Call:", fixed = TRUE)
 })
