@@ -15,6 +15,7 @@ test_that("bam_run_parameters() resolves the run controls", {
     expect_identical(typed$resolution, 1010L)
     expect_identical(params$metric, config$defaults$metric)
     expect_identical(params$score, config$defaults$score)
+    expect_identical(params$cores, mamamia_default_cores())
     expect_identical(
         params$donor_aggregation, config$defaults$donor_aggregation
     )

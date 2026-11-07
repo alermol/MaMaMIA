@@ -97,14 +97,14 @@
     contigs
 }
 
-.pipeline_index <- function(preflight, cores = 1L) {
+.pipeline_index <- function(preflight, cores = mamamia_default_cores()) {
     paths <- unique(as.character(preflight$path))
     representative <- match(paths, preflight$path)
     n <- length(paths)
     working <- character(n)
     index_path <- character(n)
     staged <- logical(n)
-    index_threads <- max(1L, min(as.integer(cores), 8L))
+    index_threads <- max(1L, as.integer(cores))
 
     for (i in seq_len(n)) {
         original <- paths[[i]]
@@ -333,7 +333,9 @@
     paths <- as.character(indexed$original_path)
     selected_paths <- as.character(preflight$path)
     n_bams <- length(paths)
-    cores <- min(256L, max(1L, getOption("MaMaMIA.cores", 1L)))
+    cores <- min(256L, max(1L, getOption(
+        "MaMaMIA.cores", mamamia_default_cores()
+    )))
     ## Each counting worker opens its own BAM handle. When several BAMs run
     ## under mclapply(), split the budget between them; a single BAM (the UI
     ## case) gets every core. Forked workers inherit this option.
@@ -439,7 +441,8 @@
 #' @param windows_per_chromosome Number of windows per target contig.
 #' @param mapq Minimum mapping quality.
 #' @param exclude_flags SAM flag mask; a read is excluded when any bit is set.
-#' @param cores Number of cores for parallel BAM measurement.
+#' @param cores Number of cores for parallel BAM measurement. Defaults to
+#'   every available core except one.
 #' @param progress Optional `function(stage, detail)` progress callback.
 #' @param profile Optional analysis-profile name recorded in provenance. It
 #'   does not override the explicit arguments; use
@@ -477,7 +480,7 @@ analyzeBamInput <- function(bam_paths,
                             windows_per_chromosome = 1000L,
                             mapq = NULL,
                             exclude_flags = NULL,
-                            cores = 1L,
+                            cores = mamamia_default_cores(),
                             progress = NULL,
                             profile = NULL,
                             profile_base = NULL) {

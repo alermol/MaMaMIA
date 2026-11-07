@@ -756,3 +756,14 @@ test_that("a cohort bundle has per-sample folders and top-level summaries", {
     expect_setequal(manifest$samples, samples)
     expect_true(all(file.exists(file.path(root, manifest$files$path))))
 })
+
+test_that("bundle workers follow the explicit option first", {
+    withr::local_options(
+        MaMaMIA.bundle_workers = 3L,
+        MaMaMIA.cores = 2L
+    )
+    expect_identical(bam_bundle_workers(), 3L)
+
+    withr::local_options(MaMaMIA.bundle_workers = NULL)
+    expect_identical(bam_bundle_workers(), 2L)
+})

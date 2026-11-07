@@ -1059,19 +1059,26 @@ bam_bundle_run_files <- function(result, bundle, sample) {
 }
 
 bam_bundle_qc_files <- function(result, bundle, sample,
+                                cohort = NULL,
+                                metrics_rows = NULL,
+                                scores_rows = NULL,
                                 include_masks = TRUE,
                                 include_calibration = TRUE,
                                 include_cohort = TRUE) {
     qc_dir <- file.path(bundle, "qc")
     dir.create(qc_dir, showWarnings = FALSE)
     metrics <- result$metrics
-    if (is.data.frame(metrics) && "sample" %in% names(metrics)) {
+    if (!is.null(metrics_rows)) {
+        metrics <- metrics[metrics_rows, , drop = FALSE]
+    } else if (is.data.frame(metrics) && "sample" %in% names(metrics)) {
         metrics <- metrics[
             as.character(metrics$sample) == sample, , drop = FALSE
         ]
     }
     scores <- result$scores
-    if (is.data.frame(scores) && "sample" %in% names(scores)) {
+    if (!is.null(scores_rows)) {
+        scores <- scores[scores_rows, , drop = FALSE]
+    } else if (is.data.frame(scores) && "sample" %in% names(scores)) {
         scores <- scores[
             as.character(scores$sample) == sample, , drop = FALSE
         ]
@@ -1124,7 +1131,11 @@ bam_bundle_qc_files <- function(result, bundle, sample,
             masks_summary, file.path(qc_dir, "masks-summary.csv")
         )
     }
-    cohort <- bam_cohort_summary(result)
+    cohort <- if (is.null(cohort)) {
+        bam_cohort_summary(result)
+    } else {
+        cohort
+    }
     if (isTRUE(include_cohort)) {
         bam_bundle_write_csv(
             cohort, file.path(qc_dir, "cohort-summary.csv")
@@ -1145,6 +1156,9 @@ bam_bundle_qc_files <- function(result, bundle, sample,
 
 bam_bundle_write_diagnostics <- function(result, bundle, sample,
                                          calls_raw, calls_desc,
+                                         cohort = NULL,
+                                         metrics_rows = NULL,
+                                         scores_rows = NULL,
                                          include_run = TRUE,
                                          include_masks = TRUE,
                                          include_calibration = TRUE,
@@ -1162,6 +1176,9 @@ bam_bundle_write_diagnostics <- function(result, bundle, sample,
     ## Build the QC summaries first: calls-by-group reuses the mask summary.
     qc <- bam_bundle_qc_files(
         result, bundle, sample,
+        cohort = cohort,
+        metrics_rows = metrics_rows,
+        scores_rows = scores_rows,
         include_masks = include_masks,
         include_calibration = include_calibration,
         include_cohort = include_cohort

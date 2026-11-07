@@ -555,7 +555,7 @@ bam_integer <- function(value, label, minimum, maximum) {
 
 #' @noRd
 bam_max_cores <- function() {
-    cores <- parallel::detectCores()
+    cores <- mamamia_available_cores()
     if (is.na(cores) || cores < 1L) {
         return(1L)
     }
@@ -1820,7 +1820,8 @@ bam_run_parameters <- function(input, config, samples, resolution = NULL,
     )
     available_cores <- min(256L, bam_max_cores())
     cores <- bam_integer(
-        available_cores, "Cores", 1L, available_cores
+        mamamia_default_cores(available_cores),
+        "Cores", 1L, available_cores
     )
     donor_aggregation <- as.character(current$donor_aggregation)
     if (!donor_aggregation %in% c("mean", "max", "sum")) {
@@ -2088,23 +2089,38 @@ bam_cohort_summary <- function(result) {
     mode <- column("mode", "character", NA_character_)
 
     metrics <- result$metrics
-    reads <- function(role) {
+    reads <- function(roles) {
+        out <- matrix(
+            0, nrow = length(samples), ncol = length(roles),
+            dimnames = list(samples, roles)
+        )
         if (!is.data.frame(metrics) ||
             !all(c("sample", "role", "count") %in% names(metrics))) {
-            return(rep(0, length(samples)))
+            return(out)
         }
-        vapply(samples, function(sample) {
-            sum(
-                as.numeric(metrics$count[
-                    as.character(metrics$sample) == sample &
-                        as.character(metrics$role) == role
-                ]),
-                na.rm = TRUE
-            )
-        }, numeric(1))
+        sample_value <- as.character(metrics$sample)
+        role_value <- as.character(metrics$role)
+        keep <- sample_value %in% samples & role_value %in% roles
+        if (!any(keep)) {
+            return(out)
+        }
+        ## One grouped pass over the window table. The previous per-sample
+        ## vapply() rescanned every sample's windows once per role.
+        totals <- tapply(
+            as.numeric(metrics$count[keep]),
+            list(
+                factor(sample_value[keep], levels = samples),
+                factor(role_value[keep], levels = roles)
+            ),
+            sum, na.rm = TRUE
+        )
+        totals[is.na(totals)] <- 0
+        out[, colnames(totals)] <- totals
+        out
     }
-    reads_donor <- reads("donor")
-    reads_recipient <- reads("recipient")
+    read_totals <- reads(c("donor", "recipient"))
+    reads_donor <- read_totals[, "donor"]
+    reads_recipient <- read_totals[, "recipient"]
     reads_total <- reads_donor + reads_recipient
 
     windows <- result$windows$table

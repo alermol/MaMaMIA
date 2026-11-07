@@ -30,7 +30,7 @@
 .bam_htslib_threads <- function() {
     value <- suppressWarnings(as.integer(
         getOption("MaMaMIA.metrics_workers",
-            getOption("MaMaMIA.htslib_threads", 1L)
+            getOption("MaMaMIA.htslib_threads", mamamia_default_cores())
         )
     ))
     if (length(value) != 1L || is.na(value) || value < 1L) 1L else value

@@ -460,6 +460,25 @@ bam_bundle_cohort_readme <- function(samples, folders, calls,
     )
 }
 
+#' Worker budget for writing a result bundle
+#'
+#' Per-sample export is independent, so it is forked on Unix when more than one
+#' worker is allowed. `options(MaMaMIA.bundle_workers = n)` overrides the
+#' default; `MaMaMIA.cores` is honoured as a fallback.
+#' @noRd
+bam_bundle_workers <- function() {
+    value <- getOption("MaMaMIA.bundle_workers", NULL)
+    if (is.null(value)) {
+        value <- getOption("MaMaMIA.cores", NULL)
+    }
+    if (is.null(value) || length(value) != 1L || is.na(value) ||
+        !is.numeric(value) || value < 1L) {
+        value <- min(8L, parallel::detectCores())
+    }
+    value <- as.integer(value)
+    if (is.na(value) || value < 1L) 1L else value
+}
+
 #' Write a run result bundle
 #'
 #' Builds one ZIP with top-level run summaries and one folder per sample.
@@ -510,7 +529,25 @@ bam_write_cohort_bundle <- function(result, file, samples = NULL,
     bundle <- file.path(staging, bundle_name)
     dir.create(bundle)
 
-    for (i in seq_along(samples)) {
+    ## Compute run-wide tables once. The per-sample loop used to recompute the
+    ## cohort summary and rescan every window table for each sample.
+    cohort <- bam_cohort_summary(result)
+    cohort <- cohort[
+        as.character(cohort$sample) %in% samples, , drop = FALSE
+    ]
+    row_index <- function(x) {
+        if (!is.data.frame(x) || !"sample" %in% names(x) ||
+            nrow(x) == 0L) {
+            return(NULL)
+        }
+        split(
+            seq_len(nrow(x)),
+            factor(as.character(x$sample), levels = samples)
+        )
+    }
+    metrics_rows <- row_index(result$metrics)
+    scores_rows <- row_index(result$scores)
+    export_sample <- function(i) {
         sample <- samples[[i]]
         sample_calls <- result$calls[
             as.character(result$calls$sample) == sample, , drop = FALSE
@@ -549,6 +586,17 @@ bam_write_cohort_bundle <- function(result, file, samples = NULL,
             current_payload = sample_current,
             full_payload = sample_full,
             confident_payload = sample_confident,
+            cohort = cohort,
+            metrics_rows = if (is.null(metrics_rows)) {
+                NULL
+            } else {
+                metrics_rows[[i]]
+            },
+            scores_rows = if (is.null(scores_rows)) {
+                NULL
+            } else {
+                scores_rows[[i]]
+            },
             include_run = FALSE,
             include_masks = FALSE,
             include_calibration = FALSE,
@@ -572,6 +620,14 @@ bam_write_cohort_bundle <- function(result, file, samples = NULL,
             file.path(sample_dir, "README.txt"),
             useBytes = TRUE
         )
+        NULL
+    }
+    pieces <- .mamamia_lapply(
+        seq_along(samples), export_sample, workers = bam_bundle_workers()
+    )
+    failed <- vapply(pieces, function(x) inherits(x, "try-error"), logical(1))
+    if (any(failed)) {
+        stop(pieces[[which(failed)[[1L]]]])
     }
 
     calls_raw <- result$calls[
@@ -581,10 +637,6 @@ bam_write_cohort_bundle <- function(result, file, samples = NULL,
     passing <- isTRUE_vec(calls_raw$pass)
     confident_raw <- bam_confident_calls(calls_raw)
     confident_calls <- bam_bundle_descriptive_calls(confident_raw)
-    cohort <- bam_cohort_summary(result)
-    cohort <- cohort[
-        as.character(cohort$sample) %in% samples, , drop = FALSE
-    ]
     calls_summary <- bam_bundle_call_summary(calls_raw)
     calls_by_status <- bam_bundle_call_status_summary(calls_raw)
     calls_by_copy_state <- bam_bundle_call_status_summary(

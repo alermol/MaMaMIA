@@ -73,7 +73,8 @@
 #' index <- ensureBamIndex(bam)
 #' file.exists(index)
 #'
-ensureBamIndex <- function(path, min_shift = 14L, threads = 1L) {
+ensureBamIndex <- function(path, min_shift = 14L,
+                           threads = mamamia_default_cores()) {
     path <- .validate_bam_path(path, class = "MaMaMIAIndexError")
     min_shift <- .index_integer(
         min_shift, "min_shift", minimum = 1L, maximum = 31L
