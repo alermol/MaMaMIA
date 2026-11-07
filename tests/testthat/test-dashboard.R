@@ -349,8 +349,8 @@ test_that("the BAM chooser accepts exactly one file", {
     expect_false(grepl("bam_upload_help", chooser, fixed = TRUE))
     expect_match(chooser, "mamamia-upload-timer", fixed = TRUE)
     expect_match(chooser, "mamamia-upload-timer-value", fixed = TRUE)
-    expect_match(chooser, "Upload time", fixed = TRUE)
-    expect_match(chooser, "00:00", fixed = TRUE)
+    expect_match(chooser, "Time to finish", fixed = TRUE)
+    expect_match(chooser, "--:--", fixed = TRUE)
 
     limited <- as.character(bam_single_file_input(5 * 1024^3))
     expect_match(
