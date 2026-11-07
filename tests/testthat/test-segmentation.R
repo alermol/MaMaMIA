@@ -9,7 +9,7 @@ test_that("merging three segments keeps the window-weighted mean", {
         start_iid = c(0L, 10L, 20L),
         end_iid = c(4L, 14L, 24L),
         n_windows = c(5L, 5L, 5L),
-        score_mean = c(1, 2, 10),
+        score_mean = c(2, 3, 4),
         stringsAsFactors = FALSE
     )
     profile <- stats::setNames(rep(0, 30L), as.character(0:29))
@@ -17,10 +17,44 @@ test_that("merging three segments keeps the window-weighted mean", {
         calls, profile, merge_gap = 10L, merge_floor = -1, min_mb = 0
     )
     expect_equal(nrow(merged), 1L)
-    expect_equal(merged$score_mean, (1 * 5 + 2 * 5 + 10 * 5) / 15)
+    expect_equal(merged$score_mean, (2 * 5 + 3 * 5 + 4 * 5) / 15)
     expect_equal(merged$n_windows, 25L)
     expect_equal(merged$start_iid, 0L)
     expect_equal(merged$end_iid, 24L)
+})
+
+test_that("a weak adjacent segment is not merged into a strong event", {
+    calls <- data.frame(
+        start_iid = c(0L, 100L),
+        end_iid = c(99L, 199L),
+        n_windows = c(100L, 100L),
+        score_mean = c(4.0, 0.34),
+        stringsAsFactors = FALSE
+    )
+    profile <- stats::setNames(rep(0, 200L), as.character(0:199))
+    merged <- .segment_merge(
+        calls, profile, merge_gap = 10L, merge_floor = -1, min_mb = 0
+    )
+    expect_equal(nrow(merged), 2L)
+    expect_equal(merged$score_mean, c(4.0, 0.34))
+    expect_equal(merged$end_iid, c(99L, 199L))
+})
+
+test_that("a moderate adjacent segment still merges", {
+    calls <- data.frame(
+        start_iid = c(0L, 100L),
+        end_iid = c(99L, 199L),
+        n_windows = c(100L, 100L),
+        score_mean = c(3.0, 0.65),
+        stringsAsFactors = FALSE
+    )
+    profile <- stats::setNames(rep(0, 200L), as.character(0:199))
+    merged <- .segment_merge(
+        calls, profile, merge_gap = 10L, merge_floor = -1, min_mb = 0
+    )
+    expect_equal(nrow(merged), 1L)
+    expect_equal(merged$score_mean, (3.0 + 0.65) / 2)
+    expect_equal(merged$end_iid, 199L)
 })
 
 test_that("masked windows do not contribute to segment evidence", {
@@ -117,4 +151,19 @@ test_that("segmentation validates its input", {
         segmentScores(scores, min_width = 0),
         "Invalid segmentation"
     )
+})
+
+test_that("a weak half-chromosome background is not merged into the event", {
+    scores <- synthetic_score_table(
+        event_from = 0L, event_to = 39L, event_effect = 3,
+        noise = 0.02
+    )
+    weak <- scores$group == "1" & scores$iid > 39L
+    scores$score[weak] <- 0.3
+    calls <- segmentScores(scores, min_mb = 1, merge_min = 0.5)
+    hit <- calls[calls$group == "1" & calls$score_mean > 0.5, ,
+        drop = FALSE
+    ]
+    expect_gte(nrow(hit), 1L)
+    expect_lt(max(hit$end_iid), 100L)
 })

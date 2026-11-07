@@ -44,7 +44,7 @@
 }
 
 .segment_merge <- function(calls, profile, merge_gap, merge_floor,
-                           min_mb, merge_min = 0.25) {
+                           min_mb, merge_min = 0.5) {
     if (nrow(calls) == 0L) {
         return(calls)
     }
@@ -82,6 +82,10 @@
         if (!is.finite(gap_mean)) {
             gap_mean <- 0
         }
+        ## Adjacent CBS segments can describe one event split by noise, or two
+        ## events with very different levels. A segment below the merge floor
+        ## is treated as null: it stays separate and is removed by calibration
+        ## instead of being absorbed into a strong call.
         if (row$start_iid - current$end_iid - 1L <= merge_gap &&
             gap_mean > merge_floor) {
             weight_current <- current_weight
@@ -129,7 +133,7 @@
 segmentScores <- function(scores, mask = NULL, alpha = 0.001, undo_SD = 1,
                           min_width = 5L, merge_gap = 100L,
                           merge_floor = -0.5, min_mb = 5,
-                          merge_min = 0.25, lengths = NULL) {
+                          merge_min = 0.5, lengths = NULL) {
     if (!is.data.frame(scores) || nrow(scores) == 0L) {
         .segmentation_error("`scores` must be a non-empty ScoreTable")
     }

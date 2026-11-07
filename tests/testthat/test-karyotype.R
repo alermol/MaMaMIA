@@ -185,8 +185,24 @@ test_that("split additions covering a donor chromosome add it to the plot", {
         added, function(chromosome) length(chromosome$calls), integer(1)
     ) == 2L))
 
-    ## One partial segment does not cover the chromosome and adds no bar.
+    ## One large partial segment still has no recipient bar; show it on the
+    ## donor chromosome as a partial addition.
     result$calls <- result$calls[1L, , drop = FALSE]
+    payload <- karyotype_payload(result, "example-sample", "calls")
+    added <- Filter(
+        function(chromosome) isTRUE(chromosome$added),
+        payload$chromosomes
+    )
+    expect_identical(
+        vapply(added, `[[`, "", "name"),
+        rep(as.character(donor$name), 2L)
+    )
+    expect_true(all(vapply(
+        added, function(chromosome) length(chromosome$calls), integer(1)
+    ) == 1L))
+
+    ## A tiny partial segment does not justify a whole donor bar.
+    result$calls$donor_end_bp <- 8000
     payload <- karyotype_payload(result, "example-sample", "calls")
     added <- Filter(
         function(chromosome) isTRUE(chromosome$added),

@@ -259,10 +259,12 @@ karyotype_full_calls <- function(result, sample, n_per = NULL,
 #' @param donor Donor contig table with `id` and `length`.
 #' @param minimum Fraction of the donor chromosome that must be covered.
 #' @param start_max Largest allowed start position, as a fraction of the
-#'   chromosome.
+#'   chromosome. `NULL` allows a segment anywhere on the chromosome.
+#' @param no_recipient_only Keep only calls without a recipient placement.
 #' @noRd
 karyotype_covered_donor_ids <- function(calls, donor, minimum = 0.95,
-                                        start_max = 0.01) {
+                                        start_max = 0.01,
+                                        no_recipient_only = FALSE) {
     if (is.null(calls) || !is.data.frame(calls) || nrow(calls) == 0L ||
         is.null(donor) || !is.data.frame(donor) || nrow(donor) == 0L ||
         !all(c("donor_chr_id", "donor_start_bp", "donor_end_bp") %in%
@@ -281,6 +283,16 @@ karyotype_covered_donor_ids <- function(calls, donor, minimum = 0.95,
     if ("donor_mean" %in% names(calls)) {
         keep <- keep & is.finite(as.numeric(calls$donor_mean)) &
             as.numeric(calls$donor_mean) > 0.5
+    }
+    if (isTRUE(no_recipient_only)) {
+        if ("recipient_chr_id" %in% names(calls)) {
+            keep <- keep & is.na(as.character(calls$recipient_chr_id))
+        }
+        if ("recipient_assignment" %in% names(calls)) {
+            assignment <- as.character(calls$recipient_assignment)
+            keep <- keep & (is.na(assignment) |
+                assignment == "no_recipient_loss")
+        }
     }
     ids <- as.character(calls$donor_chr_id)
     starts <- suppressWarnings(as.numeric(calls$donor_start_bp))
@@ -322,7 +334,8 @@ karyotype_covered_donor_ids <- function(calls, donor, minimum = 0.95,
             }
         }
         total <- total + span_end - span_start
-        if (total >= minimum && min(from) <= start_max) {
+        starts_near_zero <- is.null(start_max) || min(from) <= start_max
+        if (total >= minimum && starts_near_zero) {
             covered <- c(covered, id)
         }
     }
@@ -825,6 +838,17 @@ karyotype_payload <- function(result, sample = NULL,
     added_donor_ids <- union(
         added_donor_ids,
         karyotype_covered_donor_ids(overlay, donor)
+    )
+    ## A large donor-only addition has no recipient bar to sit on. Add its
+    ## donor chromosome as soon as the passed segments cover a meaningful
+    ## part of it, so a partial addition stays visible instead of vanishing.
+    added_donor_ids <- union(
+        added_donor_ids,
+        karyotype_covered_donor_ids(
+            overlay, donor,
+            minimum = 0.2, start_max = NULL,
+            no_recipient_only = TRUE
+        )
     )
     ## Preserve the registry order for donor chromosomes as well as for the
     ## recipient chromosomes above.
