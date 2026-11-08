@@ -262,19 +262,6 @@ test_that("zero windows do not produce NaN or Inf", {
     expect_true(all(is.finite(scored$recipient_mean)))
 })
 
-test_that("the copy-number model reports donor copies and fraction", {
-    metrics <- score_metrics(
-        donor_lambda = 0.2, recipient_lambda = 0.1,
-        recipient_components = c("A", "B", "D")
-    )
-    scored <- scoreIntrogression(
-        metrics, mode = "single", sample_composition = c(A = 2, B = 2, D = 2)
-    )
-    expect_true(all(is.finite(scored$donor_copies)))
-    expect_true(all(scored$donor_copies > 0))
-    expect_true(all(scored$donor_fraction > 0 & scored$donor_fraction < 1))
-})
-
 test_that("donor-only scoring is available as a fallback", {
     set.seed(9)
     metrics <- add_donor_event(score_metrics(), multiplier = 3)

@@ -1,30 +1,9 @@
 ## Validation of the BamAnalysisResult contract.
 
-#' Validate a BamAnalysisResult
-#'
-#' Checks the named fields and the WindowMetrics/ScoreTable/MaskTable/
-#' Calibration/Calls column contracts.
-#'
-#' @param x A `BamAnalysisResult`.
-#'
-#' @return `x`, invisibly.
-validateBamAnalysisResult <- function(x) {
-    if (!inherits(x, "BamAnalysisResult") || !is.list(x)) {
-        stop("`x` must be a BamAnalysisResult", call. = FALSE)
-    }
-    required <- c(
-        "assembly", "config", "bams", "samples", "windows", "gc", "metrics",
-        "scores", "masks", "calibration", "calls", "provenance"
-    )
-    missing <- setdiff(required, names(x))
-    if (length(missing) > 0L) {
-        stop(
-            "BamAnalysisResult is missing field(s): ",
-            paste(missing, collapse = ", "),
-            call. = FALSE
-        )
-    }
-    contracts <- list(
+#' Column contracts for a BamAnalysisResult
+#' @noRd
+bam_result_contracts <- function() {
+    list(
         metrics = c(
             "sample", "chr_id", "chr_name", "group", "role", "component",
             "copy_number", "iid", "start", "stop", "length", "count",
@@ -34,8 +13,8 @@ validateBamAnalysisResult <- function(x) {
         scores = c(
             "sample", "group", "iid", "start", "stop", "mode", "metric",
             "score_type", "score", "donor_mean", "recipient_mean",
-            "donor_component", "n_donor", "n_recipient", "donor_copies",
-            "donor_fraction", "donor_component_spread",
+            "donor_component", "n_donor", "n_recipient",
+            "donor_component_spread",
             "recipient_component_spread", "n_donor_supported",
             "mapq_fraction", "total_residual"
         ),
@@ -60,12 +39,11 @@ validateBamAnalysisResult <- function(x) {
             "recipient_group", "recipient_start_bp", "recipient_end_bp",
             "recipient_run_start_bp", "recipient_run_end_bp",
             "recipient_deletion_width_bp", "recipient_expected_breadth",
-            "recipient_observed_breadth", "recipient_copy_number",
+            "recipient_observed_breadth",
             "recipient_mean_depletion", "recipient_depletion_se",
             "recipient_depletion_lower", "recipient_depletion_z",
             "recipient_width_overlap", "recipient_fraction_ratio",
-            "recipient_mapq_fraction", "donor_copies", "affected_fraction",
-            "affected_copies", "dosage_confidence", "recipient_weight",
+            "recipient_mapq_fraction", "recipient_weight",
             "recipient_margin", "recipient_assignment",
             "recipient_cross_group", "recipient_reliable",
             "recipient_strong", "recipient_alternative",
@@ -73,6 +51,33 @@ validateBamAnalysisResult <- function(x) {
             "donor_chr_name", "donor_start_bp", "donor_end_bp"
         )
     )
+}
+
+#' Validate a BamAnalysisResult
+#'
+#' Checks the named fields and the WindowMetrics/ScoreTable/MaskTable/
+#' Calibration/Calls column contracts.
+#'
+#' @param x A `BamAnalysisResult`.
+#'
+#' @return `x`, invisibly.
+validateBamAnalysisResult <- function(x) {
+    if (!inherits(x, "BamAnalysisResult") || !is.list(x)) {
+        stop("`x` must be a BamAnalysisResult", call. = FALSE)
+    }
+    required <- c(
+        "assembly", "config", "bams", "samples", "windows", "gc", "metrics",
+        "scores", "masks", "calibration", "calls", "provenance"
+    )
+    missing <- setdiff(required, names(x))
+    if (length(missing) > 0L) {
+        stop(
+            "BamAnalysisResult is missing field(s): ",
+            paste(missing, collapse = ", "),
+            call. = FALSE
+        )
+    }
+    contracts <- bam_result_contracts()
     for (field in names(contracts)) {
         table <- x[[field]]
         if (!is.data.frame(table)) {

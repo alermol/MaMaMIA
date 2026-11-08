@@ -105,9 +105,7 @@
 #'
 #' Writes one row per call with donor and recipient intervals plus the score,
 #' class, group class, class evidence/confidence/status, confidence, method,
-#' mode, calibration pass flag and the dosage fields
-#' (`recipient_observed_breadth`, `recipient_copy_number`,
-#' `affected_fraction`, `affected_copies`, `dosage_confidence`). When the
+#' mode, calibration pass flag and the recipient assignment fields. When the
 #' calls carry a positional
 #' assignment, the recipient interval is the assigned contig and coordinates;
 #' otherwise the first contig in the chromosome group is used. Calls with
@@ -177,11 +175,7 @@
             recipient_weight = numeric(0),
             recipient_expected_breadth = numeric(0),
             recipient_observed_breadth = numeric(0),
-            recipient_copy_number = numeric(0),
             recipient_deletion_width_bp = numeric(0),
-            affected_fraction = numeric(0),
-            affected_copies = integer(0),
-            dosage_confidence = character(0),
             recipient_alternative = character(0),
             recipient_mean_depletion = numeric(0),
             recipient_depletion_se = numeric(0),
@@ -191,7 +185,6 @@
             recipient_fraction_ratio = numeric(0),
             recipient_mapq_fraction = numeric(0),
             mapq_fraction = numeric(0),
-            donor_copies = numeric(0),
             total_mean = numeric(0),
             donor_component = character(0),
             donor_chr_name = character(0),
@@ -210,13 +203,12 @@
         "recipient_chr_name", "recipient_group", "recipient_assignment",
         "recipient_cross_group", "recipient_weight",
         "recipient_expected_breadth", "recipient_observed_breadth",
-        "recipient_copy_number", "recipient_deletion_width_bp",
-        "affected_fraction", "affected_copies", "dosage_confidence",
+        "recipient_deletion_width_bp",
         "recipient_alternative", "recipient_mean_depletion",
         "recipient_depletion_se", "recipient_depletion_lower",
         "recipient_depletion_z", "recipient_width_overlap",
         "recipient_fraction_ratio", "recipient_mapq_fraction",
-        "mapq_fraction", "donor_copies", "total_mean",
+        "mapq_fraction", "total_mean",
         "donor_component", "donor_chr_name"
     )
     calls[, intersect(columns, names(calls)), drop = FALSE]

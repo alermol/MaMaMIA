@@ -43,7 +43,7 @@ in the [MaMaMIA wiki](https://github.com/alermol/MaMaMIA/wiki).
 | [Inputs and Assemblies](https://github.com/alermol/MaMaMIA/wiki/Inputs-and-Assemblies) | BAM requirements, bamhusk, registry, components, and pairing |
 | [Analysis Profiles](https://github.com/alermol/MaMaMIA/wiki/Analysis-Profiles) | Balanced, Sensitive, CNV robust, Complex, and Custom |
 | [Method](https://github.com/alermol/MaMaMIA/wiki/Method) | Windows, scoring, masks, CBS, calibration, and placement |
-| [Results and Calls](https://github.com/alermol/MaMaMIA/wiki/Results-and-Calls) | Reading classes, status, placement, and dosage |
+| [Results and Calls](https://github.com/alermol/MaMaMIA/wiki/Results-and-Calls) | Reading classes, status, and placement |
 | [Export Bundle](https://github.com/alermol/MaMaMIA/wiki/Export-Bundle) | Files, formats, QC, and reproducibility |
 | [Configuration Reference](https://github.com/alermol/MaMaMIA/wiki/Configuration-Reference) | Complete registry schema and defaults |
 | [Deployment](https://github.com/alermol/MaMaMIA/wiki/Deployment) | Docker, ShinyProxy, direct port, mounts, and security |

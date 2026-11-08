@@ -330,8 +330,7 @@
 #' Computes the paired donor/recipient log-ratio (or the donor-only fallback)
 #' for every sample, chromosome group and window. Supports any number of donor
 #' and recipient components. Single samples are GC-corrected with a natural
-#' spline; cohorts use median polish. The optional copy-number model reports
-#' donor copies and donor fraction.
+#' spline; cohorts use median polish.
 #'
 #' @param metrics A `WindowMetrics` data frame from [buildWindowMetrics()].
 #' @param mode `"single"` or `"multi"`.
@@ -493,19 +492,6 @@ scoreIntrogression <- function(
         )
     }
 
-    kappa_total <- sum(composition[composition > 0])
-    active <- names(composition)[composition > 0]
-    out$lambda_copy <- out$recipient_mean * length(active) / kappa_total
-    out$donor_copies <- ifelse(
-        is.finite(out$lambda_copy) & out$lambda_copy > 0,
-        out$donor_mean / out$lambda_copy,
-        NA_real_
-    )
-    out$donor_fraction <- ifelse(
-        is.finite(out$donor_copies),
-        out$donor_copies / (out$donor_copies + kappa_total),
-        NA_real_
-    )
     out <- out[order(
         out$sample, out$group, out$iid
     ), , drop = FALSE]
@@ -514,11 +500,11 @@ scoreIntrogression <- function(
         "sample", "group", "iid", "start", "stop", "mode", "metric",
         "score_type", "score", "donor_mean",
         "recipient_mean", "donor_component", "n_donor", "n_recipient",
-        "donor_copies", "donor_fraction", "donor_component_spread",
+        "donor_component_spread",
         "recipient_component_spread", "n_donor_supported", "mapq_fraction",
         "chr_name", "length", "n_per_chromosome", "gc_donor", "gc_recipient",
         "log_donor", "log_recipient", "log_total", "donor_residual",
-        "recipient_residual", "total_residual", "lambda_copy", "score_raw"
+        "recipient_residual", "total_residual", "score_raw"
     )]
 }
 

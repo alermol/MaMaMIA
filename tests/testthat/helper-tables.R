@@ -22,7 +22,6 @@ synthetic_score_table <- function(n = 200L, groups = c("1", "2"),
             donor_mean = 0.1 * exp(score / 2),
             recipient_mean = rep(0.1, n),
             donor_component = "S", n_donor = 1L, n_recipient = 1L,
-            donor_copies = NA_real_, donor_fraction = NA_real_,
             chr_name = paste0(group, "S"), length = n * 1e6,
             n_per_chromosome = n,
             gc_donor = 0.45, gc_recipient = 0.45,
@@ -30,7 +29,6 @@ synthetic_score_table <- function(n = 200L, groups = c("1", "2"),
             log_recipient = rep(log(0.1), n),
             donor_residual = score,
             recipient_residual = stats::rnorm(n, 0, noise),
-            lambda_copy = 0.1,
             stringsAsFactors = FALSE
         )
     }

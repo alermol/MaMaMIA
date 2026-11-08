@@ -37,30 +37,6 @@
     names(counts)[[1L]]
 }
 
-#' Mean of a score column over one call interval
-#' @noRd
-.assignment_segment_mean <- function(scores, sample, group, start_iid,
-                                     end_iid, column) {
-    if (!column %in% names(scores)) {
-        return(NA_real_)
-    }
-    rows <- if (is.null(sample)) {
-        rep(TRUE, nrow(scores))
-    } else {
-        as.character(scores$sample) == as.character(sample) &
-            as.character(scores$group) == as.character(group)
-    }
-    rows <- rows &
-        as.integer(scores$iid) >= as.integer(start_iid) &
-        as.integer(scores$iid) <= as.integer(end_iid)
-    values <- as.numeric(scores[[column]][rows])
-    values <- values[is.finite(values)]
-    if (length(values) == 0L) {
-        return(NA_real_)
-    }
-    mean(values)
-}
-
 #' Resolve the donor contig and its coordinates for one call
 #' @noRd
 .assignment_donor_contig <- function(call, scores, assembly, table,
@@ -256,7 +232,7 @@
     if (!is.finite(donor_width_bp) || donor_width_bp <= 0) {
         donor_width_bp <- as.numeric(donor$end_bp) - as.numeric(donor$start_bp)
     }
-    donor_fraction <- if (is.finite(donor$length) && donor$length > 0) {
+    donor_width_fraction <- if (is.finite(donor$length) && donor$length > 0) {
         donor_width_bp / donor$length
     } else {
         1
@@ -348,8 +324,8 @@
         } else {
             1
         }
-        both_whole <- donor_fraction >= 0.95 && run_fraction >= 0.95
-        whole_mismatch <- xor(donor_fraction >= 0.95, run_fraction >= 0.95)
+        both_whole <- donor_width_fraction >= 0.95 && run_fraction >= 0.95
+        whole_mismatch <- xor(donor_width_fraction >= 0.95, run_fraction >= 0.95)
         n_per <- max(as.integer(x$iid), na.rm = TRUE) + 1L
         tolerance <- if (is.finite(n_per) && n_per > 0) 1 / n_per else 0
         donor_start <- donor$start_bp / donor$length
@@ -358,7 +334,7 @@
             donor_end <= donor_start || !is.finite(donor$length) ||
             donor$length <= 0) {
             donor_start <- 0
-            donor_end <- donor_fraction
+            donor_end <- donor_width_fraction
         }
         run_start <- as.numeric(x$start[[lo]]) / contig_length
         run_end <- as.numeric(x$stop[[hi]]) / contig_length
@@ -380,7 +356,7 @@
         }
         fraction_ratio <- if (is.finite(run_fraction) &&
             run_fraction > 0) {
-            donor_fraction / run_fraction
+            donor_width_fraction / run_fraction
         } else {
             NA_real_
         }
@@ -397,7 +373,7 @@
             expected_breadth >= floor &&
             is.finite(stats$lower) &&
             stats$lower >= min_depletion &&
-            !(donor_fraction >= 0.95 && !both_whole)
+            !(donor_width_fraction >= 0.95 && !both_whole)
         strong <- reliable && run_found &&
             expected_breadth >= 2 * min_expected_breadth &&
             stats$lower >= strong_depletion
@@ -427,7 +403,7 @@
             run_width_bp = as.numeric(run_width_bp),
             run_fraction = as.numeric(run_fraction),
             donor_width_bp = as.numeric(donor_width_bp),
-            donor_fraction = as.numeric(donor_fraction),
+            donor_width_fraction = as.numeric(donor_width_fraction),
             reciprocal_overlap = as.numeric(reciprocal_overlap),
             fraction_ratio = as.numeric(fraction_ratio),
             width_penalty = as.numeric(width_penalty),
@@ -466,7 +442,7 @@
         run_width_bp = vapply(rows, `[[`, numeric(1), "run_width_bp"),
         run_fraction = vapply(rows, `[[`, numeric(1), "run_fraction"),
         donor_width_bp = vapply(rows, `[[`, numeric(1), "donor_width_bp"),
-        donor_fraction = vapply(rows, `[[`, numeric(1), "donor_fraction"),
+        donor_width_fraction = vapply(rows, `[[`, numeric(1), "donor_width_fraction"),
         reciprocal_overlap = vapply(
             rows, `[[`, numeric(1), "reciprocal_overlap"
         ),
@@ -636,121 +612,6 @@
     chosen
 }
 
-#' Estimate how many recipient copies an assigned donor segment replaced
-#'
-#' The recipient breadth is converted to a per-copy depth scale with
-#' `lambda = -log(1 - breadth)`. Losing `k` of `n` copies gives
-#' `lambda_observed / lambda_expected = (n - k) / n`. A donor-only gain is
-#' reported from `donor_copies`, so additions are no longer always
-#' `unavailable`; a recipient loss without donor support is reported from the
-#' loss fraction, at lower confidence when no total-depth support is present.
-#' @noRd
-.assignment_dosage <- function(assignment, donor_mean, expected_breadth,
-                               observed_breadth, copy_number,
-                               donor_copies = NA_real_,
-                               total_mean = NA_real_,
-                               donor_cutoff = 0.5,
-                               total_cutoff = Inf,
-                               expected_floor = 0.005,
-                               eps = 1e-6) {
-    unavailable <- list(
-        affected_fraction = NA_real_,
-        affected_copies = NA_integer_,
-        confidence = "unavailable"
-    )
-    if (!identical(assignment, "assigned") ||
-        !is.finite(copy_number) || copy_number < 1) {
-        return(unavailable)
-    }
-    copies_total <- as.integer(round(copy_number))
-    if (copies_total < 1L) {
-        return(unavailable)
-    }
-    lambda <- function(breadth) {
-        -log(pmax(1 - pmin(as.numeric(breadth), 1 - eps), eps))
-    }
-    loss_fraction <- NA_real_
-    if (is.finite(expected_breadth) && expected_breadth > 0 &&
-        is.finite(observed_breadth) && observed_breadth >= 0) {
-        expected_lambda <- lambda(expected_breadth)
-        observed_lambda <- lambda(observed_breadth)
-        if (is.finite(expected_lambda) && expected_lambda > 0 &&
-            is.finite(observed_lambda)) {
-            loss_fraction <- 1 - observed_lambda / expected_lambda
-            loss_fraction <- min(max(loss_fraction, 0), 1)
-        }
-    }
-    loss_supported <- is.finite(loss_fraction) && loss_fraction >= 0.25
-    gain_supported <- is.finite(donor_mean) && donor_mean > donor_cutoff &&
-        is.finite(donor_copies) && donor_copies >= 0.25
-    total_loss <- is.finite(total_mean) && is.finite(total_cutoff) &&
-        total_mean <= -total_cutoff
-
-    if (loss_supported && gain_supported) {
-        affected <- copies_total * loss_fraction
-        copies <- as.integer(round(affected))
-        distance <- abs(affected - copies)
-        if (distance > 0.35) {
-            return(list(
-                affected_fraction = loss_fraction,
-                affected_copies = NA_integer_,
-                confidence = "low"
-            ))
-        }
-        agreement <- abs(donor_copies - affected)
-        confidence <- if (donor_mean >= 1 && agreement <= 0.5 &&
-            expected_breadth >= expected_floor) {
-            "high"
-        } else {
-            "moderate"
-        }
-        return(list(
-            affected_fraction = loss_fraction,
-            affected_copies = copies,
-            confidence = confidence
-        ))
-    }
-    if (gain_supported) {
-        copies <- as.integer(round(donor_copies))
-        if (copies < 1L) {
-            return(unavailable)
-        }
-        confidence <- if (donor_mean >= 1 && donor_copies >= 1) {
-            "high"
-        } else {
-            "moderate"
-        }
-        return(list(
-            affected_fraction = donor_copies / copies_total,
-            affected_copies = copies,
-            confidence = confidence
-        ))
-    }
-    if (loss_supported) {
-        affected <- copies_total * loss_fraction
-        copies <- as.integer(round(affected))
-        distance <- abs(affected - copies)
-        if (distance > 0.35) {
-            return(list(
-                affected_fraction = loss_fraction,
-                affected_copies = NA_integer_,
-                confidence = "low"
-            ))
-        }
-        confidence <- if (distance <= 0.2 &&
-            (donor_mean >= 1 || total_loss)) {
-            "high"
-        } else {
-            "moderate"
-        }
-        return(list(
-            affected_fraction = loss_fraction,
-            affected_copies = copies,
-            confidence = confidence
-        ))
-    }
-    unavailable
-}
 
 #' Copy state implied by a class
 #' @noRd
@@ -840,14 +701,12 @@
     calls$recipient_expected_breadth <- rep(NA_real_, n)
     calls$recipient_observed_breadth <- rep(NA_real_, n)
     calls$recipient_mapq_fraction <- rep(NA_real_, n)
-    calls$recipient_copy_number <- rep(NA_real_, n)
     calls$recipient_mean_depletion <- rep(NA_real_, n)
     calls$recipient_depletion_se <- rep(NA_real_, n)
     calls$recipient_depletion_lower <- rep(NA_real_, n)
     calls$recipient_depletion_z <- rep(NA_real_, n)
     calls$recipient_width_overlap <- rep(NA_real_, n)
     calls$recipient_fraction_ratio <- rep(NA_real_, n)
-    calls$donor_copies <- rep(NA_real_, n)
     if (!"total_mean" %in% names(calls)) {
         calls$total_mean <- rep(NA_real_, n)
     }
@@ -874,9 +733,6 @@
     calls$mappability_status[
         !is.finite(as.numeric(calls$mapq_fraction))
     ] <- NA_character_
-    calls$affected_fraction <- rep(NA_real_, n)
-    calls$affected_copies <- rep(NA_integer_, n)
-    calls$dosage_confidence <- rep("unavailable", n)
     calls$recipient_weight <- rep(NA_real_, n)
     calls$recipient_margin <- rep(NA_real_, n)
     calls$recipient_assignment <- rep(NA_character_, n)
@@ -1180,8 +1036,6 @@ assignCallPositions <- function(
                 NA_real_
             }
             is_cross <- isTRUE(best$cross_group[[1L]])
-            min_depletion <- threshold_table$min_depletion[[i]]
-            strong_depletion <- threshold_table$strong_depletion[[i]]
             assignment_margin <- threshold_table$assignment_margin[[i]]
             cross_group_margin <- threshold_table$cross_group_margin[[i]]
             assignment <- if (!isTRUE(best$reliable[[1L]]) ||
@@ -1257,19 +1111,11 @@ assignCallPositions <- function(
                 calls$recipient_alternative_score[[i]] <-
                     as.numeric(candidates$score[[alternative]])
             }
-            donor_copies <- .assignment_segment_mean(
-                scores_by_key[[
-                    paste(sample, call$group[[1L]], sep = "\r")
-                ]],
-                NULL, NULL,
-                call$start_iid[[1L]], call$end_iid[[1L]], "donor_copies"
-            )
             total_mean <- if ("total_mean" %in% names(call)) {
                 as.numeric(call$total_mean[[1L]])
             } else {
                 NA_real_
             }
-            calls$donor_copies[[i]] <- donor_copies
             calls$total_mean[[i]] <- total_mean
             total_mod <- threshold_table$total_mod[[i]]
             total_gain <- is.finite(total_mean) && is.finite(total_mod) &&
@@ -1285,17 +1131,6 @@ assignCallPositions <- function(
             } else {
                 NA_character_
             }
-            dosage <- .assignment_dosage(
-                assignment = assignment,
-                donor_mean = as.numeric(call$donor_mean[[1L]]),
-                expected_breadth = as.numeric(best$expected_breadth[[1L]]),
-                observed_breadth = as.numeric(best$observed_breadth[[1L]]),
-                copy_number = as.numeric(best$copy_number[[1L]]),
-                donor_copies = donor_copies,
-                total_mean = total_mean,
-                donor_cutoff = threshold_table$donor_mod[[i]],
-                total_cutoff = total_mod
-            )
             calls$recipient_observed_breadth[[i]] <-
                 as.numeric(best$observed_breadth[[1L]])
             calls$recipient_mapq_fraction[[i]] <-
@@ -1304,11 +1139,6 @@ assignCallPositions <- function(
                 calls$recipient_mapq_fraction[[i]] < 0.5) {
                 calls$mappability_status[[i]] <- "low"
             }
-            calls$recipient_copy_number[[i]] <-
-                as.numeric(best$copy_number[[1L]])
-            calls$affected_fraction[[i]] <- dosage$affected_fraction
-            calls$affected_copies[[i]] <- dosage$affected_copies
-            calls$dosage_confidence[[i]] <- dosage$confidence
             assigned_class <- calls$class_group[[i]]
             assigned_evidence <- calls$class_evidence[[i]]
             assigned_confidence <- calls$class_confidence[[i]]

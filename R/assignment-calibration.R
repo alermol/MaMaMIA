@@ -11,7 +11,7 @@
 #' A cohort is corrected with median polish per contig and window; a single
 #' sample is corrected with a GC spline per contig. `depletion` is the negative
 #' residual, so a deletion is positive. `expected_breadth` is the residual's
-#' baseline back-transformed to breadth units for dosage.
+#' baseline back-transformed to breadth units.
 #' @noRd
 .assignment_recipient_residuals <- function(recipient, mode, masks = NULL,
                                             eps = 1e-6) {

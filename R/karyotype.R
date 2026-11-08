@@ -2,9 +2,9 @@
 ##
 ## The widget shows the recipient karyotype only. A recipient chromosome is
 ## kept in place when it has no coverage, drawn as a dashed "deleted" bar. A
-## full-chromosome donor addition adds that donor chromosome (one shape per
-## homolog copy) as another diploid pair. The payload is plain lists so
-## htmlwidgets can serialise it without a second data-frame layer.
+## full-chromosome donor addition adds that donor chromosome as a single bar.
+## Every chromosome is drawn once, without diploid copy pairs. The payload is
+## plain lists so htmlwidgets can serialise it without a second data-frame layer.
 
 karyotype_palette <- function() {
     list(
@@ -173,7 +173,7 @@ karyotype_full_calls <- function(result, sample, n_per = NULL,
             as.character(calls$group)[missing_length]
         ]
     }
-    donor_fraction <- calls$width_bp / unname(length_bp)
+    donor_width_fraction <- calls$width_bp / unname(length_bp)
 
     ## A substitution removes a recipient chromosome. When assignment measured
     ## that loss, use its fraction of the assigned recipient contig: the donor
@@ -233,7 +233,7 @@ karyotype_full_calls <- function(result, sample, n_per = NULL,
         rep(NA_character_, nrow(calls))
     }
     use_recipient <- class == "substitution" & is.finite(recipient_fraction)
-    fraction <- donor_fraction
+    fraction <- donor_width_fraction
     fraction[use_recipient] <- recipient_fraction[use_recipient]
 
     ## A full-chromosome event starts at the first window and covers at least
@@ -710,9 +710,6 @@ karyotype_payload <- function(result, sample = NULL,
             total_mean = as.numeric(
                 call_value("total_mean", i, NA_real_)
             ),
-            donor_copies = as.numeric(
-                call_value("donor_copies", i, NA_real_)
-            ),
             recipient_depletion_se = as.numeric(
                 call_value("recipient_depletion_se", i, NA_real_)
             ),
@@ -721,18 +718,6 @@ karyotype_payload <- function(result, sample = NULL,
             ),
             recipient_fraction_ratio = as.numeric(
                 call_value("recipient_fraction_ratio", i, NA_real_)
-            ),
-            recipient_copy_number = as.numeric(
-                call_value("recipient_copy_number", i, NA_real_)
-            ),
-            affected_fraction = as.numeric(
-                call_value("affected_fraction", i, NA_real_)
-            ),
-            affected_copies = as.numeric(
-                call_value("affected_copies", i, NA_real_)
-            ),
-            dosage_confidence = as.character(
-                call_value("dosage_confidence", i, NA_character_)
             )
         )
     }
@@ -862,38 +847,28 @@ karyotype_payload <- function(result, sample = NULL,
         chr_component <- as.character(recipient$component[[i]])
         chr_group <- as.character(recipient$group[[i]])
         chr_length <- as.numeric(recipient$length[[i]])
-        copies <- if ("copy_number" %in% names(recipient)) {
-            suppressWarnings(as.integer(recipient$copy_number[[i]]))
-        } else {
-            1L
-        }
-        if (length(copies) != 1L || is.na(copies) || copies < 1L) {
-            copies <- 1L
-        }
         chr_calls <- recipient_calls(
             chr_id, chr_group, chr_component, chr_length
         )
-        for (copy in seq_len(copies)) {
-            chromosome_payload[[length(chromosome_payload) + 1L]] <- list(
-                id = chr_id,
-                name = chr_name,
-                label = chr_name,
-                component = chr_component,
-                group = chr_group,
-                length = chr_length,
-                deleted = chr_id %in% deleted,
-                added = FALSE,
-                copy = copy,
-                copies = copies,
-                selected = chr_group %in% selected_groups,
-                scores = if (is.null(score_values[[chr_group]])) {
-                    numeric()
-                } else {
-                    score_values[[chr_group]]
-                },
-                calls = chr_calls
-            )
-        }
+        chromosome_payload[[length(chromosome_payload) + 1L]] <- list(
+            id = chr_id,
+            name = chr_name,
+            label = chr_name,
+            component = chr_component,
+            group = chr_group,
+            length = chr_length,
+            deleted = chr_id %in% deleted,
+            added = FALSE,
+            copy = 1L,
+            copies = 1L,
+            selected = chr_group %in% selected_groups,
+            scores = if (is.null(score_values[[chr_group]])) {
+                numeric()
+            } else {
+                score_values[[chr_group]]
+            },
+            calls = chr_calls
+        )
     }
     for (i in seq_len(nrow(added_donor))) {
         chr_id <- as.character(added_donor$id[[i]])
@@ -901,34 +876,28 @@ karyotype_payload <- function(result, sample = NULL,
         chr_component <- as.character(added_donor$component[[i]])
         chr_group <- as.character(added_donor$group[[i]])
         chr_length <- as.numeric(added_donor$length[[i]])
-        copies <- suppressWarnings(as.integer(added_donor$copy_number[[i]]))
-        if (length(copies) != 1L || is.na(copies) || copies < 1L) {
-            copies <- 1L
-        }
         chr_calls <- donor_calls(
             chr_id, chr_group, chr_component, chr_length
         )
-        for (copy in seq_len(copies)) {
-            chromosome_payload[[length(chromosome_payload) + 1L]] <- list(
-                id = chr_id,
-                name = chr_name,
-                label = chr_name,
-                component = chr_component,
-                group = chr_group,
-                length = chr_length,
-                deleted = FALSE,
-                added = TRUE,
-                copy = copy,
-                copies = copies,
-                selected = chr_group %in% selected_groups,
-                scores = if (is.null(score_values[[chr_group]])) {
-                    numeric()
-                } else {
-                    score_values[[chr_group]]
-                },
-                calls = chr_calls
-            )
-        }
+        chromosome_payload[[length(chromosome_payload) + 1L]] <- list(
+            id = chr_id,
+            name = chr_name,
+            label = chr_name,
+            component = chr_component,
+            group = chr_group,
+            length = chr_length,
+            deleted = FALSE,
+            added = TRUE,
+            copy = 1L,
+            copies = 1L,
+            selected = chr_group %in% selected_groups,
+            scores = if (is.null(score_values[[chr_group]])) {
+                numeric()
+            } else {
+                score_values[[chr_group]]
+            },
+            calls = chr_calls
+        )
     }
 
     ## Keep each added donor chromosome next to its recipient group instead of

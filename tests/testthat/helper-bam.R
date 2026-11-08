@@ -216,26 +216,6 @@ multi_sample_variable_gc_sam <- function(samples, contig_length = 20000L,
     )
 }
 
-add_multi_sample_gc_bam <- function(fixture, samples, filename = "multi.bam",
-                                    steps = NULL) {
-    contig_length <- if (is.null(fixture$contig_length)) {
-        20000L
-    } else {
-        fixture$contig_length
-    }
-    path <- file.path(fixture$directory, filename)
-    write_test_bam(
-        multi_sample_variable_gc_sam(
-            samples,
-            contig_length = contig_length,
-            steps = steps
-        ),
-        path,
-        index = TRUE
-    )
-    path
-}
-
 variable_gc_fixture <- function(sample = "synthetic", windows = 100L,
                                 contig_length = 20000L,
                                 allowed_windows = c(100L, 1000L, 10000L)) {

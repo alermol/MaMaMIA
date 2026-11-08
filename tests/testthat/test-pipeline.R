@@ -172,10 +172,9 @@ test_that("writeCallsToBedpe() writes donor and recipient intervals", {
         "recipient_chr_name", "recipient_group", "recipient_assignment",
         "recipient_cross_group", "recipient_expected_breadth",
         "recipient_deletion_width_bp", "recipient_observed_breadth",
-        "recipient_copy_number", "affected_fraction", "affected_copies",
-        "dosage_confidence", "recipient_depletion_se",
+        "recipient_depletion_se",
         "recipient_width_overlap", "recipient_mapq_fraction",
-        "donor_copies", "total_mean", "donor_component", "donor_chr_name"
+        "total_mean", "donor_component", "donor_chr_name"
     ) %in% names(bedpe)))
     hosted <- bedpe$recipient_assignment != "no_recipient_loss"
     expect_true(any(hosted))

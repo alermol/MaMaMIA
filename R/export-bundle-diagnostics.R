@@ -46,8 +46,6 @@ bam_bundle_score_columns <- function() {
         donor_component = "donor_component",
         n_donor = "n_donor_contigs",
         n_recipient = "n_recipient_contigs",
-        donor_copies = "estimated_donor_copies",
-        donor_fraction = "donor_coverage_fraction",
         donor_component_spread = "donor_component_spread",
         recipient_component_spread = "recipient_component_spread",
         n_donor_supported = "supporting_donor_contigs",
@@ -63,7 +61,6 @@ bam_bundle_score_columns <- function() {
         donor_residual = "donor_residual",
         recipient_residual = "recipient_residual",
         total_residual = "total_depth_residual",
-        lambda_copy = "expected_copy_coverage",
         score_raw = "raw_introgression_score"
     )
 }

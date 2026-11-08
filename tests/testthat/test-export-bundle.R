@@ -31,7 +31,7 @@ test_that("the brief call table keeps the inspection columns", {
 
 test_that("the bundle column dictionary is complete and unique", {
     dictionary <- bam_bundle_column_dictionary()
-    expect_identical(nrow(dictionary), 69L)
+    expect_identical(nrow(dictionary), 64L)
     expect_identical(anyDuplicated(dictionary$old), 0L)
     expect_identical(anyDuplicated(dictionary$name), 0L)
     expect_true(all(c(
@@ -46,7 +46,7 @@ test_that("the bundle column dictionary is complete and unique", {
 
 test_that("every call column has a label and a description", {
     metadata <- bam_call_column_metadata()
-    expect_identical(nrow(metadata), 69L)
+    expect_identical(nrow(metadata), 64L)
     expect_identical(anyDuplicated(metadata$column), 0L)
     expect_identical(anyDuplicated(metadata$label), 0L)
     expect_false(anyNA(metadata$label))
@@ -236,8 +236,7 @@ test_that("the result bundle contains the table, BEDPE and karyotypes", {
     expect_true(all(dictionary$name %in% names(calls)))
     expect_true(all(c(
         "recipient_chromosome", "recipient_mean_depletion",
-        "affected_copy_number", "mean_introgression_score",
-        "passes_calibration"
+        "mean_introgression_score", "passes_calibration"
     ) %in% names(calls)))
     expect_false("recipient_chr_name" %in% names(calls))
     bedpe <- utils::read.delim(
@@ -864,6 +863,6 @@ test_that("karyotype SVGs expose tooltips for chromosomes and calls", {
     payload <- karyotype_payload(result, "example-sample", "calls")
     svg <- bam_karyotype_static_svg(payload)
     expect_match(svg, "<title>", fixed = TRUE)
-    expect_match(svg, "copy 1", fixed = TRUE)
+    expect_match(svg, "<title>1A", fixed = TRUE)
     expect_match(svg, "Call:", fixed = TRUE)
 })

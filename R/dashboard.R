@@ -324,7 +324,7 @@ explorer_tooltip_help_ui <- function() {
             paste(
                 "Read top to bottom: the header identifies the call and its",
                 "class confidence; Placement says where it was matched;",
-                "Evidence says why; Dosage and Geometry describe what changed;",
+                "Evidence says why; Geometry describes what changed;",
                 "Position (heatmap only) adds local context."
             )
         ),
@@ -567,8 +567,8 @@ explorer_tooltip_help_ui <- function() {
                     shiny::tags$strong("compound"),
                     " or ",
                     shiny::tags$strong("neutral"),
-                    ". This is a hypothesis about the copy configuration, not",
-                    "an absolute copy number."
+                    ". This is a relative read-depth direction, not a",
+                    "quantitative measure."
                 )
             ),
             row(
@@ -628,60 +628,12 @@ explorer_tooltip_help_ui <- function() {
                 "low mappability",
                 paste(
                     "BAM-derived high-MAPQ fraction is below 0.5; placement",
-                    "and dosage are less reliable."
+                    "is less reliable."
                 )
             ),
             row(
                 "not passing",
                 "The call is shown for review but did not pass the configured filters."
-            )
-        ),
-        section(
-            "Dosage",
-            paste(
-                "Dosage is relative to the registry copy number. It is not an",
-                "absolute copy-number measurement and should be read as an",
-                "estimate alongside Evidence and Geometry."
-            ),
-            row(
-                "Copies",
-                paste(
-                    "Estimated affected copies out of the configured copy",
-                    "number, for example 2 of 2 copies. Shows unavailable when",
-                    "no copy count is estimated."
-                )
-            ),
-            row(
-                "Estimated fraction",
-                "Affected fraction of recipient copies, shown as a percentage."
-            ),
-            row(
-                "Estimated donor copies",
-                "Relative donor-copy estimate when the signal supports one."
-            ),
-            row(
-                "Confidence",
-                shiny::tagList(
-                    "Dosage confidence: ",
-                    shiny::tags$strong("high"),
-                    ", ",
-                    shiny::tags$strong("moderate"),
-                    ", ",
-                    shiny::tags$strong("low"),
-                    " or ",
-                    shiny::tags$strong("unavailable"),
-                    "."
-                )
-            ),
-            row(
-                "Caveat",
-                paste(
-                    "Only Copies is rounded to an integer. The fraction and",
-                    "donor-copy values are continuous estimates. An addition",
-                    "derives Copies from donor copies; a deletion without donor",
-                    "support derives it from the recipient loss fraction at",
-                    "lower confidence."
-                )
             )
         ),
         section(
@@ -754,10 +706,7 @@ explorer_tooltip_help_ui <- function() {
             ),
             row(
                 "Chromosome block",
-                paste(
-                    "Component, state, homolog number (when more than one",
-                    "copy is configured) and configured length."
-                )
+                "Component, state and configured length."
             ),
             row(
                 "Call block",
@@ -777,8 +726,8 @@ explorer_tooltip_help_ui <- function() {
             row(
                 "Relative, not absolute",
                 paste(
-                    "Copy state and dosage describe relative read-depth",
-                    "changes. They are not absolute copy numbers."
+                    "Copy state describes a relative read-depth direction.",
+                    "It is not a quantitative measure."
                 )
             ),
             row(

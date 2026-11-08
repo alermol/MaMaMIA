@@ -253,47 +253,6 @@ test_that("a non-passing call cannot displace a passing call", {
     expect_identical(chosen[[2L]], 4L)
 })
 
-test_that("dosage distinguishes one and two affected copies", {
-    half_breadth <- 1 - sqrt(1 - 0.02)
-    full <- .assignment_dosage("assigned", 1, 0.02, 0.0001, 2)
-    expect_identical(full$affected_copies, 2L)
-    expect_identical(full$confidence, "high")
-    expect_gt(full$affected_fraction, 0.9)
-
-    half <- .assignment_dosage("assigned", 1, 0.02, half_breadth, 2)
-    expect_identical(half$affected_copies, 1L)
-    expect_identical(half$confidence, "high")
-    expect_equal(half$affected_fraction, 0.5, tolerance = 0.02)
-
-    partial <- .assignment_dosage("assigned", 1, 0.02, 0.015, 2)
-    expect_true(is.na(partial$affected_copies))
-    expect_identical(partial$confidence, "low")
-
-    expect_identical(
-        .assignment_dosage("ambiguous", 1, 0.02, 0.0001, 2)$confidence,
-        "unavailable"
-    )
-    expect_identical(
-        .assignment_dosage("assigned", 0.1, 0.02, 0.0001, 2)$confidence,
-        "moderate"
-    )
-    expect_identical(
-        .assignment_dosage("assigned", 1, 0.02, 0.02, 2)$confidence,
-        "unavailable"
-    )
-})
-
-test_that("assignment records recipient dosage", {
-    fixture <- one_call(assignment_fixture())
-    fixture <- delete_interval(fixture, "S1", "r1a", value = 0.0001)
-    calls <- assign_fixture(fixture)
-    call <- calls[calls$group == "1", , drop = FALSE]
-    expect_identical(call$recipient_copy_number, 2)
-    expect_identical(call$affected_copies, 2L)
-    expect_identical(call$dosage_confidence, "high")
-    expect_gt(call$affected_fraction, 0.9)
-})
-
 test_that("a deletion-only call is not classified as a substitution", {
     fixture <- one_call(assignment_fixture())
     fixture$calls$donor_mean <- 0.1
@@ -304,8 +263,6 @@ test_that("a deletion-only call is not classified as a substitution", {
     expect_identical(call$class, "deletion")
     expect_identical(call$class_evidence, "recipient")
     expect_identical(call$class_group, "addition")
-    expect_identical(call$affected_copies, 2L)
-    expect_identical(call$dosage_confidence, "moderate")
 })
 
 test_that("assignment records donor and recipient evidence", {
@@ -359,16 +316,6 @@ test_that("assignment uses a per-contig corrected recipient residual", {
     ]
     expect_true(all(event$depletion > 2))
     expect_lt(abs(mean(event$expected_breadth) - 0.02), 0.001)
-})
-
-test_that("an addition gets dosage from donor copies", {
-    dosage <- .assignment_dosage(
-        "assigned", donor_mean = 1.2, expected_breadth = 0.02,
-        observed_breadth = 0.02, copy_number = 2, donor_copies = 1.1
-    )
-    expect_identical(dosage$affected_copies, 1L)
-    expect_identical(dosage$confidence, "high")
-    expect_equal(dosage$affected_fraction, 0.55, tolerance = 0.01)
 })
 
 test_that("non-overlapping interval scheduling maximises score", {

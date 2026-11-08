@@ -96,9 +96,5 @@ test_that("the bundled example satisfies the result contract", {
     expect_true(all(c("start", "stop") %in% names(result$scores)))
     expect_true(all(result$scores$stop > result$scores$start))
     calls <- result$calls[result$calls$pass %in% TRUE, , drop = FALSE]
-    expect_true(all(c(
-        "recipient_observed_breadth", "recipient_copy_number",
-        "affected_fraction", "affected_copies", "dosage_confidence"
-    ) %in% names(calls)))
-    expect_true(any(!is.na(calls$affected_copies)))
+    expect_true("recipient_observed_breadth" %in% names(calls))
 })

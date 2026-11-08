@@ -640,42 +640,6 @@ HTMLWidgets.widget({
         }
         html += tipSection("Evidence", metrics);
 
-        var dosage = [];
-        var hasCopies = isNumber(matched.affected_copies);
-        var hasFraction = isNumber(matched.affected_fraction);
-        var hasDonorCopies = donorSupported &&
-          isNumber(matched.donor_copies);
-        var hasDosageConfidence = hasValue(matched.dosage_confidence) &&
-          matched.dosage_confidence !== "unavailable";
-        if (hasCopies) {
-          var copies = matched.affected_copies +
-            (isNumber(matched.recipient_copy_number)
-              ? " of " + matched.recipient_copy_number + " copies"
-              : " copies");
-          dosage.push(tipRow("Copies", copies));
-        }
-        if (hasFraction) {
-          dosage.push(tipRow(
-            "Estimated fraction", fmtPercent(matched.affected_fraction)
-          ));
-        }
-        if (hasDonorCopies) {
-          dosage.push(tipRow(
-            "Estimated donor copies", fmt(matched.donor_copies)
-          ));
-        }
-        if (hasDosageConfidence) {
-          dosage.push(tipRow("Confidence", matched.dosage_confidence));
-        }
-        if (!hasCopies && dosage.length > 0) {
-          dosage.unshift(tipRow("Copies", "unavailable"));
-        }
-        var dosageBody = dosage.length
-          ? tipGrid(dosage)
-          : '<div class="mamamia-tip-empty">' +
-            "Dosage not estimated for this call.</div>";
-        html += tipSection("Dosage", dosageBody);
-
         var geometry = [];
         if (isNumber(matched.width_bp)) {
           geometry.push(tipRow(
@@ -716,11 +680,6 @@ HTMLWidgets.widget({
           chromosomeRows.push(tipRow("State", "added donor chromosome"));
         } else {
           chromosomeRows.push(tipRow("State", "recipient chromosome"));
-        }
-        if (Number(chromosome.copies) > 1) {
-          chromosomeRows.push(tipRow(
-            "Homolog", chromosome.copy + " of " + chromosome.copies
-          ));
         }
         if (isNumber(chromosome.length)) {
           chromosomeRows.push(tipRow("Length", fmtBp(chromosome.length)));
