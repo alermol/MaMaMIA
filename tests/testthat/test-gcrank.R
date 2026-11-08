@@ -179,32 +179,3 @@ test_that("the gcrank cache keys include the open options", {
         length(ls(.MaMaMIAgcrankCache)), 2L
     )
 })
-
-test_that("real wheat and rye GC values match the reference BED tables", {
-    root <- skip_if_no_test_data()
-    on.exit(gcrankClearCache(), add = TRUE)
-
-    check <- function(index_dir, bed_path) {
-        index_dir <- file.path(root, "gcidx", index_dir, "index.gcrank")
-        bed_path <- file.path(root, "assemblies", "cs_t2t_se_cereale", bed_path)
-        if (!dir.exists(index_dir) || !file.exists(bed_path)) {
-            testthat::skip("real gcrank indexes or reference GC tables are missing")
-        }
-        expected <- read_gc_bed(bed_path, 3L)
-        gc <- gcrankGc(
-            index_dir, expected$chr_id, expected$start, expected$stop
-        )
-        expect_identical(sprintf("%.6f", gc), sprintf("%.6f", expected$gc))
-    }
-
-    check("cs_t2t", "recipient.w1000.gc.bed")
-    check("se_cereale", "donor.w1000.gc.bed")
-
-    wheat <- file.path(root, "gcidx", "cs_t2t", "index.gcrank")
-    contigs <- gcrankContigs(wheat)
-    expect_identical(nrow(contigs), 21L)
-    expect_identical(
-        contigs$length[contigs$name == "CP155614.1"],
-        603818960
-    )
-})

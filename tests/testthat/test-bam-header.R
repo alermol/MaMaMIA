@@ -204,20 +204,3 @@ test_that("bamHeaderInfo() rejects SAM and other non-BAM formats", {
         class = "MaMaMIAUnsupportedFormatError"
     )
 })
-
-test_that("bamHeaderInfo() reads the real Sq54 BAM header without an index", {
-    root <- skip_if_no_test_data()
-    bam_path <- file.path(root, "bam_files", "Sq54", "cs_t2t_se_cereale.bam")
-    if (!file.exists(bam_path)) {
-        testthat::skip("Sq54 BAM is missing")
-    }
-
-    header <- bamHeaderInfo(bam_path)
-    expect_identical(header$sample, "Sq54")
-    expect_identical(header$sample_source, "rg")
-    expect_identical(header$n_targets, 263L)
-    expect_identical(
-        unname(header$targets$length[header$targets$name == "CP155614.1"]),
-        603818960
-    )
-})

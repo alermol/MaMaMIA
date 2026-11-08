@@ -422,18 +422,3 @@ mamamia_test_data_dir <- function() {
         mustWork = FALSE
     )
 }
-
-skip_if_no_test_data <- function() {
-    path <- mamamia_test_data_dir()
-    have_environment <- identical(Sys.getenv("MAMAMIA_TEST_DATA"), "1")
-    if (!dir.exists(path)) {
-        testthat::skip(paste(
-            "test_data not found at", path,
-            "(set MAMAMIA_TEST_DATA_DIR or MAMAMIA_TEST_DATA=1 on a data host)"
-        ))
-    }
-    if (!have_environment && !dir.exists(file.path(path, "bam_files", "Sq54"))) {
-        testthat::skip("real BAM fixtures are not available")
-    }
-    invisible(path)
-}

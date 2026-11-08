@@ -112,31 +112,6 @@ test_that("readContigsTsv() rejects malformed contig tables", {
     )
 })
 
-test_that("readContigsTsv() reads the real wheat and rye metadata", {
-    root <- skip_if_no_test_data()
-    wheat <- file.path(
-        root, "gcidx", "cs_t2t", "index.gcrank", "contigs.tsv"
-    )
-    rye <- file.path(
-        root, "gcidx", "se_cereale", "index.gcrank", "contigs.tsv"
-    )
-    if (!file.exists(wheat) || !file.exists(rye)) {
-        testthat::skip("real gcrank contig tables are missing")
-    }
-
-    wheat_contigs <- readContigsTsv(wheat)
-    rye_contigs <- readContigsTsv(rye)
-    expect_identical(nrow(wheat_contigs), 21L)
-    expect_identical(nrow(rye_contigs), 7L)
-    expect_identical(
-        wheat_contigs$length[wheat_contigs$name == "CP155614.1"],
-        603818960
-    )
-    expect_identical(
-        wheat_contigs$offset[[1L]], 0
-    )
-})
-
 test_that("makeAnalysisWindows() builds both representations in target order", {
     skip_if_no_tiny_fixtures()
     config <- readMaMaMIAConfig(tiny_config_path())

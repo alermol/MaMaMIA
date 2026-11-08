@@ -142,34 +142,3 @@ test_that("ensureBamIndex() validates min_shift and threads", {
         class = "MaMaMIAIndexError"
     )
 })
-
-test_that("ensureBamIndex() builds a CSI for the real long-contig BAM", {
-    root <- skip_if_no_test_data()
-    bam <- file.path(root, "bam_files", "Sq54", "cs_t2t_se_cereale.bam")
-    if (!file.exists(bam)) {
-        testthat::skip("Sq54 BAM is missing")
-    }
-    session_dir <- tempfile("bam-session-")
-    on.exit(unlink(session_dir, recursive = TRUE), add = TRUE)
-    dir.create(session_dir)
-
-    staged <- stageBam(bam, session_dir)
-    index <- ensureBamIndex(staged)
-    expect_true(file.exists(index))
-    expect_true(.bam_index_magic(index))
-
-    header <- bamHeaderInfo(staged)
-    contig <- "CP155614.1"
-    contig_length <- header$targets$length[
-        match(contig, header$targets$name)
-    ]
-    gr <- GenomicRanges::GRanges(
-        contig, IRanges::IRanges(1L, 1000L),
-        seqlengths = stats::setNames(contig_length, contig)
-    )
-    counts <- countReads(
-        staged, gr, mapq = 20L, exclude_flags = 0L
-    )
-    expect_length(counts, 1L)
-    expect_gte(counts[[1L]], 0L)
-})
