@@ -32,8 +32,8 @@ HTMLWidgets.widget({
       return node;
     }
 
-    function callLegendEntries() {
-      return [
+    function callLegendEntries(showDeletions) {
+      var entries = [
         ["substitution", "Substitution"],
         ["addition", "Addition"],
         ["deletion", "Deletion"],
@@ -42,6 +42,12 @@ HTMLWidgets.widget({
         ["deleted", "Deleted recipient"],
         ["added", "Added donor"]
       ];
+      if (showDeletions === false) {
+        entries = entries.filter(function (entry) {
+          return entry[0] !== "deletion" && entry[0] !== "deleted";
+        });
+      }
+      return entries;
     }
 
     function legendItemWidth(entry) {
@@ -161,7 +167,9 @@ HTMLWidgets.widget({
           fill: palette.text, "text-anchor": "end"
         }));
       } else {
-        var rows = layoutLegend(callLegendEntries(), maxWidth);
+        var rows = layoutLegend(
+          callLegendEntries(payload.hide_deletions !== true), maxWidth
+        );
         rows.forEach(function (row, rowIndex) {
           var rowY = y + rowIndex * legendRowHeight;
           row.items.forEach(function (item) {
@@ -185,6 +193,17 @@ HTMLWidgets.widget({
             }));
           });
         });
+      }
+      var omitted = payload.hidden_deletions &&
+        Number(payload.hidden_deletions.segments);
+      if (payload.hide_deletions === true && omitted > 0) {
+        legend.appendChild(textEl(
+          omitted + " segment" + (omitted === 1 ? "" : "s") + " omitted",
+          {
+            x: x + maxWidth, y: y, "text-anchor": "end",
+            "font-size": 9, "font-weight": 600, fill: palette.text
+          }
+        ));
       }
       return legend;
     }
@@ -464,6 +483,39 @@ HTMLWidgets.widget({
       return key || "group only";
     }
 
+    function sourceFraction(fraction, chromosome) {
+      var removed = chromosome.deleted_intervals || [];
+      if (!removed.length) {
+        return fraction;
+      }
+      var surviving = 1;
+      removed.forEach(function (interval) {
+        surviving -= Math.max(0, Number(interval.end) - Number(interval.start));
+      });
+      if (!(surviving > 0)) {
+        return fraction;
+      }
+      var target = fraction * surviving;
+      var cursor = 0;
+      var removedTotal = 0;
+      for (var i = 0; i < removed.length; i += 1) {
+        var from = Number(removed[i].start);
+        var to = Number(removed[i].end);
+        if (!isNumber(from) || !isNumber(to)) {
+          continue;
+        }
+        if (from > cursor) {
+          var displayEnd = (from - removedTotal) / surviving;
+          if (fraction <= displayEnd) {
+            return Math.max(cursor, Math.min(from, target + removedTotal));
+          }
+        }
+        removedTotal += Math.max(0, to - from);
+        cursor = Math.max(cursor, to);
+      }
+      return Math.max(cursor, Math.min(1, target + removedTotal));
+    }
+
     function describe(chromosome, fraction, calls) {
       var cache = calls && calls.__tipCache;
       if (cache && cache.call &&
@@ -510,7 +562,8 @@ HTMLWidgets.widget({
           subParts.push(spanLabel + callSpan);
         }
       } else if (isNumber(chromosome.length)) {
-        subParts.push(fmtBp(fraction * chromosome.length));
+        subParts.push(fmtBp(sourceFraction(fraction, chromosome) *
+          chromosome.length));
       }
 
       var html = '<div class="mamamia-tip" style="border-left-color:' +
@@ -703,7 +756,9 @@ HTMLWidgets.widget({
           ))
           : -1;
         var position = [
-          tipRow("Position", fmtBp(fraction * (chromosome.length || 0))),
+          tipRow("Position", fmtBp(
+            sourceFraction(fraction, chromosome) * (chromosome.length || 0)
+          )),
           tipRow(
             "Score",
             index >= 0 ? fmtSigned(scores[index]) : "NA"
@@ -816,6 +871,8 @@ HTMLWidgets.widget({
       }
       delete full.full_calls;
       delete full.full_chromosomes;
+      delete full.hidden_deletions;
+      full.hide_deletions = false;
       return full;
     }
 
@@ -933,7 +990,9 @@ HTMLWidgets.widget({
       var availableHeight = Math.max(height || box.height || 520, 420);
       var sideMargin = 22;
       var legendWidth = Math.max(0, availableWidth - sideMargin * 2);
-      var legendRows = layoutLegend(callLegendEntries(), legendWidth).length;
+      var legendRows = layoutLegend(
+        callLegendEntries(payload.hide_deletions !== true), legendWidth
+      ).length;
       var margin = {
         top: 58 + Math.max(0, legendRows - 1) * legendRowHeight,
         right: sideMargin,
@@ -947,7 +1006,9 @@ HTMLWidgets.widget({
       var totalHeight = margin.top + maxBarHeight + margin.bottom;
       var maxLength = 0;
       chromosomes.forEach(function (chromosome) {
-        var length = Number(chromosome.length);
+        var length = Number(
+          chromosome.display_length || chromosome.length
+        );
         if (isFinite(length) && length > maxLength) {
           maxLength = length;
         }
@@ -1014,7 +1075,9 @@ HTMLWidgets.widget({
         var copies = Math.max(1, Number(chromosome.copies) || 1);
         var copy = Math.max(1, Number(chromosome.copy) || 1);
         var height = Math.max(
-          3, maxBarHeight * (Number(chromosome.length) || 0) / maxLength
+          3, maxBarHeight * (Number(
+            chromosome.display_length || chromosome.length
+          ) || 0) / maxLength
         );
         var x = cursorX;
         var pairCenter = x + (copies > 1

@@ -4428,6 +4428,51 @@ bam_dashboard_css <- function() {
         outline: 2px solid var(--mm-accent);
         outline-offset: 1px;
     }
+    .mamamia-karyotype-plot-controls {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: .75rem;
+    }
+    .mamamia-karyotype-deletions {
+        display: flex;
+        align-items: center;
+        gap: .45rem;
+    }
+    .mamamia-karyotype-deletions .form-check.form-switch {
+        display: flex;
+        align-items: center;
+        gap: .42rem;
+        min-height: 1.9rem;
+        margin: 0;
+        padding-left: 2.4em;
+        font-size: .72rem;
+        white-space: nowrap;
+    }
+    .mamamia-karyotype-deletions .form-check-input {
+        margin-top: 0;
+        border-color: var(--mm-line-strong);
+        background-color: var(--mm-surface);
+    }
+    .mamamia-karyotype-deletions .form-check-input:checked {
+        border-color: var(--mm-accent);
+        background-color: var(--mm-accent);
+    }
+    .mamamia-karyotype-deletions .form-check-input:focus {
+        border-color: var(--mm-accent);
+        box-shadow: 0 0 0 .15rem var(--mm-accent-soft);
+    }
+    .mamamia-karyotype-deletions .form-check-label {
+        color: var(--mm-muted);
+        font-size: .72rem;
+        font-weight: 600;
+    }
+    .mamamia-karyotype-deletions .shiny-text-output {
+        color: var(--mm-muted);
+        font-size: .7rem;
+        font-weight: 600;
+        white-space: nowrap;
+    }
     .mamamia-karyotype .html-widget {
         flex: 1 1 auto;
         min-height: 0;

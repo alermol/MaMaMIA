@@ -729,6 +729,33 @@ explorer_tooltip_help_ui <- function() {
             )
         ),
         section(
+            "Hide deletions",
+            paste(
+                "The switch beside the Plot buttons removes deletions from",
+                "the karyotype instead of drawing them as dashed or red",
+                "segments. The counter beside it reports how many segments",
+                "were omitted in the current view."
+            ),
+            row(
+                "Partial deletion",
+                paste(
+                    "The deleted interval is spliced out and the remaining",
+                    "recipient chromosome closes the gap and becomes shorter."
+                )
+            ),
+            row(
+                "Complete deletion",
+                "The recipient chromosome is not drawn at all."
+            ),
+            row(
+                "Substitution",
+                paste(
+                    "The added donor chromosome takes the place of the",
+                    "deleted recipient chromosome."
+                )
+            )
+        ),
+        section(
             "Caveats",
             NULL,
             row(
@@ -829,10 +856,21 @@ explorer_karyotype_ui <- function(id, height = "calc(100vh - 360px)") {
                 "display:flex; flex-wrap:wrap; align-items:center;",
                 "gap:.75rem; padding:.2rem .3rem .1rem;"
             ),
-            shiny::radioButtons(
-                ns("karyotype_mode"), "Plot",
-                choices = c("Heatmap" = "heatmap", "Calls" = "calls"),
-                selected = "heatmap", inline = TRUE
+            shiny::div(
+                class = "mamamia-karyotype-plot-controls",
+                shiny::radioButtons(
+                    ns("karyotype_mode"), "Plot",
+                    choices = c("Heatmap" = "heatmap", "Calls" = "calls"),
+                    selected = "heatmap", inline = TRUE
+                ),
+                shiny::div(
+                    class = "mamamia-karyotype-deletions",
+                    bslib::input_switch(
+                        ns("hide_deletions"), "Hide deletions",
+                        value = FALSE
+                    ),
+                    shiny::textOutput(ns("deletion_info"), inline = TRUE)
+                )
             ),
             shiny::div(
                 class = paste(
@@ -910,6 +948,9 @@ explorer_karyotype_ui <- function(id, height = "calc(100vh - 360px)") {
 #' @param mode `"heatmap"` or `"calls"`.
 #' @param calls Calls to overlay; defaults to every call in the result.
 #' @param selected_groups Groups currently selected in the explorer.
+#' @param hide_deletions Remove deleted chromosomes and deletion segments
+#'   from the current view only.
+#' @param full Optional unfiltered payload for the full export.
 #'
 #' @return A karyotype payload with a `full_chromosomes` entry for the
 #'   unfiltered export.
@@ -917,6 +958,7 @@ explorer_karyotype_ui <- function(id, height = "calc(100vh - 360px)") {
 karyotype_export_payload <- function(result, sample = NULL,
                                      mode = c("heatmap", "calls"),
                                      calls = NULL, selected_groups = NULL,
+                                     hide_deletions = FALSE,
                                      full = NULL) {
     mode <- match.arg(mode)
     payload <- karyotype_payload(
@@ -924,7 +966,8 @@ karyotype_export_payload <- function(result, sample = NULL,
         sample = sample,
         mode = mode,
         calls = calls,
-        selected_groups = selected_groups
+        selected_groups = selected_groups,
+        hide_deletions = hide_deletions
     )
     if (is.null(full)) {
         full <- karyotype_payload(
@@ -932,7 +975,8 @@ karyotype_export_payload <- function(result, sample = NULL,
             sample = sample,
             mode = mode,
             calls = NULL,
-            selected_groups = NULL
+            selected_groups = NULL,
+            hide_deletions = FALSE
         )
     }
     payload$full_chromosomes <- lapply(
@@ -1143,7 +1187,51 @@ explorer_server <- function(id, result, sample = NULL) {
                 sample = sample_value(),
                 mode = mode,
                 calls = NULL,
-                selected_groups = NULL
+                selected_groups = NULL,
+                hide_deletions = FALSE
+            )
+        })
+
+        ## The live view and its counter share one payload so the "Current
+        ## view" export cannot disagree with the number shown by the switch.
+        current_karyotype <- shiny::reactive({
+            res <- result_value()
+            if (is.null(res)) {
+                return(NULL)
+            }
+            mode <- input$karyotype_mode
+            if (length(mode) != 1L || is.na(mode) ||
+                !mode %in% c("heatmap", "calls")) {
+                mode <- "heatmap"
+            }
+            karyotype_export_payload(
+                res,
+                sample = sample_value(),
+                mode = mode,
+                calls = visible_calls(),
+                selected_groups = group_filter(),
+                hide_deletions = isTRUE(input$hide_deletions),
+                full = full_karyotype()
+            )
+        })
+
+        output$deletion_info <- shiny::renderText({
+            payload <- current_karyotype()
+            if (is.null(payload)) {
+                return("")
+            }
+            if (!isTRUE(payload$hide_deletions)) {
+                return("Deletions shown")
+            }
+            segments <- payload$hidden_deletions$segments
+            if (is.null(segments) || length(segments) != 1L ||
+                is.na(segments) || segments <= 0L) {
+                return("No deletions omitted")
+            }
+            sprintf(
+                "%d segment%s omitted",
+                as.integer(segments),
+                if (as.integer(segments) == 1L) "" else "s"
             )
         })
 
@@ -1168,14 +1256,11 @@ explorer_server <- function(id, result, sample = NULL) {
                     )
                 )))
             }
-            mamamia_karyotype(karyotype_export_payload(
-                res,
-                sample = sample_value(),
-                mode = mode,
-                calls = visible_calls(),
-                selected_groups = group_filter(),
-                full = full_karyotype()
-            ))
+            payload <- current_karyotype()
+            if (is.null(payload)) {
+                return(NULL)
+            }
+            mamamia_karyotype(payload)
         })
 
         output$calls <- DT::renderDT({

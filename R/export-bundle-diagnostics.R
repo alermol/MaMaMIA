@@ -1749,9 +1749,10 @@ bam_bundle_report_html <- function(result, bundle, sample, calls_raw,
                 svg,
                 "</div>",
                 "<p class=\"muted\">Full karyotype for this sample. ",
-                "The filtered and confident-only views are ",
-                "<code>karyotype-current.svg</code> and ",
-                "<code>karyotype-confident.svg</code>.</p></section>"
+                "The filtered, confident-only and deletion-free views are ",
+                "<code>karyotype-current.svg</code>, ",
+                "<code>karyotype-confident.svg</code> and ",
+                "<code>karyotype-actual.svg</code>.</p></section>"
             )
         } else {
             c(
@@ -1759,9 +1760,10 @@ bam_bundle_report_html <- function(result, bundle, sample, calls_raw,
                 "<img src=\"karyotype-full.svg\" ",
                 "alt=\"Karyotype with all calls\">",
                 "<p class=\"muted\">Full karyotype for this sample. ",
-                "The filtered and confident-only views are ",
-                "<code>karyotype-current.svg</code> and ",
-                "<code>karyotype-confident.svg</code>.</p></section>"
+                "The filtered, confident-only and deletion-free views are ",
+                "<code>karyotype-current.svg</code>, ",
+                "<code>karyotype-confident.svg</code> and ",
+                "<code>karyotype-actual.svg</code>.</p></section>"
             )
         }
     } else {

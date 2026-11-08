@@ -3,8 +3,10 @@
 ## The widget shows the recipient karyotype only. A recipient chromosome is
 ## kept in place when it has no coverage, drawn as a dashed "deleted" bar. A
 ## full-chromosome donor addition adds that donor chromosome as a single bar.
-## Every chromosome is drawn once, without diploid copy pairs. The payload is
-## plain lists so htmlwidgets can serialise it without a second data-frame layer.
+## Every chromosome is drawn once, without diploid copy pairs. Deleted
+## recipients are drawn as dashed bars unless `hide_deletions` splices them out
+## of the view. The payload is plain lists so htmlwidgets can serialise it
+## without a second data-frame layer.
 
 karyotype_palette <- function() {
     list(
@@ -334,6 +336,127 @@ karyotype_covered_donor_ids <- function(calls, donor, minimum = 0.95,
     covered
 }
 
+#' Merge overlapping deletion intervals
+#'
+#' `start` and `end` are chromosome fractions in `[0, 1]`. Overlapping or
+#' touching intervals are collapsed so one deleted segment is removed once.
+#' @noRd
+karyotype_merge_intervals <- function(intervals) {
+    if (length(intervals) == 0L) {
+        return(list())
+    }
+    starts <- vapply(intervals, function(x) as.numeric(x[[1L]]), numeric(1))
+    ends <- vapply(intervals, function(x) as.numeric(x[[2L]]), numeric(1))
+    keep <- is.finite(starts) & is.finite(ends) & ends > starts
+    starts <- pmax(0, pmin(1, starts[keep]))
+    ends <- pmax(0, pmin(1, ends[keep]))
+    if (length(starts) == 0L) {
+        return(list())
+    }
+    ord <- order(starts, ends)
+    starts <- starts[ord]
+    ends <- ends[ord]
+    merged <- list()
+    span_start <- starts[[1L]]
+    span_end <- ends[[1L]]
+    if (length(starts) > 1L) {
+        for (i in 2:length(starts)) {
+            if (starts[[i]] <= span_end) {
+                span_end <- max(span_end, ends[[i]])
+            } else {
+                merged[[length(merged) + 1L]] <- c(span_start, span_end)
+                span_start <- starts[[i]]
+                span_end <- ends[[i]]
+            }
+        }
+    }
+    merged[[length(merged) + 1L]] <- c(span_start, span_end)
+    merged
+}
+
+#' Total width of merged intervals
+#' @noRd
+karyotype_interval_width <- function(intervals) {
+    if (length(intervals) == 0L) {
+        return(0)
+    }
+    sum(vapply(intervals, function(x) {
+        max(0, as.numeric(x[[2L]]) - as.numeric(x[[1L]]))
+    }, numeric(1)))
+}
+
+#' Deleted fraction before a position
+#' @noRd
+karyotype_removed_before <- function(x, intervals) {
+    if (length(intervals) == 0L) {
+        return(rep(0, length(x)))
+    }
+    vapply(x, function(value) {
+        sum(vapply(intervals, function(interval) {
+            max(0, min(value, interval[[2L]]) - interval[[1L]])
+        }, numeric(1)))
+    }, numeric(1))
+}
+
+#' Map a source fraction onto a chromosome with deletions spliced out
+#' @noRd
+karyotype_compress_fraction <- function(x, intervals, surviving) {
+    x <- pmax(0, pmin(1, as.numeric(x)))
+    if (length(intervals) == 0L || !is.finite(surviving) || surviving <= 0) {
+        return(x)
+    }
+    (x - karyotype_removed_before(x, intervals)) / surviving
+}
+
+#' Map a display fraction back to its original source fraction
+#' @noRd
+karyotype_display_to_source <- function(fraction, intervals, surviving) {
+    fraction <- max(0, min(1, as.numeric(fraction)))
+    if (length(intervals) == 0L || !is.finite(surviving) || surviving <= 0) {
+        return(fraction)
+    }
+    target <- fraction * surviving
+    cursor <- 0
+    removed <- 0
+    for (interval in intervals) {
+        a <- max(0, min(1, as.numeric(interval[[1L]])))
+        b <- max(0, min(1, as.numeric(interval[[2L]])))
+        if (a > cursor) {
+            display_end <- (a - removed) / surviving
+            if (fraction <= display_end) {
+                return(max(cursor, min(a, target + removed)))
+            }
+        }
+        removed <- removed + max(0, b - a)
+        cursor <- max(cursor, b)
+    }
+    max(cursor, min(1, target + removed))
+}
+
+#' Compress a score profile to the surviving chromosome fraction
+#' @noRd
+karyotype_compress_scores <- function(scores, intervals, surviving) {
+    scores <- as.numeric(scores)
+    if (length(scores) == 0L || length(intervals) == 0L ||
+        !is.finite(surviving) || surviving <= 0) {
+        return(scores)
+    }
+    n <- max(2L, as.integer(round(length(scores) * surviving)))
+    if (n >= length(scores)) {
+        return(scores)
+    }
+    centres <- (seq_len(n) - 0.5) / n
+    source <- vapply(
+        centres, karyotype_display_to_source, numeric(1),
+        intervals = intervals, surviving = surviving
+    )
+    index <- pmin(
+        length(scores),
+        pmax(1L, floor(source * length(scores)) + 1L)
+    )
+    scores[index]
+}
+
 #' Build the karyotype payload
 #'
 #' @param result A `BamAnalysisResult`.
@@ -345,6 +468,8 @@ karyotype_covered_donor_ids <- function(calls, donor, minimum = 0.95,
 #'   groups are dimmed rather than removed.
 #' @param deletion_breadth Absolute mean-breadth cutoff for a deletion.
 #' @param deletion_relative Relative-to-median cutoff for a deletion.
+#' @param hide_deletions Remove deleted recipient chromosomes and splice
+#'   partial-deletion intervals out of the remaining chromosomes.
 #'
 #' @return A list suitable for `mamamia_karyotype()`.
 #' @noRd
@@ -352,8 +477,12 @@ karyotype_payload <- function(result, sample = NULL,
                               mode = c("heatmap", "calls"),
                               calls = NULL, selected_groups = NULL,
                               deletion_breadth = 0.001,
-                              deletion_relative = 0.1) {
+                              deletion_relative = 0.1,
+                              hide_deletions = FALSE) {
     mode <- match.arg(mode)
+    hide_deletions <- isTRUE(hide_deletions)
+    hidden_segments <- 0L
+    hidden_bases <- 0
     sample <- karyotype_sample(result, sample)
     assembly <- result$assembly
     recipient <- assembly$contigs$recipient
@@ -780,6 +909,25 @@ karyotype_payload <- function(result, sample = NULL,
     ## Add only the donor chromosome named by the call. A donor group can hold
     ## several components (for example J02, St02 and V02); adding every contig
     ## in the group would invent the components the caller did not observe.
+    recipient_group_order <- unique(as.character(recipient$group))
+    recipient_rank <- match(
+        as.character(recipient$group), recipient_group_order
+    )
+    recipient_order <- order(recipient_rank, seq_len(nrow(recipient)))
+    recipient_anchor <- numeric(nrow(recipient))
+    recipient_anchor[recipient_order] <- seq_along(recipient_order)
+    recipient_index <- stats::setNames(
+        recipient_anchor, as.character(recipient$id)
+    )
+    last_recipient_index <- function(group) {
+        at <- which(as.character(recipient$group) == group)
+        if (length(at) == 0L) {
+            nrow(recipient)
+        } else {
+            max(recipient_anchor[at])
+        }
+    }
+    donor_order_anchor <- list()
     full_donor_ids <- character()
     for (i in seq_len(nrow(added_calls))) {
         group <- as.character(added_calls$group[[i]])
@@ -818,6 +966,56 @@ karyotype_payload <- function(result, sample = NULL,
             ])
         }
         full_donor_ids <- union(full_donor_ids, candidates)
+        anchor <- last_recipient_index(group) + 0.5
+        ## A substitution donor takes the slot of the recipient chromosome it
+        ## replaces once that deleted recipient is hidden.
+        if (hide_deletions && "class" %in% names(added_calls) &&
+            identical(as.character(added_calls$class[[i]]), "substitution")) {
+            recipient_id <- NA_character_
+            if ("recipient_chr_id" %in% names(added_calls)) {
+                recipient_id <- as.character(
+                    added_calls$recipient_chr_id[[i]]
+                )
+            }
+            if ((is.na(recipient_id) || !nzchar(recipient_id)) &&
+                "recipient_chr_name" %in% names(added_calls)) {
+                recipient_name <- as.character(
+                    added_calls$recipient_chr_name[[i]]
+                )
+                recipient_group <- group
+                if ("recipient_group" %in% names(added_calls)) {
+                    candidate_group <- as.character(
+                        added_calls$recipient_group[[i]]
+                    )
+                    if (length(candidate_group) == 1L &&
+                        !is.na(candidate_group) &&
+                        nzchar(candidate_group)) {
+                        recipient_group <- candidate_group
+                    }
+                }
+                if (length(recipient_name) == 1L &&
+                    !is.na(recipient_name) && nzchar(recipient_name)) {
+                    matches <- as.character(recipient$id[
+                        as.character(recipient$name) == recipient_name &
+                            as.character(recipient$group) == recipient_group
+                    ])
+                    if (length(matches) == 1L) {
+                        recipient_id <- matches
+                    }
+                }
+            }
+            if (length(recipient_id) == 1L && !is.na(recipient_id) &&
+                recipient_id %in% names(recipient_index) &&
+                recipient_id %in% deleted) {
+                anchor <- recipient_index[[recipient_id]] + 0.5
+            }
+        }
+        for (id in candidates) {
+            previous <- donor_order_anchor[[id]]
+            if (is.null(previous) || anchor < previous) {
+                donor_order_anchor[[id]] <- anchor
+            }
+        }
     }
     ## A chromosome-scale addition that was split into adjacent calls never
     ## satisfies the single-call full-chromosome test. Add the donor
@@ -844,9 +1042,36 @@ karyotype_payload <- function(result, sample = NULL,
     added_donor <- donor[
         as.character(donor$id) %in% added_donor_ids, , drop = FALSE
     ]
-    chromosome_payload <- list()
+    for (i in seq_len(nrow(added_donor))) {
+        id <- as.character(added_donor$id[[i]])
+        if (is.null(donor_order_anchor[[id]])) {
+            donor_order_anchor[[id]] <- last_recipient_index(
+                as.character(added_donor$group[[i]])
+            ) + 0.5
+        }
+    }
+
+    ## Hide fully deleted chromosomes, including full-substitution recipients.
+    hidden_ids <- intersect(deleted, as.character(recipient$id))
+    if (hide_deletions) {
+        hidden_segments <- hidden_segments + length(hidden_ids)
+        hidden_bases <- hidden_bases + sum(
+            suppressWarnings(as.numeric(
+                recipient$length[match(hidden_ids, as.character(recipient$id))]
+            )),
+            na.rm = TRUE
+        )
+    }
+
+    ## Prepare each surviving recipient bar. A partial deletion removes its
+    ## interval from the bar, closes the gap and compresses calls and scores
+    ## into the shortened chromosome.
+    recipient_prepared <- vector("list", nrow(recipient))
     for (i in seq_len(nrow(recipient))) {
         chr_id <- as.character(recipient$id[[i]])
+        if (hide_deletions && chr_id %in% hidden_ids) {
+            next
+        }
         chr_name <- as.character(recipient$name[[i]])
         chr_component <- as.character(recipient$component[[i]])
         chr_group <- as.character(recipient$group[[i]])
@@ -854,25 +1079,81 @@ karyotype_payload <- function(result, sample = NULL,
         chr_calls <- recipient_calls(
             chr_id, chr_group, chr_component, chr_length
         )
-        chromosome_payload[[length(chromosome_payload) + 1L]] <- list(
+        chr_scores <- score_values[[chr_group]]
+        if (is.null(chr_scores)) {
+            chr_scores <- numeric()
+        }
+        display_length <- chr_length
+        deleted_intervals <- list()
+        if (hide_deletions) {
+            deletion_calls <- Filter(
+                function(call) identical(as.character(call$class), "deletion"),
+                chr_calls
+            )
+            intervals <- karyotype_merge_intervals(lapply(
+                deletion_calls,
+                function(call) c(call$start, call$end)
+            ))
+            if (length(intervals) > 0L) {
+                removed <- karyotype_interval_width(intervals)
+                surviving <- 1 - removed
+                if (surviving <= 1e-6) {
+                    hidden_segments <- hidden_segments + 1L
+                    hidden_bases <- hidden_bases + chr_length
+                    next
+                }
+                chr_calls <- chr_calls[!vapply(
+                    chr_calls,
+                    function(call) {
+                        identical(as.character(call$class), "deletion")
+                    },
+                    logical(1)
+                )]
+                chr_calls <- lapply(chr_calls, function(call) {
+                    call$start <- karyotype_compress_fraction(
+                        call$start, intervals, surviving
+                    )
+                    call$end <- karyotype_compress_fraction(
+                        call$end, intervals, surviving
+                    )
+                    call
+                })
+                chr_scores <- karyotype_compress_scores(
+                    chr_scores, intervals, surviving
+                )
+                display_length <- chr_length * surviving
+                deleted_intervals <- lapply(intervals, function(x) {
+                    list(start = x[[1L]], end = x[[2L]])
+                })
+                hidden_segments <- hidden_segments + length(intervals)
+                hidden_bases <- hidden_bases + removed * chr_length
+            }
+        }
+        recipient_prepared[[i]] <- list(
             id = chr_id,
             name = chr_name,
             label = chr_name,
             component = chr_component,
             group = chr_group,
             length = chr_length,
+            display_length = display_length,
+            deleted_intervals = deleted_intervals,
             deleted = chr_id %in% deleted,
             added = FALSE,
             copy = 1L,
             copies = 1L,
             selected = chr_group %in% selected_groups,
-            scores = if (is.null(score_values[[chr_group]])) {
-                numeric()
-            } else {
-                score_values[[chr_group]]
-            },
-            calls = chr_calls
+            scores = chr_scores,
+            calls = chr_calls,
+            order_anchor = recipient_anchor[[i]]
         )
+    }
+
+    chromosome_payload <- list()
+    for (entry in recipient_prepared) {
+        if (!is.null(entry)) {
+            chromosome_payload[[length(chromosome_payload) + 1L]] <- entry
+        }
     }
     for (i in seq_len(nrow(added_donor))) {
         chr_id <- as.character(added_donor$id[[i]])
@@ -890,6 +1171,8 @@ karyotype_payload <- function(result, sample = NULL,
             component = chr_component,
             group = chr_group,
             length = chr_length,
+            display_length = chr_length,
+            deleted_intervals = list(),
             deleted = FALSE,
             added = TRUE,
             added_partial = chr_id %in% partial_donor_ids,
@@ -901,34 +1184,24 @@ karyotype_payload <- function(result, sample = NULL,
             } else {
                 score_values[[chr_group]]
             },
-            calls = chr_calls
+            calls = chr_calls,
+            order_anchor = donor_order_anchor[[chr_id]]
         )
     }
 
-    ## Keep each added donor chromosome next to its recipient group instead of
-    ## appending it after every recipient chromosome. Donor groups without a
-    ## recipient contig stay at the end of the layout.
+    ## Keep each added donor chromosome next to its recipient group. A hidden
+    ## substitution recipient hands its exact slot to the added donor.
     if (length(chromosome_payload) > 0L) {
-        payload_group <- vapply(
+        order_anchor <- vapply(
             chromosome_payload,
-            function(x) as.character(x$group),
-            character(1)
+            function(x) as.numeric(x$order_anchor),
+            numeric(1)
         )
-        payload_added <- vapply(
-            chromosome_payload,
-            function(x) isTRUE(x$added),
-            logical(1)
-        )
-        group_order <- unique(as.character(recipient$group))
-        group_order <- c(
-            group_order,
-            setdiff(unique(payload_group), group_order)
-        )
-        chromosome_payload <- unlist(lapply(group_order, function(group) {
-            entries <- chromosome_payload[payload_group == group]
-            added <- payload_added[payload_group == group]
-            c(entries[!added], entries[added])
-        }), recursive = FALSE)
+        chromosome_payload <- chromosome_payload[order(order_anchor)]
+        chromosome_payload <- lapply(chromosome_payload, function(x) {
+            x$order_anchor <- NULL
+            x
+        })
     }
 
     limit <- suppressWarnings(stats::quantile(
@@ -942,6 +1215,11 @@ karyotype_payload <- function(result, sample = NULL,
         sample = sample,
         score_limit = max(0.5, as.numeric(limit)),
         palette = karyotype_palette(),
+        hide_deletions = hide_deletions,
+        hidden_deletions = list(
+            segments = as.integer(hidden_segments),
+            bases = as.numeric(hidden_bases)
+        ),
         chromosomes = chromosome_payload
     )
 }
@@ -964,7 +1242,7 @@ mamamia_karyotype_dependencies <- function() {
         ## file.
         htmltools::htmlDependency(
             name = "mamamiaKaryotypeCard-binding",
-            version = "0.1.1",
+            version = "0.1.2",
             src = src,
             script = "mamamiaKaryotypeCard.js",
             all_files = FALSE

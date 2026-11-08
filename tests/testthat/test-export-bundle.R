@@ -203,6 +203,7 @@ test_that("the result bundle contains the table, BEDPE and karyotypes", {
         "calls-all.bedpe", "calls-passing.bedpe",
         "calls-confident.bedpe", "karyotype-current.svg",
         "karyotype-full.svg", "karyotype-confident.svg",
+        "karyotype-actual.svg",
         "report.html", "manifest.json", "checksums.md5",
         "calls-passing.csv", "calls-review.csv", "calls-summary.csv",
         "calls-by-group.csv", "calls-by-status.csv",
@@ -290,6 +291,22 @@ test_that("the result bundle contains the table, BEDPE and karyotypes", {
         file.info(file.path(sample_root, "karyotype-confident.svg"))$size > 0
     )
     expect_true(
+        file.info(file.path(sample_root, "karyotype-actual.svg"))$size > 0
+    )
+    actual_svg <- paste(
+        readLines(file.path(sample_root, "karyotype-actual.svg")),
+        collapse = "\n"
+    )
+    expect_match(
+        actual_svg, "Confident calls, deletions removed", fixed = TRUE
+    )
+    expect_false(grepl("Deleted recipient", actual_svg, fixed = TRUE))
+    confident_svg <- paste(
+        readLines(file.path(sample_root, "karyotype-confident.svg")),
+        collapse = "\n"
+    )
+    expect_true(grepl("Deleted recipient", confident_svg, fixed = TRUE))
+    expect_true(
         file.info(file.path(sample_root, "calls-all.bedpe"))$size > 0
     )
 
@@ -318,6 +335,7 @@ test_that("the result bundle contains the table, BEDPE and karyotypes", {
         "calls-all.bedpe", "calls-passing.bedpe",
         "calls-confident.bedpe", "karyotype-current.svg",
         "karyotype-full.svg", "karyotype-confident.svg",
+        "karyotype-actual.svg",
         "qc/metrics-summary.csv", "qc/contig-summary.csv",
         "qc/scores-summary.csv", "qc/metrics-windows.csv.gz",
         "qc/scores-windows.csv.gz", "qc/component-evidence.csv",
@@ -617,6 +635,7 @@ test_that("a relative bundle path is written to the caller's directory", {
     )
     readme <- readLines(file.path(sample_root, "README.txt"))
     expect_true(any(grepl("karyotype-full.svg", readme, fixed = TRUE)))
+    expect_true(any(grepl("karyotype-actual.svg", readme, fixed = TRUE)))
     expect_true(any(grepl("report.html", readme, fixed = TRUE)))
 })
 
@@ -683,7 +702,8 @@ test_that("a cohort bundle has per-sample folders and top-level summaries", {
         "calls-review.csv", "calls-summary.csv", "calls-all.bedpe",
         "calls-passing.bedpe", "calls-confident.bedpe",
         "karyotype-current.svg", "karyotype-full.svg",
-        "karyotype-confident.svg", "report.html", "README.txt",
+        "karyotype-confident.svg", "karyotype-actual.svg",
+        "report.html", "README.txt",
         "qc/metrics-summary.csv", "qc/scores-summary.csv",
         "qc/metrics-windows.csv.gz", "qc/scores-windows.csv.gz",
         "qc/component-evidence.csv", "tracks/calls-recipient.bed",

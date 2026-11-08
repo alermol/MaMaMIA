@@ -421,7 +421,7 @@ test_that("mamamia_karyotype() returns a widget with its stylesheet", {
         dependencies
     )
     expect_length(binding, 1L)
-    expect_identical(binding[[1L]]$version, "0.1.1")
+    expect_identical(binding[[1L]]$version, "0.1.2")
     expect_true(any(vapply(
         widget$dependencies,
         function(dependency) {
@@ -504,6 +504,9 @@ test_that("the explorer exposes the karyotype tab and mode switch", {
     html <- as.character(explorer_results_ui("explorer"))
     expect_match(html, "Karyotype", fixed = TRUE)
     expect_match(html, "explorer-karyotype_mode", fixed = TRUE)
+    expect_match(html, "explorer-hide_deletions", fixed = TRUE)
+    expect_match(html, "explorer-deletion_info", fixed = TRUE)
+    expect_match(html, "Hide deletions", fixed = TRUE)
     expect_match(html, "explorer-karyotype", fixed = TRUE)
     expect_match(html, "explorer-tooltip_help", fixed = TRUE)
     expect_match(html, "Tooltip help", fixed = TRUE)
@@ -591,6 +594,105 @@ test_that("a full substitution splits into a lost recipient and added donor", {
     }, logical(1))))
 })
 
+test_that("hiding deletions removes whole chromosomes and partial segments", {
+    result <- bam_example_result(1000)
+    shown <- karyotype_payload(result, "example-sample", "calls")
+    hidden <- karyotype_payload(
+        result, "example-sample", "calls", hide_deletions = TRUE
+    )
+    labels <- vapply(hidden$chromosomes, function(x) x$name, character(1))
+    expect_identical(
+        labels,
+        c("1A", "2A", "2R", "3A", "4A", "5A", "5R", "7A", "8R")
+    )
+    expect_true(hidden$hide_deletions)
+    expect_identical(hidden$hidden_deletions$segments, 3L)
+    expect_gt(hidden$hidden_deletions$bases, 0)
+    expect_false(any(vapply(
+        hidden$chromosomes, function(x) isTRUE(x$deleted), logical(1)
+    )))
+
+    three <- Filter(
+        function(x) identical(x$name, "3A"), hidden$chromosomes
+    )[[1L]]
+    expect_lt(three$display_length, three$length)
+    expect_equal(three$display_length, three$length * (1 - 0.022))
+    expect_length(three$deleted_intervals, 1L)
+    expect_identical(three$deleted_intervals[[1L]]$start, 0.5)
+    expect_false(any(vapply(
+        three$calls, function(call) identical(call$class, "deletion"),
+        logical(1)
+    )))
+
+    expect_true(any(vapply(
+        shown$chromosomes, function(x) identical(x$name, "6A"), logical(1)
+    )))
+    expect_identical(shown$hidden_deletions$segments, 0L)
+})
+
+test_that("hiding deletions compresses heatmap scores with the chromosome", {
+    result <- bam_example_result(1000)
+    shown <- karyotype_payload(result, "example-sample", "heatmap")
+    hidden <- karyotype_payload(
+        result, "example-sample", "heatmap", hide_deletions = TRUE
+    )
+    shown_three <- Filter(
+        function(x) identical(x$name, "3A"), shown$chromosomes
+    )[[1L]]
+    hidden_three <- Filter(
+        function(x) identical(x$name, "3A"), hidden$chromosomes
+    )[[1L]]
+    expect_lt(length(hidden_three$scores), length(shown_three$scores))
+    expect_equal(
+        length(hidden_three$scores),
+        max(2L, as.integer(round(length(shown_three$scores) * 0.978)))
+    )
+})
+
+test_that("deletion intervals are merged and remapped after splicing", {
+    intervals <- karyotype_merge_intervals(list(
+        c(0.20, 0.30), c(0.25, 0.35), c(0.60, 0.70)
+    ))
+    expect_length(intervals, 2L)
+    expect_equal(intervals[[1L]], c(0.20, 0.35))
+    expect_equal(intervals[[2L]], c(0.60, 0.70))
+    surviving <- 1 - karyotype_interval_width(intervals)
+    expect_equal(surviving, 0.75)
+    expect_equal(
+        karyotype_compress_fraction(c(0.10, 0.50, 0.80), intervals, surviving),
+        c(0.10 / 0.75, 0.35 / 0.75, 0.55 / 0.75)
+    )
+    expect_equal(
+        vapply(
+            c(0, 0.4, 1), karyotype_display_to_source, numeric(1),
+            intervals = intervals, surviving = surviving
+        ),
+        c(0, 0.45, 1)
+    )
+})
+
+test_that("the full export keeps deletions when the live view hides them", {
+    result <- bam_example_result(1000)
+    visible <- result$calls[result$calls$pass %in% TRUE, , drop = FALSE]
+    live <- karyotype_export_payload(
+        result, "example-sample", "calls",
+        calls = visible, hide_deletions = TRUE
+    )
+    expect_true(live$hide_deletions)
+    expect_false(any(vapply(
+        live$chromosomes, function(x) identical(x$name, "8A"), logical(1)
+    )))
+    full <- bam_full_karyotype_payload(live)
+    expect_false(full$hide_deletions)
+    expect_identical(full$hidden_deletions$segments, 0L)
+    expect_true(any(vapply(
+        full$chromosomes, function(x) identical(x$name, "8A"), logical(1)
+    )))
+    svg <- bam_karyotype_static_svg(live)
+    expect_match(svg, "3 segments omitted", fixed = TRUE)
+    expect_false(grepl("Deleted recipient", svg, fixed = TRUE))
+})
+
 test_that("a full substitution follows the donor scale and adds only its donor", {
     result <- bam_example_result(1000)
     ## Donor group 8 is 200 kb, while the recipient group maximum is longer.
@@ -646,6 +748,18 @@ test_that("a full substitution only deletes its assigned recipient", {
     )
     expect_true(all(deleted[labels == "8A"]))
     expect_false(any(deleted[labels == "8B"]))
+
+    hidden <- karyotype_payload(
+        result, "example-sample", "calls", hide_deletions = TRUE
+    )
+    hidden_labels <- vapply(
+        hidden$chromosomes, function(x) x$name, character(1)
+    )
+    expect_false("8A" %in% hidden_labels)
+    expect_true(all(c("8B", "8R") %in% hidden_labels))
+    expect_lt(
+        match("8R", hidden_labels), match("8B", hidden_labels)
+    )
 })
 
 test_that("added donor chromosomes follow their recipient group", {

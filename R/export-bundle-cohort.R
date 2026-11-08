@@ -574,16 +574,23 @@ bam_write_cohort_bundle <- function(result, file, samples = NULL,
         } else {
             bam_full_karyotype_payload(sample_current)
         }
+        sample_confident_calls <- bam_confident_calls(sample_calls)
         sample_confident <- if (identical(sample, current_sample) &&
             !is.null(confident_payload)) {
             confident_payload
         } else {
             karyotype_payload(
                 result, sample = sample, mode = "calls",
-                calls = bam_confident_calls(sample_calls),
+                calls = sample_confident_calls,
                 selected_groups = NULL
             )
         }
+        sample_actual <- karyotype_payload(
+            result, sample = sample, mode = "calls",
+            calls = sample_confident_calls,
+            selected_groups = NULL,
+            hide_deletions = TRUE
+        )
         sample_dir <- file.path(bundle, folders[[i]])
         dir.create(sample_dir)
         parts <- bam_bundle_write_sample_files(
@@ -591,6 +598,7 @@ bam_write_cohort_bundle <- function(result, file, samples = NULL,
             current_payload = sample_current,
             full_payload = sample_full,
             confident_payload = sample_confident,
+            actual_payload = sample_actual,
             cohort = cohort,
             metrics_rows = if (is.null(metrics_rows)) {
                 NULL
