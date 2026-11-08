@@ -7,10 +7,10 @@ test_that("karyotype_payload() lays out one homolog per chromosome", {
     expect_identical(payload$sample, "example-sample")
     expect_true(is.finite(payload$score_limit))
     expected_names <- c(
-        "1A", "2A", "3A", "4A", "5A", "5R",
+        "1A", "2A", "2R", "3A", "4A", "5A", "5R",
         "6A", "7A", "8A", "8R"
     )
-    expect_length(payload$chromosomes, 10L)
+    expect_length(payload$chromosomes, 11L)
     expect_identical(
         vapply(payload$chromosomes, function(x) x$name, character(1)),
         expected_names
@@ -21,11 +21,11 @@ test_that("karyotype_payload() lays out one homolog per chromosome", {
     )
     expect_identical(
         vapply(payload$chromosomes, function(x) x$copy, integer(1)),
-        rep(1L, 10L)
+        rep(1L, 11L)
     )
     expect_identical(
         vapply(payload$chromosomes, function(x) x$copies, integer(1)),
-        rep(1L, 10L)
+        rep(1L, 11L)
     )
     expect_true(any(vapply(
         payload$chromosomes, function(x) isTRUE(x$added), logical(1)
@@ -45,8 +45,15 @@ test_that("karyotype_payload() lays out one homolog per chromosome", {
         na.rm = TRUE
     )
     expect_length(chromosome$calls, hosted)
-    expect_length(payload$chromosomes[[2L]]$calls, hosted)
-    expect_equal(hosted, 1L)
+    expect_equal(hosted, 2L)
+    expect_setequal(
+        vapply(chromosome$calls, function(call) call$class, character(1)),
+        c("substitution", "addition")
+    )
+    expect_identical(payload$chromosomes[[2L]]$name, "2A")
+    expect_length(payload$chromosomes[[2L]]$calls, 0L)
+    expect_identical(payload$chromosomes[[3L]]$name, "2R")
+    expect_true(isTRUE(payload$chromosomes[[3L]]$added_partial))
     if (hosted > 0L) {
         expect_true(all(c(
             "class_group", "donor_mean", "recipient_mean",
@@ -58,6 +65,36 @@ test_that("karyotype_payload() lays out one homolog per chromosome", {
         expect_true(is.finite(chromosome$calls[[1L]]$donor_start_bp))
         expect_true(is.finite(chromosome$calls[[1L]]$donor_end_bp))
     }
+})
+
+test_that("the bundled example covers every karyotype rendering state", {
+    result <- bam_example_result(1000)
+    payload <- karyotype_payload(result, "example-sample", "calls")
+    chromosomes <- payload$chromosomes
+    added <- Filter(function(x) isTRUE(x$added), chromosomes)
+    recipient <- Filter(function(x) !isTRUE(x$added), chromosomes)
+    added_classes <- function(x) {
+        vapply(x$calls, function(call) call$class, character(1))
+    }
+    recipient_classes <- unlist(lapply(recipient, added_classes))
+
+    expect_true(any(vapply(
+        chromosomes, function(x) isTRUE(x$deleted), logical(1)
+    )))
+    expect_true(any(recipient_classes == "deletion"))
+    expect_true(any(vapply(added, function(x) {
+        !isTRUE(x$added_partial) && "addition" %in% added_classes(x)
+    }, logical(1))))
+    expect_true(any(vapply(added, function(x) {
+        isTRUE(x$added_partial) && "addition" %in% added_classes(x)
+    }, logical(1))))
+    expect_true(any(vapply(added, function(x) {
+        !isTRUE(x$added_partial) && "substitution" %in% added_classes(x)
+    }, logical(1))))
+    expect_true(any(recipient_classes == "addition"))
+    expect_true(any(recipient_classes == "substitution"))
+    expect_true(any(recipient_classes == "complex"))
+    expect_true(any(recipient_classes == "other"))
 })
 
 test_that("a full donor chromosome is added with one homolog bar", {
@@ -80,7 +117,7 @@ test_that("a full donor chromosome is added with one homolog bar", {
 
     payload <- karyotype_payload(result, "example-sample", "calls")
     expected_names <- c(
-        "1A", "1R", "2A", "3A", "4A", "5A", "5R",
+        "1A", "1R", "2A", "2R", "3A", "4A", "5A", "5R",
         "6A", "7A", "8A", "8R"
     )
     expect_identical(
@@ -94,26 +131,32 @@ test_that("a full donor chromosome is added with one homolog bar", {
     added <- vapply(
         payload$chromosomes, function(x) isTRUE(x$added), logical(1)
     )
-    expect_identical(which(added), c(2L, 7L, 11L))
+    expect_identical(which(added), c(2L, 4L, 8L, 12L))
+    expect_false(isTRUE(payload$chromosomes[[2L]]$added_partial))
+    expect_true(isTRUE(payload$chromosomes[[4L]]$added_partial))
     expect_identical(
         vapply(payload$chromosomes, function(x) x$copy, integer(1)),
-        rep(1L, 11L)
+        rep(1L, 12L)
     )
     expect_identical(
         vapply(payload$chromosomes, function(x) x$copies, integer(1)),
-        rep(1L, 11L)
+        rep(1L, 12L)
     )
 })
 
-test_that("a partial donor call is not a whole-chromosome addition", {
+test_that("a partial addition below 20% stays on the recipient bar", {
     result <- bam_example_result(1000)
     addition <- result$calls[result$calls$class == "substitution" &
         result$calls$pass %in% TRUE, , drop = FALSE][1L, , drop = FALSE]
     addition$start_iid <- 0L
     addition$end_iid <- 500L
     addition$start_bp <- 0
-    addition$end_bp <- 80000
-    addition$width_bp <- 80000
+    addition$end_bp <- 24000
+    addition$width_bp <- 24000
+    ## The example already has a short 1A addition; stay below 20% after
+    ## combining the two donor intervals.
+    addition$donor_start_bp <- 30000
+    addition$donor_end_bp <- 40000
     addition$score_mean <- 2
     addition$donor_mean <- 2
     addition$recipient_mean <- 0
@@ -126,8 +169,68 @@ test_that("a partial donor call is not a whole-chromosome addition", {
     payload <- karyotype_payload(result, "example-sample", "calls")
     expect_identical(
         vapply(payload$chromosomes, function(x) x$name, character(1)),
-        c("1A", "2A", "3A", "4A", "5A", "5R", "6A", "7A", "8A", "8R")
+        c("1A", "2A", "2R", "3A", "4A", "5A", "5R",
+            "6A", "7A", "8A", "8R")
     )
+    recipient <- Filter(
+        function(chromosome) identical(chromosome$name, "1A"),
+        payload$chromosomes
+    )[[1L]]
+    expect_true(any(vapply(
+        recipient$calls, function(call) identical(call$class, "addition"),
+        logical(1)
+    )))
+})
+
+test_that("a partial addition at 20% gets a partial donor bar", {
+    result <- bam_example_result(1000)
+    addition <- result$calls[result$calls$class == "substitution" &
+        result$calls$pass %in% TRUE, , drop = FALSE][1L, , drop = FALSE]
+    addition$start_iid <- 0L
+    addition$end_iid <- 500L
+    addition$start_bp <- 0
+    addition$end_bp <- 40000
+    addition$width_bp <- 40000
+    addition$donor_start_bp <- 0
+    addition$donor_end_bp <- 40000
+    addition$score_mean <- 2
+    addition$donor_mean <- 2
+    addition$recipient_mean <- 0
+    addition$class <- "addition"
+    addition$confidence <- "high"
+    addition$pass <- TRUE
+    addition$n_windows <- 501L
+    result$calls <- rbind(result$calls, addition)
+
+    payload <- karyotype_payload(result, "example-sample", "calls")
+    expect_identical(
+        vapply(payload$chromosomes, function(x) x$name, character(1)),
+        c("1A", "1R", "2A", "2R", "3A", "4A", "5A", "5R",
+            "6A", "7A", "8A", "8R")
+    )
+    donor <- Filter(
+        function(chromosome) identical(chromosome$name, "1R"),
+        payload$chromosomes
+    )[[1L]]
+    expect_true(donor$added)
+    expect_true(donor$added_partial)
+    expect_true(any(vapply(
+        donor$calls, function(call) identical(call$class, "addition"),
+        logical(1)
+    )))
+    recipient <- Filter(
+        function(chromosome) identical(chromosome$name, "1A"),
+        payload$chromosomes
+    )[[1L]]
+    expect_false(any(vapply(
+        recipient$calls, function(call) identical(call$class, "addition"),
+        logical(1)
+    )))
+
+    svg <- bam_karyotype_static_svg(payload)
+    expect_match(svg, 'stroke-dasharray="4 3"', fixed = TRUE)
+    expect_match(svg, 'fill="none" stroke="', fixed = TRUE)
+    expect_match(svg, 'fill="#1f78b4"', fixed = TRUE)
 })
 
 test_that("split additions covering a donor chromosome add it to the plot", {
@@ -176,6 +279,10 @@ test_that("split additions covering a donor chromosome add it to the plot", {
     expect_true(all(vapply(
         added, function(chromosome) length(chromosome$calls), integer(1)
     ) == 2L))
+    expect_false(any(vapply(
+        added, function(chromosome) isTRUE(chromosome$added_partial),
+        logical(1)
+    )))
 
     ## One large partial segment still has no recipient bar; show it on the
     ## donor chromosome as a partial addition.
@@ -192,6 +299,10 @@ test_that("split additions covering a donor chromosome add it to the plot", {
     expect_true(all(vapply(
         added, function(chromosome) length(chromosome$calls), integer(1)
     ) == 1L))
+    expect_true(all(vapply(
+        added, function(chromosome) isTRUE(chromosome$added_partial),
+        logical(1)
+    )))
 
     ## A tiny partial segment does not justify a whole donor bar.
     result$calls$donor_end_bp <- 8000
@@ -226,7 +337,7 @@ test_that("a deleted recipient chromosome stays in the karyotype", {
 
     payload <- karyotype_payload(result, "example-sample", "heatmap")
     expected_names <- c(
-        "1A", "1B", "2A", "3A", "4A", "5A", "5R",
+        "1A", "1B", "2A", "2R", "3A", "4A", "5A", "5R",
         "6A", "7A", "8A", "8R"
     )
     expect_identical(
@@ -236,7 +347,7 @@ test_that("a deleted recipient chromosome stays in the karyotype", {
     deleted <- vapply(
         payload$chromosomes, function(x) isTRUE(x$deleted), logical(1)
     )
-    expect_identical(which(deleted), c(1L, 8L, 10L))
+    expect_identical(which(deleted), c(1L, 9L, 11L))
 })
 
 test_that("a cross-group assignment is painted on the recipient chromosome", {
@@ -310,7 +421,7 @@ test_that("mamamia_karyotype() returns a widget with its stylesheet", {
         dependencies
     )
     expect_length(binding, 1L)
-    expect_identical(binding[[1L]]$version, "0.1.0")
+    expect_identical(binding[[1L]]$version, "0.1.1")
     expect_true(any(vapply(
         widget$dependencies,
         function(dependency) {
@@ -365,8 +476,8 @@ test_that("the karyotype marks donor support for the tooltip", {
             vapply(chromosome$calls, function(call) call$class, character(1))
         }
     ))
-    ## A partial addition has no donor chromosome bar, so it stays visible on
-    ## the recipient bar; its tooltip uses recipient_supported = FALSE.
+    ## The short 1A addition stays on its recipient bar, while the longer 2A
+    ## addition is drawn on the 2R donor bar.
     expect_true("addition" %in% recipient_classes)
 })
 
@@ -501,9 +612,7 @@ test_that("a full substitution follows the donor scale and adds only its donor",
     added <- vapply(
         payload$chromosomes, function(x) isTRUE(x$added), logical(1)
     )
-    expect_identical(
-        labels[added], c("5R", "8R")
-    )
+    expect_true(all(c("5R", "8R") %in% labels[added]))
     expect_false("8S" %in% labels)
 })
 

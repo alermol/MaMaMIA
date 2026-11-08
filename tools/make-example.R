@@ -2,11 +2,12 @@
 ## Regenerate data/example/example.rds and its GC index.
 ##
 ## The bundled example is a pre-computed BamAnalysisResult replayed by the
-## Shiny app. Seven chromosome pairs of different lengths demonstrate every
+## Shiny app. Eight chromosome pairs of different lengths demonstrate every
 ## plotted event category:
 ##
 ##   1A 160 kb  40-43 kb   balanced substitution (segment)
-##   2A 220 kb 110-115 kb  addition (segment)
+##   1A 160 kb 100-110 kb  addition (segment, below the donor bar)
+##   2A 220 kb 110-170 kb  addition (segment, above the partial donor bar)
 ##   3A 180 kb  90-94 kb   deletion (segment)
 ##   4A 260 kb 200-207 kb  complex (segment)
 ##   5A 200 kb  full       added donor chromosome
@@ -15,8 +16,8 @@
 ##   8A 200 kb  full       balanced substitution
 ##
 ## The low-signal gaps segment as non-passing `other` rows, so the Calls table
-## also exposes neutral calls and the `needs_review` status. The four events
-## pass calibration and cover all four introgression classes.
+## also exposes neutral calls and the `needs_review` status. The listed events
+## pass calibration and cover all introgression classes.
 
 args <- commandArgs(trailingOnly = TRUE)
 value_after <- function(args, flag) {
@@ -128,7 +129,11 @@ events <- list(
         donor_extra = 200L, recipient = "absent"
     ),
     list(
-        chromosome = 2L, from = 110000L, to = 115000L,
+        chromosome = 1L, from = 100000L, to = 110000L,
+        donor_extra = 20L, recipient = "base"
+    ),
+    list(
+        chromosome = 2L, from = 110000L, to = 170000L,
         donor_extra = 20L, recipient = "base"
     ),
     list(
@@ -170,21 +175,32 @@ sam_lines <- c(
     sprintf("@SQ\tSN:%s\tLN:%d", contigs, contig_lengths),
     sprintf("@RG\tID:%s\tSM:%s", "example-sample", "example-sample")
 )
-for (event in events) {
-    index <- event$chromosome
+event_chromosomes <- unique(vapply(
+    events, function(event) as.integer(event$chromosome), integer(1)
+))
+for (index in event_chromosomes) {
     donor <- base[[index]]
     recipient <- base[[index]]
-    if (!is.null(event$donor_extra)) {
-        donor <- sort(unique(c(
-            donor,
-            seq(
-                event$from + if (event$donor_extra == 200L) 100L else 0L,
-                event$to, by = event$donor_extra
-            )
-        )))
-    }
-    if (identical(event$recipient, "absent")) {
-        recipient <- recipient[!in_event(recipient, event$from, event$to)]
+    events_here <- Filter(
+        function(event) identical(as.integer(event$chromosome), index),
+        events
+    )
+    for (event in events_here) {
+        if (!is.null(event$donor_extra)) {
+            donor <- sort(unique(c(
+                donor,
+                seq(
+                    event$from +
+                        if (event$donor_extra == 200L) 100L else 0L,
+                    event$to, by = event$donor_extra
+                )
+            )))
+        }
+        if (identical(event$recipient, "absent")) {
+            recipient <- recipient[
+                !in_event(recipient, event$from, event$to)
+            ]
+        }
     }
     sam_lines <- c(
         sam_lines,
@@ -213,10 +229,13 @@ preflight <- preflightBams(bam, pair$config, assembly = pair$key)
 result <- analyzeBamInput(
     bam, pair$config, assembly = pair$key,
     windows_per_chromosome = windows_per_chromosome,
+    ## The 2A partial addition is long enough to share a calibration bin with
+    ## the weak 7A Other segment. Give them separate bins and lower only the
+    ## 10-50 kb floor so the Other call remains visible in the demo.
     calibration = list(
         min_mb = 0.001,
-        length_bins_mb = c(0.001, 0.01, Inf),
-        floors = c(0.2, 0.2),
+        length_bins_mb = c(0.001, 0.01, 0.05, 0.1, 0.2, Inf),
+        floors = c(0.2, 0.05, 0.2, 0.2, 0.2),
         fdr = 0.5
     ),
     cores = 1L
@@ -243,6 +262,15 @@ other <- which(
 )
 if (length(other) == 1L) {
     pin_to_group(other, "r7", "7A", 7L)
+}
+## A short addition stays on the recipient bar, so pin its host as well.
+recipient_addition <- which(
+    as.character(result$calls$class) == "addition" &
+        as.character(result$calls$group) == "1" &
+        result$calls$pass %in% TRUE
+)
+if (length(recipient_addition) == 1L) {
+    pin_to_group(recipient_addition, "r1", "1A", 1L)
 }
 segment_addition <- which(
     as.character(result$calls$class) == "addition" &

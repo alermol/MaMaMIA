@@ -744,6 +744,7 @@ bam_karyotype_static_svg <- function(payload, width = 1600, height = 900,
     for (i in seq_along(chromosomes)) {
         chromosome <- chromosomes[[i]]
         added <- isTRUE(chromosome$added)
+        added_partial <- added && isTRUE(chromosome$added_partial)
         deleted <- !added && isTRUE(chromosome$deleted)
         selected <- !identical(chromosome$selected, FALSE)
         calls <- chromosome$calls
@@ -794,14 +795,22 @@ bam_karyotype_static_svg <- function(payload, width = 1600, height = 900,
         base_fill <- if (deleted) {
             palette$deleted
         } else if (added) {
-            bam_bundle_colour(palette, added_class, "added")
+            if (added_partial) {
+                "none"
+            } else {
+                bam_bundle_colour(palette, added_class, "added")
+            }
         } else {
             "#f4f4f4"
         }
         base_stroke <- if (deleted) {
             palette$negative
         } else if (added) {
-            bam_bundle_colour(palette, added_class, "added")
+            if (added_partial) {
+                palette$negative
+            } else {
+                bam_bundle_colour(palette, added_class, "added")
+            }
         } else {
             "#666666"
         }
@@ -814,8 +823,14 @@ bam_karyotype_static_svg <- function(payload, width = 1600, height = 900,
             bam_svg_rect(
                 x, top, bar_width, bar_height,
                 fill = base_fill, stroke = base_stroke,
-                stroke_width = if (deleted) 1.4 else if (added) 1.8 else 0.7,
-                dash = if (deleted) "4 3" else NULL,
+                stroke_width = if (deleted) {
+                    1.4
+                } else if (added) {
+                    if (added_partial) 1.4 else 1.8
+                } else {
+                    0.7
+                },
+                dash = if (deleted || added_partial) "4 3" else NULL,
                 title = bar_title
             )
         )

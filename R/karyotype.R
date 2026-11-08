@@ -260,11 +260,14 @@ karyotype_full_calls <- function(result, sample, n_per = NULL,
 #' @param minimum Fraction of the donor chromosome that must be covered.
 #' @param start_max Largest allowed start position, as a fraction of the
 #'   chromosome. `NULL` allows a segment anywhere on the chromosome.
-#' @param no_recipient_only Keep only calls without a recipient placement.
+#' @param classes Call classes to include. Defaults to the two classes that
+#'   add donor chromosome material.
 #' @noRd
 karyotype_covered_donor_ids <- function(calls, donor, minimum = 0.95,
                                         start_max = 0.01,
-                                        no_recipient_only = FALSE) {
+                                        classes = c(
+                                            "addition", "substitution"
+                                        )) {
     if (is.null(calls) || !is.data.frame(calls) || nrow(calls) == 0L ||
         is.null(donor) || !is.data.frame(donor) || nrow(donor) == 0L ||
         !all(c("donor_chr_id", "donor_start_bp", "donor_end_bp") %in%
@@ -277,22 +280,11 @@ karyotype_covered_donor_ids <- function(calls, donor, minimum = 0.95,
         keep <- keep & isTRUE_vec(calls$pass)
     }
     if ("class" %in% names(calls)) {
-        keep <- keep & as.character(calls$class) %in%
-            c("addition", "substitution")
+        keep <- keep & as.character(calls$class) %in% classes
     }
     if ("donor_mean" %in% names(calls)) {
         keep <- keep & is.finite(as.numeric(calls$donor_mean)) &
             as.numeric(calls$donor_mean) > 0.5
-    }
-    if (isTRUE(no_recipient_only)) {
-        if ("recipient_chr_id" %in% names(calls)) {
-            keep <- keep & is.na(as.character(calls$recipient_chr_id))
-        }
-        if ("recipient_assignment" %in% names(calls)) {
-            assignment <- as.character(calls$recipient_assignment)
-            keep <- keep & (is.na(assignment) |
-                assignment == "no_recipient_loss")
-        }
     }
     ids <- as.character(calls$donor_chr_id)
     starts <- suppressWarnings(as.numeric(calls$donor_start_bp))
@@ -730,10 +722,20 @@ karyotype_payload <- function(result, sample = NULL,
             recipient_subs == component & call_groups == group
         keep <- is.na(recipient_assignment) |
             recipient_assignment != "no_recipient_loss"
-        ## Partial additions are drawn on the recipient bar because the
-        ## karyotype only adds donor chromosomes for full-chromosome events.
-        ## The tooltip suppresses the recipient row for those calls.
+        ## A partial addition that has its own donor bar is drawn there.
+        ## Smaller additions stay on the recipient bar.
         rows <- which((own | fallback) & keep)
+        if (length(rows) > 0L && length(partial_donor_ids) > 0L) {
+            pass <- if ("pass" %in% names(overlay)) {
+                isTRUE_vec(overlay$pass[rows])
+            } else {
+                rep(TRUE, length(rows))
+            }
+            moved <- as.character(overlay$class[rows]) == "addition" &
+                pass & !is.na(donor_ids[rows]) &
+                donor_ids[rows] %in% partial_donor_ids
+            rows <- rows[!moved]
+        }
         lapply(rows, function(i) {
             make_call(i, recipient_start[[i]], recipient_end[[i]],
                 length_bp, n_per
@@ -778,7 +780,7 @@ karyotype_payload <- function(result, sample = NULL,
     ## Add only the donor chromosome named by the call. A donor group can hold
     ## several components (for example J02, St02 and V02); adding every contig
     ## in the group would invent the components the caller did not observe.
-    added_donor_ids <- character()
+    full_donor_ids <- character()
     for (i in seq_len(nrow(added_calls))) {
         group <- as.character(added_calls$group[[i]])
         candidates <- character()
@@ -815,26 +817,28 @@ karyotype_payload <- function(result, sample = NULL,
                 as.character(donor$group) == group
             ])
         }
-        added_donor_ids <- union(added_donor_ids, candidates)
+        full_donor_ids <- union(full_donor_ids, candidates)
     }
     ## A chromosome-scale addition that was split into adjacent calls never
     ## satisfies the single-call full-chromosome test. Add the donor
     ## chromosome when the union of its passed segments covers it.
-    added_donor_ids <- union(
-        added_donor_ids,
+    full_donor_ids <- union(
+        full_donor_ids,
         karyotype_covered_donor_ids(overlay, donor)
     )
-    ## A large donor-only addition has no recipient bar to sit on. Add its
-    ## donor chromosome as soon as the passed segments cover a meaningful
-    ## part of it, so a partial addition stays visible instead of vanishing.
-    added_donor_ids <- union(
-        added_donor_ids,
+    ## A partial addition gets its own donor chromosome once its passed
+    ## segments cover at least 20% of that donor, whether or not the call also
+    ## has a recipient placement. Only the added part is filled; the rest of
+    ## the donor bar is drawn as a dashed donor deletion.
+    partial_donor_ids <- setdiff(
         karyotype_covered_donor_ids(
             overlay, donor,
             minimum = 0.2, start_max = NULL,
-            no_recipient_only = TRUE
-        )
+            classes = "addition"
+        ),
+        full_donor_ids
     )
+    added_donor_ids <- union(full_donor_ids, partial_donor_ids)
     ## Preserve the registry order for donor chromosomes as well as for the
     ## recipient chromosomes above.
     added_donor <- donor[
@@ -888,6 +892,7 @@ karyotype_payload <- function(result, sample = NULL,
             length = chr_length,
             deleted = FALSE,
             added = TRUE,
+            added_partial = chr_id %in% partial_donor_ids,
             copy = 1L,
             copies = 1L,
             selected = chr_group %in% selected_groups,
@@ -959,7 +964,7 @@ mamamia_karyotype_dependencies <- function() {
         ## file.
         htmltools::htmlDependency(
             name = "mamamiaKaryotypeCard-binding",
-            version = "0.1.0",
+            version = "0.1.1",
             src = src,
             script = "mamamiaKaryotypeCard.js",
             all_files = FALSE

@@ -709,6 +709,14 @@ explorer_tooltip_help_ui <- function() {
                 "Component, state and configured length."
             ),
             row(
+                "Partial addition",
+                paste(
+                    "A donor chromosome bar appears when a partial addition",
+                    "covers at least 20% of that donor. Only the added part",
+                    "is blue; the remainder is an empty dashed donor deletion."
+                )
+            ),
+            row(
                 "Call block",
                 paste(
                     "Calls mode only: says that no assigned donor segment is",

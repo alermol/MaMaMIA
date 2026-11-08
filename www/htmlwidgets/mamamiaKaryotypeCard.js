@@ -1032,15 +1032,17 @@ HTMLWidgets.widget({
         }
         svg.appendChild(chromGroup);
 
+        var addedPartial = added && chromosome.added_partial === true;
         var addedClass = added && barCalls.length === 1
           ? barCalls[0].class
           : null;
         var addedColour = (addedClass && payload.palette[addedClass]) ||
           payload.palette.added;
         var baseFill = deleted ? payload.palette.deleted :
-          (added ? addedColour : "#f4f4f4");
+          (added ? (addedPartial ? "none" : addedColour) : "#f4f4f4");
         var baseStroke = deleted ? payload.palette.negative :
-          (added ? addedColour : "#666666");
+          (added ? (addedPartial ? payload.palette.negative : addedColour)
+            : "#666666");
         var base = svgEl("rect", {
           x: x,
           y: y,
@@ -1048,8 +1050,9 @@ HTMLWidgets.widget({
           height: height,
           fill: baseFill,
           stroke: baseStroke,
-          "stroke-width": deleted ? 1.4 : (added ? 1.8 : 0.7),
-          "stroke-dasharray": deleted ? "4 3" : null,
+          "stroke-width": deleted ? 1.4 :
+            (added ? (addedPartial ? 1.4 : 1.8) : 0.7),
+          "stroke-dasharray": (deleted || addedPartial) ? "4 3" : null,
           rx: 2
         });
         chromGroup.appendChild(base);

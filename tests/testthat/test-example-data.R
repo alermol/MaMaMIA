@@ -48,7 +48,7 @@ test_that("the bundled example replays a result and progress", {
         as.character(1:8)
     )
     expect_gte(length(unique(result$assembly$contigs$recipient$length)), 6L)
-    expect_length(unique(round(passing$width_bp)), 7L)
+    expect_length(unique(round(passing$width_bp)), 8L)
     expect_true(any(passing$class == "other"))
     expect_true(any(
         passing$class == "substitution" & passing$width_bp == 200000
