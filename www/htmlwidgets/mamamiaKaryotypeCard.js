@@ -32,26 +32,21 @@ HTMLWidgets.widget({
       return node;
     }
 
-    function callLegendEntries(showDeletions) {
-      var entries = [
-        ["substitution", "Substitution"],
-        ["addition", "Addition"],
-        ["deletion", "Deletion"],
-        ["complex", "Complex"],
-        ["other", "Other"],
-        ["deleted", "Deleted recipient"],
-        ["added", "Added donor"]
-      ];
-      if (showDeletions === false) {
-        entries = entries.filter(function (entry) {
-          return entry[0] !== "deletion" && entry[0] !== "deleted";
-        });
-      }
-      return entries;
+    function sceneSpec() {
+      return (payload && payload.scene) || {};
+    }
+
+    function sceneLegend() {
+      return sceneSpec().legend || {};
+    }
+
+    function callLegendEntries() {
+      // Legend policy is resolved on the server; this is an adapter accessor.
+      return sceneLegend().entries || [];
     }
 
     function legendItemWidth(entry) {
-      return legendSwatch + legendGap + entry[1].length * 5.6;
+      return legendSwatch + legendGap + entry.label.length * 5.6;
     }
 
     function layoutLegend(entries, maxWidth) {
@@ -84,51 +79,17 @@ HTMLWidgets.widget({
         .replace(/"/g, "&quot;");
     }
 
-    function hexToRgb(hex) {
-      var value = hex.replace("#", "");
-      if (value.length === 3) {
-        value = value[0] + value[0] + value[1] + value[1] + value[2] + value[2];
-      }
-      return [
-        parseInt(value.slice(0, 2), 16),
-        parseInt(value.slice(2, 4), 16),
-        parseInt(value.slice(4, 6), 16)
-      ];
-    }
-
-    function mixColour(from, to, t) {
-      var a = hexToRgb(from);
-      var b = hexToRgb(to);
-      var c = a.map(function (v, i) {
-        return Math.round(v + (b[i] - v) * Math.max(0, Math.min(1, t)));
-      });
-      return "rgb(" + c[0] + "," + c[1] + "," + c[2] + ")";
-    }
-
-    function scoreColour(value, limit, palette) {
-      if (!isNumber(value)) {
-        return "#eeeeee";
-      }
-      var t = Math.max(-1, Math.min(1, value / limit));
-      if (t < 0) {
-        return mixColour(palette.zero, palette.negative, -t);
-      }
-      return mixColour(palette.zero, palette.positive, t);
-    }
-
     function isNumber(value) {
       return typeof value === "number" && Number.isFinite(value);
     }
 
-    function fmt(value) {
-      return isNumber(value) ? Number(value).toFixed(2) : "NA";
-    }
-
-    function addLegend(svg, x, y, payload, maxWidth) {
-      var palette = payload.palette;
+    function addLegend(svg, x, y, maxWidth) {
+      var palette = sceneSpec().palette || payload.palette;
+      var spec = sceneLegend();
       var legend = svgEl("g", { "class": "karyotype-legend" });
       svg.appendChild(legend);
-      if (payload.mode === "heatmap") {
+      if (spec.kind === "heatmap") {
+        var heatmap = spec.heatmap || {};
         var gradientId = "mamamia-karyotype-gradient-" +
           Math.random().toString(36).slice(2);
         var defs = svgEl("defs", {});
@@ -136,9 +97,9 @@ HTMLWidgets.widget({
           id: gradientId, x1: "0%", x2: "100%", y1: "0%", y2: "0%"
         });
         [
-          ["0%", palette.negative],
-          ["50%", palette.zero],
-          ["100%", palette.positive]
+          ["0%", heatmap.negative],
+          ["50%", heatmap.zero],
+          ["100%", heatmap.positive]
         ].forEach(function (stop) {
           gradient.appendChild(svgEl("stop", {
             offset: stop[0], "stop-color": stop[1]
@@ -154,37 +115,35 @@ HTMLWidgets.widget({
           x: x + 36, y: y - 9, width: 126, height: 10,
           fill: "url(#" + gradientId + ")", rx: 1.5
         }));
-        legend.appendChild(textEl("-" + Number(payload.score_limit).toFixed(1), {
+        var labels = heatmap.labels || {};
+        legend.appendChild(textEl(labels.min || "", {
           x: x + 36, y: y + 13, "font-size": 9, "font-weight": 500,
           fill: palette.text
         }));
-        legend.appendChild(textEl("0", {
+        legend.appendChild(textEl(labels.zero || "0", {
           x: x + 99, y: y + 13, "font-size": 9, "font-weight": 500,
           fill: palette.text, "text-anchor": "middle"
         }));
-        legend.appendChild(textEl("+" + Number(payload.score_limit).toFixed(1), {
+        legend.appendChild(textEl(labels.max || "", {
           x: x + 162, y: y + 13, "font-size": 9, "font-weight": 500,
           fill: palette.text, "text-anchor": "end"
         }));
       } else {
-        var rows = layoutLegend(
-          callLegendEntries(payload.hide_deletions !== true), maxWidth
-        );
+        var rows = layoutLegend(callLegendEntries(), maxWidth);
         rows.forEach(function (row, rowIndex) {
           var rowY = y + rowIndex * legendRowHeight;
           row.items.forEach(function (item) {
             var entry = item.entry;
             var itemX = x + item.x;
-            var colour = palette[entry[0]];
             legend.appendChild(svgEl("rect", {
               x: itemX, y: rowY - 9, width: legendSwatch,
-              height: legendSwatch, fill: colour,
-              stroke: entry[0] === "deleted" ? palette.negative : palette.text,
-              "stroke-width": entry[0] === "deleted" ? 1.2 : 0.6,
-              "stroke-dasharray": entry[0] === "deleted" ? "3 2" : null,
+              height: legendSwatch, fill: entry.fill,
+              stroke: entry.stroke,
+              "stroke-width": entry.stroke_width,
+              "stroke-dasharray": entry.dash,
               rx: 1.5
             }));
-            legend.appendChild(textEl(entry[1], {
+            legend.appendChild(textEl(entry.label, {
               x: itemX + legendSwatch + legendGap,
               y: rowY,
               "font-size": legendFontSize,
@@ -194,16 +153,12 @@ HTMLWidgets.widget({
           });
         });
       }
-      var omitted = payload.hidden_deletions &&
-        Number(payload.hidden_deletions.segments);
-      if (payload.hide_deletions === true && omitted > 0) {
-        legend.appendChild(textEl(
-          omitted + " segment" + (omitted === 1 ? "" : "s") + " omitted",
-          {
-            x: x + maxWidth, y: y, "text-anchor": "end",
-            "font-size": 9, "font-weight": 600, fill: palette.text
-          }
-        ));
+      var note = sceneSpec().omitted_note;
+      if (note && note.text) {
+        legend.appendChild(textEl(note.text, {
+          x: x + maxWidth, y: y, "text-anchor": "end",
+          "font-size": 9, "font-weight": 600, fill: palette.text
+        }));
       }
       return legend;
     }
@@ -213,129 +168,43 @@ HTMLWidgets.widget({
         String(value) !== "" && String(value) !== "NA";
     }
 
-    function hasDonorSupport(call) {
-      if (!call) {
-        return false;
-      }
-      if (call.donor_supported === true || call.donor_supported === false) {
-        return call.donor_supported === true;
-      }
-      if (hasValue(call.class_evidence)) {
-        return String(call.class_evidence).indexOf("donor") !== -1;
-      }
-      return ["substitution", "addition", "complex"].indexOf(
-        String(call.class)
-      ) !== -1;
-    }
-
-    function hasRecipientSupport(call) {
-      if (!call) {
-        return false;
-      }
-      if (call.recipient_supported === true ||
-          call.recipient_supported === false) {
-        return call.recipient_supported === true;
-      }
-      if (hasValue(call.class_evidence)) {
-        return String(call.class_evidence).indexOf("recipient") !== -1;
-      }
-      return ["substitution", "deletion", "complex"].indexOf(
-        String(call.class)
-      ) !== -1;
-    }
-
-    function callOpacity(call) {
-      var opacity = call.confidence === "high" ? 0.95 :
-        (call.confidence === "moderate" ? 0.72 : 0.45);
-      if (call.pass === false) {
-        opacity *= 0.45;
-      }
-      if (call.recipient_assignment === "ambiguous") {
-        opacity *= 0.55;
-      }
-      if (call.recipient_assignment === "no_recipient_loss") {
-        opacity *= 0.35;
-      }
-      return opacity;
-    }
-
-    function drawHeatmapForBar(chromosome, bar, calls) {
-      var scores = chromosome.scores || [];
-      calls = calls.filter(function (call) {
-        return call.cross_group !== true;
-      });
-      if (!scores.length || !calls.length) {
-        return;
-      }
-      var bins = Math.min(
-        scores.length, Math.max(40, Math.floor(bar.height / 2))
-      );
-      var binHeight = bar.height / bins;
-      var intervals = calls.map(function (call) {
-        return {
-          start: call.start || 0,
-          end: call.end === null || call.end === undefined ? 1 : call.end
-        };
-      });
-      intervals.sort(function (left, right) {
-        return left.start - right.start;
-      });
-      var pointer = 0;
-      var activeEnd = -Infinity;
-      for (var i = 0; i < bins; i += 1) {
-        var centre = (i + 0.5) / bins;
-        while (pointer < intervals.length &&
-            intervals[pointer].start <= centre) {
-          if (intervals[pointer].end > activeEnd) {
-            activeEnd = intervals[pointer].end;
-          }
-          pointer += 1;
+    function drawHeatmapBins(bar, bins) {
+      // Bins, including their colour, are resolved in the payload scene by
+      // the shared R bin policy. This is only a geometry adapter.
+      (bins || []).forEach(function (bin) {
+        var start = Number(bin.start);
+        var end = Number(bin.end);
+        if (!isFinite(start) || !isFinite(end) || end <= start) {
+          return;
         }
-        if (centre > activeEnd) {
-          continue;
-        }
-        var from = Math.floor(i * scores.length / bins);
-        var to = Math.max(
-          from + 1, Math.floor((i + 1) * scores.length / bins)
-        );
-        var sum = 0;
-        var count = 0;
-        for (var j = from; j < to; j += 1) {
-          var value = scores[j];
-          if (value !== null && value !== undefined && isFinite(value)) {
-            sum += value;
-            count += 1;
-          }
-        }
-        var score = count ? sum / count : NaN;
         bar.group.appendChild(svgEl("rect", {
           x: bar.x,
-          y: bar.y + i * binHeight,
+          y: bar.y + start * bar.height,
           width: bar.width,
-          height: binHeight + 0.6,
-          fill: scoreColour(score, payload.score_limit, payload.palette),
+          height: Math.max(0.5, (end - start) * bar.height + 0.6),
+          fill: bin.fill,
           "shape-rendering": "crispEdges",
           "pointer-events": "none"
         }));
-      }
+      });
     }
 
     function drawCallsForBar(bar, calls) {
+      // Calls are scene primitives with colour, opacity, stroke and dash
+      // already resolved.
       calls.forEach(function (call) {
         var y0 = bar.y + Math.max(0, Math.min(1, call.start)) * bar.height;
         var y1 = bar.y + Math.max(0, Math.min(1, call.end)) * bar.height;
-        var colour = payload.palette[call.class] || payload.palette.other;
-        var cross = call.cross_group === true;
         bar.group.appendChild(svgEl("rect", {
           x: bar.x,
           y: y0,
           width: bar.width,
           height: Math.max(1, y1 - y0),
-          fill: colour,
-          opacity: callOpacity(call),
-          stroke: cross ? "#333333" : "#ffffff",
-          "stroke-width": cross ? 1.3 : 0.5,
-          "stroke-dasharray": cross ? "3 2" : null,
+          fill: call.fill,
+          opacity: call.opacity,
+          stroke: call.stroke,
+          "stroke-width": call.stroke_width,
+          "stroke-dasharray": call.dash,
           "pointer-events": "none"
         }));
       });
@@ -355,13 +224,6 @@ HTMLWidgets.widget({
       return (number > 0 ? "+" : "") + number.toFixed(digits || 2);
     }
 
-    function signClass(value) {
-      if (!isNumber(value)) {
-        return "muted";
-      }
-      return Number(value) > 0 ? "pos" : Number(value) < 0 ? "neg" : "muted";
-    }
-
     function fmtBp(value) {
       if (!isNumber(value) || Number(value) < 0) {
         return "NA";
@@ -374,57 +236,6 @@ HTMLWidgets.widget({
         return (number / 1e3).toFixed(1) + " kb";
       }
       return Math.round(number) + " bp";
-    }
-
-    function fmtSpan(start, end) {
-      if (isNumber(start) && isNumber(end)) {
-        return fmtBp(start) + " – " + fmtBp(end);
-      }
-      if (isNumber(start)) {
-        return "from " + fmtBp(start);
-      }
-      if (isNumber(end)) {
-        return "to " + fmtBp(end);
-      }
-      return "";
-    }
-
-    function fmtPercent(value) {
-      return isNumber(value) ? Math.round(100 * Number(value)) + "%" : "NA";
-    }
-
-    function statusClass(value) {
-      var key = String(value || "").toLowerCase();
-      if (key === "confident") {
-        return "mamamia-tip-status-confident";
-      }
-      if (key === "ambiguous") {
-        return "mamamia-tip-status-ambiguous";
-      }
-      if (key === "needs review" || key === "needs_review") {
-        return "mamamia-tip-status-review";
-      }
-      return "mamamia-tip-status-neutral";
-    }
-
-    function resolvedStatus(call) {
-      if (hasValue(call.class_status)) {
-        return call.class_status;
-      }
-      if (call.class_confidence === "high") {
-        return "confident";
-      }
-      if (call.class_confidence === "moderate") {
-        return "ambiguous";
-      }
-      if (call.class_confidence === "low") {
-        return "needs_review";
-      }
-      return "call";
-    }
-
-    function statusLabel(value) {
-      return String(value || "call").replace(/_/g, " ");
     }
 
     function tipRow(label, value) {
@@ -450,37 +261,60 @@ HTMLWidgets.widget({
         body + "</div>";
     }
 
-    function tipChip(value, kind) {
-      if (!hasValue(value)) {
+    function tipChip(chip) {
+      if (!chip || !hasValue(chip.text)) {
         return "";
       }
       return '<span class="mamamia-tip-chip ' +
-        escapeHtml(kind || "neutral") + '">' +
-        escapeHtml(value) + "</span>";
+        escapeHtml(chip.kind || "neutral") + '">' +
+        escapeHtml(chip.text) + "</span>";
     }
 
-    function tipMetric(label, value) {
+    function tipMetric(metric) {
       return '<div class="mamamia-tip-metric"><span>' +
-        escapeHtml(label) + '</span><strong class="' +
-        signClass(value) + '">' + escapeHtml(fmtSigned(value)) +
-        "</strong></div>";
+        escapeHtml(metric.label) + '</span><strong class="' +
+        escapeHtml(metric.class || "muted") + '">' +
+        escapeHtml(metric.value) + "</strong></div>";
     }
 
-    function assignmentLabel(value) {
-      var key = String(value || "");
-      if (key === "assigned") {
-        return "assigned";
-      }
-      if (key === "cross_group") {
-        return "cross-group candidate";
-      }
-      if (key === "ambiguous") {
-        return "ambiguous";
-      }
-      if (key === "no_recipient_loss") {
-        return "no host";
-      }
-      return key || "group only";
+    function tooltipHeader(tooltip) {
+      var accent = safeColour(tooltip.accent, "#6c757d");
+      var status = tooltip.status || {};
+      return '<div class="mamamia-tip" style="border-left-color:' +
+        accent + ";--tip-accent:" + accent + '">' +
+        '<div class="mamamia-tip-head">' +
+        '<div class="mamamia-tip-title"><span class="mamamia-tip-class">' +
+        escapeHtml(tooltip.title || "call") +
+        '</span><span class="mamamia-tip-status ' +
+        escapeHtml(status.class || "mamamia-tip-status-neutral") + '">' +
+        escapeHtml(status.text || "call") + "</span></div>" +
+        '<div class="mamamia-tip-sub">' +
+        escapeHtml(tooltip.subtitle || "") + "</div></div>";
+    }
+
+    function tooltipSections(sections) {
+      var html = "";
+      (sections || []).forEach(function (section) {
+        var body = "";
+        if (section.rows) {
+          body = tipGrid(section.rows.map(function (row) {
+            return tipRow(row.label, row.value);
+          }));
+        } else if (section.metrics) {
+          body = '<div class="mamamia-tip-metrics">' +
+            section.metrics.map(tipMetric).join("") + "</div>";
+          var chips = (section.chips || []).map(tipChip).join("");
+          if (chips) {
+            body += '<div class="mamamia-tip-chips">' + chips + "</div>";
+          }
+        }
+        if (!body && section.empty) {
+          body = '<div class="mamamia-tip-empty">' +
+            escapeHtml(section.empty) + "</div>";
+        }
+        html += tipSection(section.label, body);
+      });
+      return html;
     }
 
     function sourceFraction(fraction, chromosome) {
@@ -528,199 +362,61 @@ HTMLWidgets.widget({
           matched = call;
         }
       });
-      var accent = safeColour(
-        matched ? payload.palette[matched.class] : null,
-        "#6c757d"
-      );
-      var className = matched
-        ? (matched.class || "call")
-        : chromosome.deleted
+      var html;
+      if (matched && matched.tooltip) {
+        // The server resolves every display string for the matched-call card.
+        // This adapter only renders the tooltip model.
+        html = tooltipHeader(matched.tooltip) +
+          tooltipSections(matched.tooltip.sections);
+      } else if (matched) {
+        // Deliberately minimal fallback for a legacy payload without a
+        // tooltip. Canonical call fields are not reconstructed here.
+        var legacyParts = [];
+        if (hasValue(payload.sample)) {
+          legacyParts.push(payload.sample);
+        }
+        if (hasValue(chromosome.group)) {
+          legacyParts.push("group " + chromosome.group);
+        }
+        html = tooltipHeader({
+          accent: "#6c757d",
+          title: "call",
+          status: {
+            text: "call",
+            class: "mamamia-tip-status-neutral"
+          },
+          subtitle: legacyParts.join(" · ")
+        }) + tipSection(
+          "Call",
+          '<div class="mamamia-tip-empty">' +
+            "Call details unavailable in this legacy payload.</div>"
+        );
+      } else {
+        var subParts = [];
+        if (hasValue(payload.sample)) {
+          subParts.push(payload.sample);
+        }
+        if (hasValue(chromosome.group)) {
+          subParts.push("group " + chromosome.group);
+        }
+        if (isNumber(chromosome.length)) {
+          subParts.push(fmtBp(sourceFraction(fraction, chromosome) *
+            chromosome.length));
+        }
+        var className = chromosome.deleted
           ? "deleted recipient"
           : chromosome.added
             ? "added donor"
             : "recipient chromosome";
-      var status = matched ? resolvedStatus(matched) : "no call";
-      var donorSupported = hasDonorSupport(matched);
-      var recipientSupported = hasRecipientSupport(matched);
-      var subParts = [];
-      if (hasValue(payload.sample)) {
-        subParts.push(payload.sample);
-      }
-      if (hasValue(chromosome.group)) {
-        subParts.push("group " + chromosome.group);
-      }
-      if (matched) {
-        var callSpan = donorSupported
-          ? fmtSpan(matched.donor_start_bp, matched.donor_end_bp)
-          : "";
-        var spanLabel = "donor ";
-        if (!callSpan) {
-          callSpan = fmtSpan(matched.start_bp, matched.end_bp);
-          spanLabel = "";
-        }
-        if (callSpan) {
-          subParts.push(spanLabel + callSpan);
-        }
-      } else if (isNumber(chromosome.length)) {
-        subParts.push(fmtBp(sourceFraction(fraction, chromosome) *
-          chromosome.length));
-      }
-
-      var html = '<div class="mamamia-tip" style="border-left-color:' +
-        accent + ";--tip-accent:" + accent + '">' +
-        '<div class="mamamia-tip-head">' +
-        '<div class="mamamia-tip-title"><span class="mamamia-tip-class">' +
-        escapeHtml(className) + '</span><span class="mamamia-tip-status ' +
-        statusClass(status) + '">' +
-        escapeHtml(statusLabel(status)) + "</span></div>" +
-        '<div class="mamamia-tip-sub">' +
-        escapeHtml(subParts.join(" · ")) + "</div></div>";
-
-      if (matched) {
-        var recipient = hasValue(matched.recipient_chr_name)
-          ? matched.recipient_chr_name
-          : (matched.recipient_assignment === "no_recipient_loss"
-            ? "no host"
-            : "unassigned");
-        if (hasValue(matched.recipient_group)) {
-          recipient += " · group " + matched.recipient_group;
-        }
-        var recipientSpan = fmtSpan(
-          matched.recipient_start_bp,
-          matched.recipient_end_bp
-        );
-        if (recipientSpan) {
-          recipient += " · " + recipientSpan;
-        }
-        var donor = hasValue(matched.donor_chr_name)
-          ? matched.donor_chr_name
-          : (hasValue(matched.donor_group)
-            ? "group " + matched.donor_group
-            : "unknown");
-        if (hasValue(matched.donor_chr_name) &&
-            hasValue(matched.donor_group)) {
-          donor += " · group " + matched.donor_group;
-        }
-        var donorSpan = fmtSpan(matched.donor_start_bp, matched.donor_end_bp);
-        if (donorSpan) {
-          donor += " · " + donorSpan;
-        }
-        var placement = [];
-        if (recipientSupported) {
-          placement.push(tipRow("Recipient", recipient));
-        }
-        if (donorSupported) {
-          placement.push(tipRow("Donor", donor));
-        }
-        if (recipientSupported && donorSupported) {
-          placement.push(tipRow(
-            "Relation",
-            matched.recipient_assignment === "no_recipient_loss"
-              ? "not placed"
-              : (matched.cross_group ? "cross-group" : "same group")
-          ));
-        }
-        if (recipientSupported) {
-          placement.push(tipRow(
-            "Assignment",
-            assignmentLabel(matched.recipient_assignment) +
-              (isNumber(matched.recipient_margin)
-                ? " · margin " + fmtSigned(matched.recipient_margin)
-                : "")
-          ));
-        }
-        if (hasValue(matched.class_group) &&
-            matched.class_group !== matched.class) {
-          placement.push(tipRow(
-            "Group class",
-            matched.class_group + " → " + matched.class
-          ));
-        }
-        if (recipientSupported &&
-            matched.recipient_assignment === "ambiguous" &&
-            hasValue(matched.recipient_alternative)) {
-          placement.push(tipRow(
-            "Alternative",
-            matched.recipient_alternative
-          ));
-        }
-        var placementBody = tipGrid(placement);
-        if (!placementBody) {
-          placementBody =
-            '<div class="mamamia-tip-empty">' +
-            "No donor or recipient segment assigned.</div>";
-        }
-        html += tipSection("Placement", placementBody);
-
-        var metrics = '<div class="mamamia-tip-metrics">' +
-          tipMetric("Score", matched.score) +
-          tipMetric("Donor", matched.donor_mean) +
-          tipMetric("Recipient", matched.recipient_mean) +
-          tipMetric("Total", matched.total_mean) +
-          "</div>";
-        var chips = [];
-        if (hasValue(matched.class_confidence)) {
-          chips.push(tipChip(
-            "class confidence " + matched.class_confidence, "confidence"
-          ));
-        }
-        if (hasValue(matched.class_evidence)) {
-          chips.push(tipChip(
-            "evidence " + matched.class_evidence, "evidence"
-          ));
-        }
-        if (hasValue(matched.copy_state)) {
-          chips.push(tipChip("copy " + matched.copy_state, "copy"));
-        }
-        if (hasValue(matched.total_evidence) &&
-            matched.total_evidence !== "neutral") {
-          chips.push(tipChip(
-            "total " + matched.total_evidence, "copy"
-          ));
-        }
-        if (matched.component_status === "heterogeneous") {
-          chips.push(tipChip("components heterogeneous", "warn"));
-        }
-        if (matched.mappability_status === "low") {
-          chips.push(tipChip("low mappability", "warn"));
-        }
-        if (matched.pass === false) {
-          chips.push(tipChip("not passing", "warn"));
-        }
-        if (chips.length) {
-          metrics += '<div class="mamamia-tip-chips">' +
-            chips.join("") + "</div>";
-        }
-        html += tipSection("Evidence", metrics);
-
-        var geometry = [];
-        if (isNumber(matched.width_bp)) {
-          geometry.push(tipRow(
-            donorSupported ? "Donor width" : "Call width",
-            fmtBp(matched.width_bp)
-          ));
-        }
-        if (recipientSupported &&
-            isNumber(matched.recipient_deletion_width_bp)) {
-          geometry.push(tipRow(
-            "Recipient run", fmtBp(matched.recipient_deletion_width_bp)
-          ));
-        }
-        if (donorSupported && recipientSupported &&
-            isNumber(matched.recipient_width_overlap)) {
-          geometry.push(tipRow(
-            "Overlap",
-            fmtPercent(matched.recipient_width_overlap)
-          ));
-        }
-        if (donorSupported && recipientSupported &&
-            isNumber(matched.recipient_fraction_ratio)) {
-          geometry.push(tipRow(
-            "Width ratio", fmt(matched.recipient_fraction_ratio)
-          ));
-        }
-        html += tipSection("Geometry", tipGrid(geometry));
-      } else {
+        html = tooltipHeader({
+          accent: "#6c757d",
+          title: className,
+          status: {
+            text: "no call",
+            class: "mamamia-tip-status-neutral"
+          },
+          subtitle: subParts.join(" · ")
+        });
         var chromosomeRows = [];
         if (hasValue(chromosome.component)) {
           chromosomeRows.push(tipRow("Component", chromosome.component));
@@ -832,51 +528,36 @@ HTMLWidgets.widget({
     }
 
     function fullExportPayload() {
-      var full = {};
-      Object.keys(payload).forEach(function (key) {
-        full[key] = payload[key];
-      });
-      var currentScores = {};
-      (payload.chromosomes || []).forEach(function (chromosome) {
-        currentScores[String(chromosome.id) + "|" +
-          String(chromosome.copy)] = chromosome.scores || [];
-      });
-      var fullChromosomes = payload.full_chromosomes || [];
-      if (fullChromosomes.length) {
-        full.chromosomes = fullChromosomes.map(function (chromosome) {
-          var copy = {};
-          Object.keys(chromosome).forEach(function (key) {
-            copy[key] = chromosome[key];
-          });
-          if (!copy.scores || !copy.scores.length) {
-            copy.scores = currentScores[String(copy.id) + "|" +
-              String(copy.copy)] || [];
-          }
-          copy.selected = true;
-          return copy;
-        });
-      } else {
-        var allCalls = payload.full_calls || [];
-        full.chromosomes = (payload.chromosomes || []).map(
-          function (chromosome, index) {
-            var copy = {};
-            Object.keys(chromosome).forEach(function (key) {
-              copy[key] = chromosome[key];
-            });
-            copy.calls = allCalls[index] || [];
-            copy.selected = true;
-            return copy;
-          }
-        );
+      // The current contract requires a self-contained full view. A payload
+      // without one has no full export; positional side channels are not
+      // reconstructed.
+      var view = payload.views && payload.views.full;
+      if (!view || !(view.chromosomes || []).length) {
+        return null;
       }
-      delete full.full_calls;
-      delete full.full_chromosomes;
-      delete full.hidden_deletions;
+      var full = {};
+      Object.keys(view).forEach(function (key) {
+        full[key] = view[key];
+      });
+      full.chromosomes = view.chromosomes.map(function (chromosome) {
+        var copy = {};
+        Object.keys(chromosome).forEach(function (key) {
+          copy[key] = chromosome[key];
+        });
+        copy.selected = true;
+        return copy;
+      });
       full.hide_deletions = false;
+      full.hidden_deletions = { segments: 0, bases: 0 };
+      full.views = null;
       return full;
     }
 
     function renderFullSvg() {
+      var fullPayload = fullExportPayload();
+      if (!fullPayload) {
+        return null;
+      }
       var fullWidth = Math.max(1600, Number(width) || 0);
       var fullHeight = Math.max(900, Number(height) || 0);
       var holder = document.createElement("div");
@@ -891,7 +572,7 @@ HTMLWidgets.widget({
       var savedWidth = width;
       var savedHeight = height;
       el = holder;
-      payload = fullExportPayload();
+      payload = fullPayload;
       width = fullWidth;
       height = fullHeight;
       var svg = null;
@@ -991,7 +672,7 @@ HTMLWidgets.widget({
       var sideMargin = 22;
       var legendWidth = Math.max(0, availableWidth - sideMargin * 2);
       var legendRows = layoutLegend(
-        callLegendEntries(payload.hide_deletions !== true), legendWidth
+        callLegendEntries(), legendWidth
       ).length;
       var margin = {
         top: 58 + Math.max(0, legendRows - 1) * legendRowHeight,
@@ -1004,11 +685,11 @@ HTMLWidgets.widget({
         availableHeight - margin.top - margin.bottom
       );
       var totalHeight = margin.top + maxBarHeight + margin.bottom;
+      var sceneChromosomes = sceneSpec().chromosomes || [];
       var maxLength = 0;
-      chromosomes.forEach(function (chromosome) {
-        var length = Number(
-          chromosome.display_length || chromosome.length
-        );
+      chromosomes.forEach(function (chromosome, index) {
+        var sceneChromosome = sceneChromosomes[index] || {};
+        var length = Number(sceneChromosome.display_length);
         if (isFinite(length) && length > maxLength) {
           maxLength = length;
         }
@@ -1020,12 +701,13 @@ HTMLWidgets.widget({
       var chromosomeGap = 8;
       var maxCopies = 1;
       var nPairs = 0;
-      chromosomes.forEach(function (chromosome) {
-        var copies = Math.max(1, Number(chromosome.copies) || 1);
+      chromosomes.forEach(function (chromosome, index) {
+        var sceneChromosome = sceneChromosomes[index] || {};
+        var copies = Math.max(1, Number(sceneChromosome.copies) || 1);
         if (copies > maxCopies) {
           maxCopies = copies;
         }
-        if (copies === 1 || Number(chromosome.copy) === 1) {
+        if (copies === 1 || Number(sceneChromosome.copy) === 1) {
           nPairs += 1;
         }
       });
@@ -1043,8 +725,9 @@ HTMLWidgets.widget({
       chromosomes.forEach(function (chromosome, index) {
         barsWidth += barWidth;
         if (index < chromosomes.length - 1) {
-          var copies = Math.max(1, Number(chromosome.copies) || 1);
-          var copy = Math.max(1, Number(chromosome.copy) || 1);
+          var sceneChromosome = sceneChromosomes[index] || {};
+          var copies = Math.max(1, Number(sceneChromosome.copies) || 1);
+          var copy = Math.max(1, Number(sceneChromosome.copy) || 1);
           barsWidth += (copies > 1 && copy < copies)
             ? pairGap
             : chromosomeGap;
@@ -1064,19 +747,21 @@ HTMLWidgets.widget({
       svg.style.display = "block";
       root.appendChild(svg);
 
-      addLegend(svg, margin.left, 16, payload, legendWidth);
+      addLegend(svg, margin.left, 16, legendWidth);
 
       var cursorX = margin.left + (plotWidth - barsWidth) / 2;
       var y = margin.top;
       chromosomes.forEach(function (chromosome, index) {
-        var added = chromosome.added === true;
-        var deleted = !added && chromosome.deleted === true;
+        var sceneChromosome = sceneChromosomes[index] || {};
+        var added = sceneChromosome.added === true;
+        var deleted = sceneChromosome.deleted === true;
         var barCalls = chromosome.calls || [];
-        var copies = Math.max(1, Number(chromosome.copies) || 1);
-        var copy = Math.max(1, Number(chromosome.copy) || 1);
+        var styledCalls = sceneChromosome.calls || [];
+        var copies = Math.max(1, Number(sceneChromosome.copies) || 1);
+        var copy = Math.max(1, Number(sceneChromosome.copy) || 1);
         var height = Math.max(
           3, maxBarHeight * (Number(
-            chromosome.display_length || chromosome.length
+            sceneChromosome.display_length
           ) || 0) / maxLength
         );
         var x = cursorX;
@@ -1090,32 +775,21 @@ HTMLWidgets.widget({
           "data-group": chromosome.group,
           "data-copy": copy
         });
-        if (chromosome.selected === false) {
+        if (sceneChromosome.selected === false) {
           chromGroup.setAttribute("opacity", "0.32");
         }
         svg.appendChild(chromGroup);
 
-        var addedPartial = added && chromosome.added_partial === true;
-        var addedClass = added && barCalls.length === 1
-          ? barCalls[0].class
-          : null;
-        var addedColour = (addedClass && payload.palette[addedClass]) ||
-          payload.palette.added;
-        var baseFill = deleted ? payload.palette.deleted :
-          (added ? (addedPartial ? "none" : addedColour) : "#f4f4f4");
-        var baseStroke = deleted ? payload.palette.negative :
-          (added ? (addedPartial ? payload.palette.negative : addedColour)
-            : "#666666");
+        var baseSpec = sceneChromosome.base || {};
         var base = svgEl("rect", {
           x: x,
           y: y,
           width: barWidth,
           height: height,
-          fill: baseFill,
-          stroke: baseStroke,
-          "stroke-width": deleted ? 1.4 :
-            (added ? (addedPartial ? 1.4 : 1.8) : 0.7),
-          "stroke-dasharray": (deleted || addedPartial) ? "4 3" : null,
+          fill: baseSpec.fill,
+          stroke: baseSpec.stroke,
+          "stroke-width": baseSpec.stroke_width,
+          "stroke-dasharray": baseSpec.dash,
           rx: 2
         });
         chromGroup.appendChild(base);
@@ -1128,52 +802,41 @@ HTMLWidgets.widget({
           height: height
         };
         if (barCalls.length) {
-          if (payload.mode === "heatmap" && !deleted) {
-            drawHeatmapForBar(chromosome, barBox, barCalls);
-            var crossCalls = barCalls.filter(function (call) {
+          if (sceneSpec().mode === "heatmap" && !deleted) {
+            drawHeatmapBins(barBox, sceneChromosome.heatmap_bins);
+            var crossCalls = styledCalls.filter(function (call) {
               return call.cross_group === true;
             });
             if (crossCalls.length) {
               drawCallsForBar(barBox, crossCalls);
             }
           } else {
-            drawCallsForBar(barBox, barCalls);
+            drawCallsForBar(barBox, styledCalls);
           }
         }
 
-        if (deleted && copy === 1) {
-          chromGroup.appendChild(textEl("Deleted", {
+        if (sceneChromosome.caption) {
+          chromGroup.appendChild(textEl(sceneChromosome.caption.text, {
             x: pairCenter,
             y: margin.top - 7,
             "text-anchor": "middle",
             "font-size": 9,
             "font-weight": 700,
             "letter-spacing": "0.03em",
-            fill: payload.palette.negative
-          }));
-        }
-        if (added && copy === 1) {
-          chromGroup.appendChild(textEl("Added", {
-            x: pairCenter,
-            y: margin.top - 7,
-            "text-anchor": "middle",
-            "font-size": 9,
-            "font-weight": 700,
-            "letter-spacing": "0.03em",
-            fill: payload.palette.addition
+            fill: sceneChromosome.caption.fill
           }));
         }
 
-        if (copy === 1 || copies === 1) {
+        if (sceneChromosome.show_label === true) {
           chromGroup.appendChild(textEl(
-            chromosome.label || chromosome.name || chromosome.component || "",
+            sceneChromosome.label || "",
             {
               x: pairCenter,
               y: margin.top + maxBarHeight + 17,
               "text-anchor": "middle",
               "font-size": 11,
               "font-weight": 600,
-              fill: payload.palette.text
+              fill: (sceneSpec().palette || payload.palette).text
             }
           ));
         }

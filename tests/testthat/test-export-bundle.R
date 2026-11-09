@@ -169,7 +169,8 @@ test_that("the result bundle contains the table, BEDPE and karyotypes", {
     )
     full <- bam_full_karyotype_payload(current)
     expect_null(current$full_calls)
-    expect_true(length(current$full_chromosomes) > 0L)
+    expect_null(current$full_chromosomes)
+    expect_true(length(current$views$full$chromosomes) > 0L)
     confident_payload <- karyotype_payload(
         result, sample = sample, mode = "calls",
         calls = confident_calls, selected_groups = NULL
@@ -182,7 +183,7 @@ test_that("the result bundle contains the table, BEDPE and karyotypes", {
     expect_identical(
         sum(vapply(full$chromosomes, function(x) length(x$calls), integer(1))),
         sum(vapply(
-            current$full_chromosomes,
+            current$views$full$chromosomes,
             function(x) length(x$calls), integer(1)
         ))
     )

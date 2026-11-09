@@ -218,42 +218,12 @@
 
 #' @noRd
 .call_component_status <- function(calls, spread_cutoff = 2.0) {
-    n <- nrow(calls)
-    spread <- function(name) {
-        if (!name %in% names(calls)) {
-            return(rep(0, n))
-        }
-        values <- as.numeric(calls[[name]])
-        values[!is.finite(values)] <- 0
-        values
-    }
-    donor_spread <- spread("donor_component_spread")
-    recipient_spread <- spread("recipient_component_spread")
-    supported <- if ("n_donor_supported" %in% names(calls)) {
-        values <- as.numeric(calls$n_donor_supported)
-        values[!is.finite(values)] <- 0
-        values
-    } else {
-        rep(0, n)
-    }
-    ifelse(
-        donor_spread > spread_cutoff |
-            recipient_spread > spread_cutoff |
-            supported > 1,
-        "heterogeneous", "consistent"
-    )
+    call_component_status_from(calls, spread_cutoff = spread_cutoff)
 }
 
 #' @noRd
 .call_mappability_status <- function(calls, cutoff = 0.5) {
-    n <- nrow(calls)
-    if (!"mapq_fraction" %in% names(calls)) {
-        return(rep(NA_character_, n))
-    }
-    values <- as.numeric(calls$mapq_fraction)
-    ifelse(
-        is.finite(values) & values < cutoff, "low", "ok"
-    )
+    call_mappability_status_from(calls, cutoff = cutoff)
 }
 
 #' @noRd
@@ -440,9 +410,10 @@ classifyCalls <- function(calls, controls = NULL, thresholds = NULL,
         calls, spread_cutoff = component_spread_cutoff
     )
     calls$mappability_status <- .call_mappability_status(calls)
-    downgrade <- (calls$component_status == "heterogeneous" |
-        calls$mappability_status %in% "low") &
-        calls$class_confidence == "high"
+    downgrade <- call_status_downgrade(
+        calls$component_status, calls$mappability_status,
+        calls$class_confidence
+    )
     calls$class_confidence[downgrade] <- "moderate"
     calls$class_status[downgrade & calls$class_status == "confident"] <-
         "ambiguous"

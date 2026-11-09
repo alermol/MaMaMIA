@@ -14,7 +14,7 @@ test_that("merging three segments keeps the window-weighted mean", {
     )
     profile <- stats::setNames(rep(0, 30L), as.character(0:29))
     merged <- .segment_merge(
-        calls, profile, merge_gap = 10L, merge_floor = -1, min_mb = 0
+        calls, profile, merge_gap = 10L, merge_floor = -1
     )
     expect_equal(nrow(merged), 1L)
     expect_equal(merged$score_mean, (2 * 5 + 3 * 5 + 4 * 5) / 15)
@@ -33,7 +33,7 @@ test_that("a weak adjacent segment is not merged into a strong event", {
     )
     profile <- stats::setNames(rep(0, 200L), as.character(0:199))
     merged <- .segment_merge(
-        calls, profile, merge_gap = 10L, merge_floor = -1, min_mb = 0
+        calls, profile, merge_gap = 10L, merge_floor = -1
     )
     expect_equal(nrow(merged), 2L)
     expect_equal(merged$score_mean, c(4.0, 0.34))
@@ -50,7 +50,7 @@ test_that("a moderate adjacent segment still merges", {
     )
     profile <- stats::setNames(rep(0, 200L), as.character(0:199))
     merged <- .segment_merge(
-        calls, profile, merge_gap = 10L, merge_floor = -1, min_mb = 0
+        calls, profile, merge_gap = 10L, merge_floor = -1
     )
     expect_equal(nrow(merged), 1L)
     expect_equal(merged$score_mean, (3.0 + 0.65) / 2)

@@ -115,8 +115,10 @@
 #' writable). One BAM with several `@RG SM` values yields one row per sample.
 #'
 #' @param paths Character vector of BAM paths.
-#' @param config A validated configuration list from [readMaMaMIAConfig()], or a
-#'   path to a YAML configuration.
+#' @param config A validated configuration list from [readMaMaMIAConfig()], a
+#'   path to a YAML configuration, or an analysis context from
+#'   [openAnalysisConfig()]. A context supplies both the resolved assembly and
+#'   the configuration.
 #' @param assembly Optional assembly key to validate instead of auto-selecting.
 #'
 #' @return A data frame with one row per sample and columns `path`, `file_size`,
@@ -124,6 +126,12 @@
 #'   `n_assembly_targets`, `index_path`, `index_status`, `index_action`,
 #'   `warnings` and `valid`.
 preflightBams <- function(paths, config, assembly = NULL) {
+    if (isMaMaMIAAnalysisContext(config)) {
+        if (is.null(assembly)) {
+            assembly <- config$assembly_key
+        }
+        config <- config$config
+    }
     if (is.character(config)) {
         config <- readMaMaMIAConfig(config)
     }

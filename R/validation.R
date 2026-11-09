@@ -26,30 +26,8 @@ bam_result_contracts <- function() {
             "mode", "length_bin", "n_control", "q99", "threshold", "fdr",
             "version"
         ),
-        calls = c(
-            "sample", "group", "start_iid", "end_iid", "start_bp", "end_bp",
-            "width_bp", "score_mean", "donor_mean", "recipient_mean",
-            "total_mean", "n_windows", "metric", "length_bin", "threshold",
-            "pass", "class", "copy_state", "copy_state_group",
-            "total_evidence", "component_status", "mappability_status",
-            "mapq_fraction", "class_group",
-            "class_evidence", "class_confidence", "class_status",
-            "confidence", "method", "mode",
-            "recipient_component", "recipient_chr_id", "recipient_chr_name",
-            "recipient_group", "recipient_start_bp", "recipient_end_bp",
-            "recipient_run_start_bp", "recipient_run_end_bp",
-            "recipient_deletion_width_bp", "recipient_expected_breadth",
-            "recipient_observed_breadth",
-            "recipient_mean_depletion", "recipient_depletion_se",
-            "recipient_depletion_lower", "recipient_depletion_z",
-            "recipient_width_overlap", "recipient_fraction_ratio",
-            "recipient_mapq_fraction", "recipient_weight",
-            "recipient_margin", "recipient_assignment",
-            "recipient_cross_group", "recipient_reliable",
-            "recipient_strong", "recipient_alternative",
-            "recipient_alternative_score", "donor_component", "donor_chr_id",
-            "donor_chr_name", "donor_start_bp", "donor_end_bp"
-        )
+        ## The call record is declared once in R/call-schema.R.
+        calls = call_schema_names()
     )
 }
 

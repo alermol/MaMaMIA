@@ -267,3 +267,39 @@ test_that("makeAnalysisWindows() tiles random contig lengths exactly", {
         expect_identical(length(windows$gr), 2L * n)
     }
 })
+
+test_that("the config and windows readers share one gcrank parser", {
+    skip_if_no_tiny_fixtures()
+    path <- file.path(tiny_gcrank_index(), "contigs.tsv")
+    from_config <- .read_contigs_tsv(path)
+    from_window <- readContigsTsv(path)
+    canonical <- .read_gcrank_contigs(path)
+
+    expect_identical(from_config$id, from_window$name)
+    expect_identical(from_config$length, from_window$length)
+    expect_identical(from_config$offset, from_window$offset)
+    expect_identical(canonical$id, from_config$id)
+    expect_identical(canonical$length, from_config$length)
+    expect_identical(canonical$offset, from_config$offset)
+})
+
+test_that("malformed tables fail through the canonical reader", {
+    path <- tempfile(fileext = ".tsv")
+    writeLines(c("d1\t100\t0", "d2\t100\t50"), path)
+
+    expect_error(
+        .read_gcrank_contigs(path, error = .window_error),
+        "cumulative lengths of the preceding contigs",
+        class = "MaMaMIAWindowError"
+    )
+    expect_error(
+        .read_contigs_tsv(path),
+        "cumulative lengths of the preceding contigs",
+        class = "MaMaMIAConfigError"
+    )
+    expect_error(
+        .read_gcrank_contigs(tempfile(fileext = ".tsv")),
+        "does not exist",
+        class = "MaMaMIAConfigError"
+    )
+})

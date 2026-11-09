@@ -2,43 +2,29 @@
 ## karyotype images in one ZIP archive. The table shown in the Calls tab is a
 ## short inspection view; this bundle keeps every column and every call.
 
-#' Expand a filtered karyotype payload to every call
+#' Return the self-contained full karyotype view
 #'
-#' `karyotype_export_payload()` already computes the unfiltered chromosome
-#' layout and calls. Reuse them instead of rebuilding the full payload for the
-#' ZIP.
+#' The current contract requires `payload$views$full`, a complete payload
+#' whose chromosomes own their calls and scores. A payload without that view
+#' has no full export; the old positional `full_chromosomes`/`full_calls` side
+#' channels are no longer read or reconstructed.
+#'
+#' @return The full payload, or `NULL` when the payload carries no full view.
 #' @noRd
 bam_full_karyotype_payload <- function(payload) {
-    full <- payload
-    if (is.list(payload$full_chromosomes) &&
-        length(payload$full_chromosomes) > 0L) {
-        full$chromosomes <- lapply(
-            payload$full_chromosomes,
-            function(chromosome) {
-                chromosome$selected <- TRUE
-                chromosome
-            }
-        )
-    } else {
-        calls <- payload$full_calls
-        full$chromosomes <- lapply(
-            seq_along(payload$chromosomes),
-            function(i) {
-                chromosome <- payload$chromosomes[[i]]
-                if (is.list(calls) && length(calls) >= i &&
-                    !is.null(calls[[i]])) {
-                    chromosome$calls <- calls[[i]]
-                }
-                chromosome$selected <- TRUE
-                chromosome
-            }
-        )
+    view <- payload$views$full
+    if (!is.list(view) || !is.list(view$chromosomes) ||
+        length(view$chromosomes) == 0L) {
+        return(NULL)
     }
+    full <- view
     full$full_calls <- NULL
     full$full_chromosomes <- NULL
+    full$views <- NULL
     ## The full export is evidence, not the hidden live view.
     full$hide_deletions <- FALSE
     full$hidden_deletions <- list(segments = 0L, bases = 0)
+    full$scene <- karyotype_scene(full)
     full
 }
 
@@ -49,136 +35,11 @@ bam_full_karyotype_payload <- function(payload) {
 #' without the application source.
 #' @noRd
 bam_bundle_column_dictionary <- function() {
+    schema <- call_schema()
     data.frame(
-        old = c(
-            "sample", "group", "start_iid", "end_iid", "start_bp", "end_bp",
-            "width_bp", "score_mean", "donor_mean", "recipient_mean",
-            "total_mean", "donor_component_spread",
-            "recipient_component_spread", "n_donor_supported",
-            "mapq_fraction", "n_windows", "method", "mode", "metric",
-            "length_bin", "threshold", "pass", "class", "class_evidence",
-            "copy_state", "total_evidence", "class_confidence",
-            "class_status", "component_status", "mappability_status",
-            "confidence", "class_group", "recipient_component",
-            "recipient_chr_id", "recipient_chr_name", "recipient_group",
-            "recipient_start_bp", "recipient_end_bp",
-            "recipient_run_start_bp", "recipient_run_end_bp",
-            "recipient_deletion_width_bp", "recipient_expected_breadth",
-            "recipient_observed_breadth", "recipient_mapq_fraction",
-            "recipient_mean_depletion",
-            "recipient_depletion_se", "recipient_depletion_lower",
-            "recipient_depletion_z", "recipient_width_overlap",
-            "recipient_fraction_ratio", "copy_state_group",
-            "recipient_weight", "recipient_margin",
-            "recipient_assignment", "recipient_cross_group",
-            "recipient_reliable", "recipient_strong",
-            "recipient_alternative", "recipient_alternative_score",
-            "donor_component", "donor_chr_id", "donor_chr_name",
-            "donor_start_bp", "donor_end_bp"
-        ),
-        name = c(
-            "sample_name", "chromosome_group", "start_window_index",
-            "end_window_index", "group_start_bp", "group_end_bp",
-            "call_width_bp", "mean_introgression_score",
-            "mean_donor_residual", "mean_recipient_residual",
-            "mean_total_depth_residual", "donor_component_spread",
-            "recipient_component_spread", "supporting_donor_components",
-            "high_mapq_read_fraction", "windows_in_call",
-            "scoring_method", "analysis_mode", "coverage_metric",
-            "call_length_bin", "calibration_threshold",
-            "passes_calibration", "call_class", "call_class_evidence",
-            "copy_number_state", "total_depth_evidence", "call_class_confidence",
-            "review_status", "component_consistency", "mappability_quality",
-            "donor_confidence", "group_level_call_class",
-            "recipient_copy_set", "recipient_contig_id",
-            "recipient_chromosome", "recipient_chromosome_group",
-            "recipient_start_bp", "recipient_end_bp",
-            "recipient_deletion_run_start_bp",
-            "recipient_deletion_run_end_bp",
-            "recipient_deletion_run_width_bp",
-            "recipient_expected_breadth", "recipient_observed_breadth",
-            "recipient_high_mapq_read_fraction",
-            "recipient_mean_depletion",
-            "recipient_depletion_standard_error",
-            "recipient_depletion_lower_bound",
-            "recipient_depletion_z_score",
-            "recipient_width_reciprocal_overlap",
-            "donor_to_recipient_width_ratio",
-            "group_level_copy_state",
-            "recipient_assignment_weight", "recipient_assignment_margin",
-            "recipient_assignment_status", "recipient_is_cross_group",
-            "recipient_candidate_reliable", "recipient_candidate_strong",
-            "alternative_recipient_chromosome",
-            "alternative_recipient_score", "donor_copy_set",
-            "donor_contig_id", "donor_chromosome",
-            "donor_start_bp", "donor_end_bp"
-        ),
-        description = c(
-            "Sample name read from the BAM @RG SM tag.",
-            "Chromosome homology group used for scoring and segmentation, for example 7.",
-            "First analysis window index in the call, zero-based within the group.",
-            "Last analysis window index in the call, zero-based and inclusive.",
-            "Call start in group-level coordinates, in base pairs, scaled to the donor group length.",
-            "Call end in group-level coordinates, in base pairs.",
-            "Call width in base pairs, calculated as end_bp minus start_bp.",
-            "Mean introgression score across the call; higher values mean stronger donor evidence.",
-            "Mean donor residual across the call; positive values mean donor enrichment.",
-            "Mean recipient residual across the call; negative values mean recipient loss.",
-            "Mean total-depth residual across the call; positive values mean a total gain and negative values a total loss.",
-            "Spread of donor residuals across donor copy sets; large values flag component heterogeneity.",
-            "Spread of recipient residuals across recipient copy sets; large values flag component heterogeneity.",
-            "Number of donor copy sets that support the call.",
-            "Mean fraction of high-MAPQ reads across the call; values below 0.5 flag low mappability.",
-            "Number of analysis windows covered by the call.",
-            "Scoring method: paired_lr for a paired donor/recipient log ratio, or donor_only.",
-            "Analysis mode: single for one sample, or multi for a cohort.",
-            "Coverage metric used for scoring: breadth, count or combined.",
-            "Segment-length bin used to select the calibration threshold.",
-            "Calibrated score threshold for this call's mode and length bin.",
-            "TRUE when score_mean exceeds the calibrated threshold.",
-            "Final call class after recipient assignment: substitution, addition, deletion, complex or other.",
-            "Evidence that supported the call: donor, recipient, donor+recipient, total imbalance or none.",
-            "Copy-number interpretation: balanced, gain, loss, compound or neutral.",
-            "Total-depth evidence: gain, loss, neutral, or blank when unavailable.",
-            "Class-level confidence: high, moderate or low.",
-            "Review status: confident, ambiguous or needs_review.",
-            "Component consistency: consistent or heterogeneous.",
-            "Mappability flag: ok or low; low means the high-MAPQ read fraction is below 0.5.",
-            "Legacy donor-effect confidence: high, moderate or low.",
-            "Group-level call class before recipient assignment.",
-            "Copy-set label of the assigned recipient contig.",
-            "Assembly contig identifier of the assigned recipient.",
-            "Display name of the assigned recipient contig.",
-            "Homology group of the assigned recipient contig; differs from chromosome_group for cross-group placements.",
-            "Start of the corresponding interval on the assigned recipient contig, in base pairs.",
-            "End of that interval on the assigned recipient contig, in base pairs.",
-            "Start of the contiguous recipient depletion run used for assignment, in base pairs.",
-            "End of that depletion run, in base pairs.",
-            "Width of the recipient depletion run, in base pairs; blank when no run was found.",
-            "Baseline breadth expected for the recipient contig.",
-            "Mean breadth observed inside the call interval on the recipient contig.",
-            "Mean high-MAPQ read fraction in the recipient interval.",
-            "Mean corrected log-depth depletion in the recipient interval; positive values mean loss.",
-            "Standard error of the mean recipient depletion.",
-            "Lower confidence bound of the recipient depletion estimate.",
-            "Z score of the recipient depletion estimate.",
-            "Reciprocal overlap between the donor segment and the recipient depletion run, from 0 to 1.",
-            "Donor width fraction divided by recipient run width fraction; values near 1 mean matched widths.",
-            "Copy state before recipient assignment.",
-            "Weight of the chosen recipient among plausible candidates, from 0 to 1.",
-            "Score difference between the chosen recipient and the best alternative; larger values are more decisive.",
-            "Recipient placement outcome: assigned, ambiguous, cross_group or no_recipient_loss.",
-            "TRUE when the assigned recipient contig is outside the call's homology group.",
-            "TRUE when the recipient candidate passed the calibrated reliability screen.",
-            "TRUE when the recipient candidate passed the stronger depletion screen.",
-            "Display name of the next-best recipient contig, when available.",
-            "Assignment score of the next-best recipient contig.",
-            "Copy-set label of the donor contig that contributed the call.",
-            "Assembly contig identifier of the donor contig.",
-            "Display name of the donor contig.",
-            "Donor segment start in base pairs.",
-            "Donor segment end in base pairs."
-        ),
+        old = schema$name,
+        name = schema$export,
+        description = schema$description,
         stringsAsFactors = FALSE
     )
 }
@@ -218,10 +79,11 @@ bam_confident_calls <- function(calls) {
     if (is.null(calls) || nrow(calls) == 0L) {
         return(calls)
     }
-    keep <- rep(TRUE, nrow(calls))
-    if ("pass" %in% names(calls)) {
-        keep <- keep & isTRUE_vec(calls$pass)
+    calls <- explorer_calls(calls, list(pass_only = TRUE))$calls
+    if (nrow(calls) == 0L) {
+        return(calls)
     }
+    keep <- rep(TRUE, nrow(calls))
     if ("class_status" %in% names(calls)) {
         keep <- keep &
             as.character(calls$class_status) %in% "confident"
@@ -255,72 +117,7 @@ bam_brief_call_columns <- function(x = NULL) {
 #' Human-readable labels for call-table columns
 #' @noRd
 bam_call_column_labels <- function(columns = NULL) {
-    labels <- c(
-        sample = "Sample",
-        group = "Group",
-        start_iid = "Start window",
-        end_iid = "End window",
-        start_bp = "Group start (bp)",
-        end_bp = "Group end (bp)",
-        width_bp = "Width (bp)",
-        score_mean = "Score",
-        donor_mean = "Donor mean",
-        recipient_mean = "Recipient mean",
-        total_mean = "Total mean",
-        donor_component_spread = "Donor spread",
-        recipient_component_spread = "Recipient spread",
-        n_donor_supported = "Donor sets",
-        mapq_fraction = "MAPQ fraction",
-        n_windows = "Windows",
-        method = "Method",
-        mode = "Mode",
-        metric = "Metric",
-        length_bin = "Length bin",
-        threshold = "Threshold",
-        pass = "Pass",
-        class = "Class",
-        class_evidence = "Class evidence",
-        copy_state = "Copy state",
-        total_evidence = "Total evidence",
-        class_confidence = "Class confidence",
-        class_status = "Status",
-        component_status = "Component status",
-        mappability_status = "Mappability",
-        confidence = "Confidence",
-        class_group = "Group class",
-        recipient_component = "Recipient set",
-        recipient_chr_id = "Recipient ID",
-        recipient_chr_name = "Recipient",
-        recipient_group = "Recipient group",
-        recipient_start_bp = "Recipient start (bp)",
-        recipient_end_bp = "Recipient end (bp)",
-        recipient_run_start_bp = "Depletion start (bp)",
-        recipient_run_end_bp = "Depletion end (bp)",
-        recipient_deletion_width_bp = "Depletion width (bp)",
-        recipient_expected_breadth = "Expected breadth",
-        recipient_observed_breadth = "Observed breadth",
-        recipient_mapq_fraction = "Recipient MAPQ",
-        recipient_mean_depletion = "Mean depletion",
-        recipient_depletion_se = "Depletion SE",
-        recipient_depletion_lower = "Depletion lower",
-        recipient_depletion_z = "Depletion Z",
-        recipient_width_overlap = "Width overlap",
-        recipient_fraction_ratio = "Width ratio",
-        copy_state_group = "Group copy state",
-        recipient_weight = "Recipient weight",
-        recipient_margin = "Recipient margin",
-        recipient_assignment = "Placement",
-        recipient_cross_group = "Cross-group",
-        recipient_reliable = "Recipient reliable",
-        recipient_strong = "Recipient strong",
-        recipient_alternative = "Alternative recipient",
-        recipient_alternative_score = "Alternative score",
-        donor_component = "Donor set",
-        donor_chr_id = "Donor ID",
-        donor_chr_name = "Donor",
-        donor_start_bp = "Donor start (bp)",
-        donor_end_bp = "Donor end (bp)"
-    )
+    labels <- call_schema_labels()
     if (is.null(columns)) {
         return(labels)
     }
@@ -420,18 +217,7 @@ bam_bundle_write_karyotype <- function(payload, path, sample, label,
 #' Merge payload palette with the application defaults
 #' @noRd
 bam_bundle_palette <- function(payload) {
-    palette <- karyotype_palette()
-    supplied <- payload$palette
-    if (is.list(supplied)) {
-        for (name in names(supplied)) {
-            value <- supplied[[name]]
-            if (is.character(value) && length(value) == 1L &&
-                !is.na(value) && nzchar(value)) {
-                palette[[name]] <- value
-            }
-        }
-    }
-    palette
+    karyotype_scene_palette(payload)
 }
 
 #' Escape text for an SVG document
@@ -524,27 +310,77 @@ bam_bundle_colour <- function(palette, name, fallback = "other") {
     value
 }
 
-#' Static call legend for the bundle image
+#' Static legend for the bundle image
+#'
+#' Consumes the scene legend so the image cannot drift from the browser.
 #' @noRd
-bam_svg_legend <- function(palette, x, y, width = NULL,
+bam_svg_legend <- function(scene, x, y, width = NULL,
                            show_deletions = TRUE) {
-    entries <- list(
-        c("substitution", "Substitution"),
-        c("addition", "Addition"),
-        c("deletion", "Deletion"),
-        c("complex", "Complex"),
-        c("other", "Other"),
-        c("deleted", "Deleted recipient"),
-        c("added", "Added donor")
-    )
-    if (!isTRUE(show_deletions)) {
-        entries <- Filter(
-            function(entry) !entry[[1L]] %in% c("deletion", "deleted"),
-            entries
+    ## Accept the old `(palette, x, y, width, show_deletions)` call shape by
+    ## resolving it through the same scene policy.
+    if (is.null(scene$legend)) {
+        palette <- bam_bundle_palette(list(palette = scene))
+        scene <- list(
+            palette = palette,
+            legend = list(
+                kind = "calls",
+                entries = karyotype_scene_legend_entries(
+                    palette, !isTRUE(show_deletions)
+                )
+            )
         )
     }
+    palette <- scene$palette
+    legend <- scene$legend
+    if (identical(legend$kind, "heatmap")) {
+        heatmap <- legend$heatmap
+        total_width <- 190
+        if (!is.null(width)) {
+            x <- x + max(0, (as.numeric(width)[[1L]] - total_width) / 2)
+        }
+        gradient <- sprintf(
+            paste0(
+                '<defs><linearGradient id="mamamia-karyotype-score" ',
+                'x1="0%%" x2="100%%" y1="0%%" y2="0%%">',
+                '<stop offset="0%%" stop-color="%s"/>',
+                '<stop offset="50%%" stop-color="%s"/>',
+                '<stop offset="100%%" stop-color="%s"/>',
+                "</linearGradient></defs>"
+            ),
+            bam_svg_escape(heatmap$negative),
+            bam_svg_escape(heatmap$zero),
+            bam_svg_escape(heatmap$positive)
+        )
+        return(paste0(
+            gradient,
+            bam_svg_text(
+                "Score", x, y, size = 10, weight = 600,
+                fill = palette$text
+            ),
+            bam_svg_rect(
+                x + 36, y - 9, 126, 10, fill = "url(#mamamia-karyotype-score)",
+                stroke = "none", stroke_width = 0, rx = 1.5
+            ),
+            bam_svg_text(
+                heatmap$labels$min, x + 36, y + 13, size = 9,
+                weight = 500, fill = palette$text
+            ),
+            bam_svg_text(
+                heatmap$labels$zero, x + 99, y + 13, size = 9,
+                weight = 500, fill = palette$text, anchor = "middle"
+            ),
+            bam_svg_text(
+                heatmap$labels$max, x + 162, y + 13, size = 9,
+                weight = 500, fill = palette$text, anchor = "end"
+            )
+        ))
+    }
+    entries <- legend$entries
+    if (length(entries) == 0L) {
+        return("")
+    }
     item_widths <- vapply(entries, function(entry) {
-        18 + nchar(entry[[2L]], type = "width") * 5.6
+        18 + nchar(entry$label, type = "width") * 5.6
     }, numeric(1))
     total_width <- sum(item_widths) + 16 * (length(entries) - 1L)
     if (!is.null(width)) {
@@ -554,24 +390,17 @@ bam_svg_legend <- function(palette, x, y, width = NULL,
     cursor <- x
     for (i in seq_along(entries)) {
         entry <- entries[[i]]
-        key <- entry[[1L]]
-        label <- entry[[2L]]
-        dash <- if (identical(key, "deleted")) "3 2" else NULL
-        stroke <- if (identical(key, "deleted")) {
-            palette$negative
-        } else {
-            palette$text
-        }
         parts <- c(
             parts,
             bam_svg_rect(
                 cursor, y - 9, 12, 12,
-                fill = bam_bundle_colour(palette, key),
-                stroke = stroke, stroke_width = 0.6,
-                dash = dash, rx = 1.5
+                fill = entry$fill,
+                stroke = entry$stroke,
+                stroke_width = entry$stroke_width,
+                dash = entry$dash, rx = 1.5
             ),
             bam_svg_text(
-                label, cursor + 18, y,
+                entry$label, cursor + 18, y,
                 size = 10, weight = 500, fill = palette$text
             )
         )
@@ -581,32 +410,12 @@ bam_svg_legend <- function(palette, x, y, width = NULL,
 }
 
 #' Opacity for a call segment
+#'
+#' Kept as a thin scene accessor for callers that still ask for one call's
+#' opacity directly.
 #' @noRd
 bam_svg_call_opacity <- function(call) {
-    confidence <- call$class_confidence
-    if (is.null(confidence) || length(confidence) != 1L ||
-        is.na(confidence) || !nzchar(as.character(confidence))) {
-        confidence <- call$confidence
-    }
-    confidence <- as.character(confidence)
-    opacity <- if (identical(confidence, "high")) {
-        0.95
-    } else if (identical(confidence, "moderate")) {
-        0.72
-    } else {
-        0.45
-    }
-    if (identical(call$pass, FALSE)) {
-        opacity <- opacity * 0.45
-    }
-    assignment <- as.character(call$recipient_assignment)
-    if (identical(assignment, "ambiguous")) {
-        opacity <- opacity * 0.55
-    }
-    if (identical(assignment, "no_recipient_loss")) {
-        opacity <- opacity * 0.35
-    }
-    opacity
+    karyotype_scene_call(call, 1L, karyotype_palette())$opacity
 }
 
 #' Truncate text to fit a fixed character budget
@@ -640,29 +449,38 @@ bam_karyotype_static_svg <- function(payload, width = 1600, height = 900,
                                      subtitle = NULL, footer = NULL) {
     width <- max(640, as.numeric(width)[[1L]])
     height <- max(420, as.numeric(height)[[1L]])
-    palette <- bam_bundle_palette(payload)
-    chromosomes <- payload$chromosomes
-    sample <- if (is.null(payload$sample)) "" else as.character(payload$sample)
-    hide_deletions <- isTRUE(payload$hide_deletions)
-    hidden_segments <- suppressWarnings(as.integer(
-        payload$hidden_deletions$segments
-    ))
-    if (length(hidden_segments) != 1L || is.na(hidden_segments)) {
-        hidden_segments <- 0L
+    margin_left <- 52
+    margin_right <- 52
+    top <- 118
+    bottom <- 92
+    plot_width <- max(1, width - margin_left - margin_right)
+    plot_height <- max(1, height - top - bottom)
+    ## New payloads carry the resolved scene, including heatmap bins. Use it
+    ## directly so the static image cannot bin the score profile differently
+    ## from the browser. Only a payload outside the current contract is
+    ## resolved here with the same fixed bin policy.
+    scene <- if (is.list(payload$scene)) {
+        payload$scene
+    } else {
+        karyotype_scene(payload)
     }
+    palette <- scene$palette
+    chromosomes <- payload$chromosomes
+    scene_chromosomes <- scene$chromosomes
+    sample <- scene$sample
     if (is.null(subtitle) || !nzchar(subtitle)) {
         subtitle <- paste0(
             if (nzchar(sample)) paste0("Sample: ", sample) else "Sample",
-            " \u00b7 Calls"
+            " \u00b7 ",
+            if (identical(scene$mode, "heatmap")) "Heatmap" else "Calls"
         )
     }
     if (is.null(footer)) {
         footer <- "Generated by MaMaMIA"
     }
-    if (hide_deletions && hidden_segments > 0L) {
+    if (!is.null(scene$omitted_note)) {
         subtitle <- paste0(
-            subtitle, " \u00b7 ", hidden_segments, " segment",
-            if (hidden_segments == 1L) "" else "s", " omitted"
+            subtitle, " \u00b7 ", scene$omitted_note$text
         )
     }
     max_title_chars <- floor((width - 120) / (18 * 0.62))
@@ -698,10 +516,7 @@ bam_karyotype_static_svg <- function(payload, width = 1600, height = 900,
             subtitle, width / 2, 58, size = 11, weight = 500,
             fill = palette$text, anchor = "middle"
         ),
-        bam_svg_legend(
-            palette, 0, 86, width = width,
-            show_deletions = !hide_deletions
-        )
+        bam_svg_legend(scene, 0, 86, width = width)
     )
 
     if (is.null(chromosomes) || length(chromosomes) == 0L) {
@@ -716,38 +531,20 @@ bam_karyotype_static_svg <- function(payload, width = 1600, height = 900,
         ))
     }
 
-    margin_left <- 52
-    margin_right <- 52
-    top <- 118
-    bottom <- 92
-    plot_width <- max(1, width - margin_left - margin_right)
-    plot_height <- max(1, height - top - bottom)
-    n <- length(chromosomes)
-    lengths <- vapply(chromosomes, function(x) {
+    n <- length(scene_chromosomes)
+    lengths <- vapply(scene_chromosomes, function(x) {
         value <- suppressWarnings(as.numeric(x$display_length))
-        if (length(value) != 1L || !is.finite(value) || value <= 0) {
-            value <- suppressWarnings(as.numeric(x$length))
-        }
-        if (length(value) != 1L || !is.finite(value) || value <= 0) {
-            0
-        } else {
-            value
-        }
+        if (length(value) != 1L || !is.finite(value) || value <= 0) 0 else value
     }, numeric(1))
     max_length <- max(c(1, lengths))
     pair_gap <- 3
-    ids <- vapply(chromosomes, function(x) {
-        value <- x$id
-        if (is.null(value) || length(value) != 1L || is.na(value)) {
-            ""
-        } else {
-            as.character(value)
-        }
+    ids <- vapply(scene_chromosomes, function(x) {
+        as.character(x$id %||% "")
     }, character(1))
     added_flags <- vapply(
-        chromosomes, function(x) isTRUE(x$added), logical(1)
+        scene_chromosomes, function(x) isTRUE(x$added), logical(1)
     )
-    copies_vec <- vapply(chromosomes, function(x) {
+    copies_vec <- vapply(scene_chromosomes, function(x) {
         value <- suppressWarnings(as.integer(x$copies))
         if (length(value) != 1L || is.na(value) || value < 1L) {
             1L
@@ -770,37 +567,20 @@ bam_karyotype_static_svg <- function(payload, width = 1600, height = 900,
     label_max <- max(3L, floor((slot - 4) / (label_size * 0.62)))
 
     body <- character()
-    for (i in seq_along(chromosomes)) {
-        chromosome <- chromosomes[[i]]
-        added <- isTRUE(chromosome$added)
-        added_partial <- added && isTRUE(chromosome$added_partial)
-        deleted <- !added && isTRUE(chromosome$deleted)
-        selected <- !identical(chromosome$selected, FALSE)
-        calls <- chromosome$calls
-        if (is.null(calls)) {
-            calls <- list()
-        }
+    for (i in seq_along(scene_chromosomes)) {
+        scene_chromosome <- scene_chromosomes[[i]]
+        added <- isTRUE(scene_chromosome$added)
+        deleted <- isTRUE(scene_chromosome$deleted)
+        selected <- isTRUE(scene_chromosome$selected)
         copies <- copies_vec[[i]]
-        copy <- suppressWarnings(as.integer(chromosome$copy))
-        if (length(copy) != 1L || is.na(copy) || copy < 1L) {
-            copy <- 1L
-        }
+        copy <- scene_chromosome$copy
         pair_width <- copies * bar_width + (copies - 1L) * pair_gap
         group_left <- margin_left + (group_index[[i]] - 1L) * slot +
             (slot - pair_width) / 2
         x <- group_left + (copy - 1L) * (bar_width + pair_gap)
         pair_center <- margin_left + (group_index[[i]] - 0.5) * slot
         bar_height <- max(3, plot_height * lengths[[i]] / max_length)
-        bar_label <- chromosome$label
-        if (is.null(bar_label) || !nzchar(as.character(bar_label))) {
-            bar_label <- chromosome$name
-        }
-        if (is.null(bar_label) || !nzchar(as.character(bar_label))) {
-            bar_label <- chromosome$component
-        }
-        if (is.null(bar_label) || !nzchar(as.character(bar_label))) {
-            bar_label <- chromosome$id
-        }
+        bar_label <- scene_chromosome$label
         bar_state <- if (deleted) {
             " (deleted)"
         } else if (added) {
@@ -808,41 +588,16 @@ bam_karyotype_static_svg <- function(payload, width = 1600, height = 900,
         } else {
             ""
         }
+        call_count <- length(scene_chromosome$calls)
         bar_title <- paste0(
             as.character(bar_label), bar_state,
-            if (length(calls) > 0L) {
-                paste0(" \u00b7 ", length(calls), " calls")
+            if (call_count > 0L) {
+                paste0(" \u00b7 ", call_count, " calls")
             } else {
                 ""
             }
         )
-        added_class <- if (added && length(calls) == 1L) {
-            calls[[1L]]$class
-        } else {
-            NULL
-        }
-        base_fill <- if (deleted) {
-            palette$deleted
-        } else if (added) {
-            if (added_partial) {
-                "none"
-            } else {
-                bam_bundle_colour(palette, added_class, "added")
-            }
-        } else {
-            "#f4f4f4"
-        }
-        base_stroke <- if (deleted) {
-            palette$negative
-        } else if (added) {
-            if (added_partial) {
-                palette$negative
-            } else {
-                bam_bundle_colour(palette, added_class, "added")
-            }
-        } else {
-            "#666666"
-        }
+        base <- scene_chromosome$base
         group <- sprintf(
             '<g%s>',
             if (selected) "" else ' opacity="0.32"'
@@ -851,34 +606,42 @@ bam_karyotype_static_svg <- function(payload, width = 1600, height = 900,
             group,
             bam_svg_rect(
                 x, top, bar_width, bar_height,
-                fill = base_fill, stroke = base_stroke,
-                stroke_width = if (deleted) {
-                    1.4
-                } else if (added) {
-                    if (added_partial) 1.4 else 1.8
-                } else {
-                    0.7
-                },
-                dash = if (deleted || added_partial) "4 3" else NULL,
+                fill = base$fill, stroke = base$stroke,
+                stroke_width = base$stroke_width,
+                dash = base$dash,
                 title = bar_title
             )
         )
-        for (call in calls) {
-            start <- suppressWarnings(as.numeric(call$start))
-            end <- suppressWarnings(as.numeric(call$end))
-            if (length(start) != 1L || !is.finite(start)) start <- 0
-            if (length(end) != 1L || !is.finite(end)) end <- 1
-            start <- max(0, min(1, start))
-            end <- max(0, min(1, end))
+        draw_calls <- scene_chromosome$calls
+        if (identical(scene$mode, "heatmap") && !deleted) {
+            for (bin in scene_chromosome$heatmap_bins) {
+                bin_y <- top + bin$start * bar_height
+                bin_height <- max(0.5, (bin$end - bin$start) * bar_height + 0.6)
+                group <- paste0(
+                    group,
+                    bam_svg_rect(
+                        x, bin_y, bar_width, bin_height,
+                        fill = bin$fill, stroke = "none",
+                        stroke_width = 0, rx = 0
+                    )
+                )
+            }
+            draw_calls <- Filter(
+                function(call) isTRUE(call$cross_group),
+                scene_chromosome$calls
+            )
+        }
+        for (call in draw_calls) {
+            start <- call$start
+            end <- call$end
             if (end <= start) {
                 next
             }
             call_y <- top + start * bar_height
             call_height <- max(1.5, (end - start) * bar_height)
-            cross <- isTRUE(call$cross_group)
             call_bp <- {
-                from_bp <- suppressWarnings(as.numeric(call$start_bp))
-                to_bp <- suppressWarnings(as.numeric(call$end_bp))
+                from_bp <- call$start_bp
+                to_bp <- call$end_bp
                 if (length(from_bp) == 1L && length(to_bp) == 1L &&
                     is.finite(from_bp) && is.finite(to_bp)) {
                     paste0(
@@ -898,12 +661,9 @@ bam_karyotype_static_svg <- function(payload, width = 1600, height = 900,
             }
             call_state <- as.character(call$class_status)
             if (length(call_state) != 1L || is.na(call_state)) {
-                call_state <- as.character(call$confidence)
-            }
-            if (length(call_state) != 1L || is.na(call_state)) {
                 call_state <- ""
             }
-            call_score <- suppressWarnings(as.numeric(call$score))
+            call_score <- call$score
             call_title <- paste0(
                 "Call: ", as.character(call$class),
                 if (length(call_score) == 1L && is.finite(call_score)) {
@@ -923,45 +683,29 @@ bam_karyotype_static_svg <- function(payload, width = 1600, height = 900,
                 group,
                 bam_svg_rect(
                     x, call_y, bar_width, call_height,
-                    fill = bam_bundle_colour(palette, call$class, "other"),
-                    stroke = if (cross) "#333333" else "#ffffff",
-                    stroke_width = if (cross) 1.3 else 0.5,
-                    opacity = bam_svg_call_opacity(call),
-                    dash = if (cross) "3 2" else NULL,
+                    fill = call$fill,
+                    stroke = call$stroke,
+                    stroke_width = call$stroke_width,
+                    opacity = call$opacity,
+                    dash = call$dash,
                     rx = 0,
                     title = call_title
                 )
             )
         }
-        if (deleted && copy == 1L) {
+        if (!is.null(scene_chromosome$caption)) {
             group <- paste0(
                 group,
                 bam_svg_text(
-                    "Deleted", pair_center, top - 8,
-                    size = 9, weight = 700, fill = palette$negative,
+                    scene_chromosome$caption$text, pair_center, top - 8,
+                    size = 9, weight = 700,
+                    fill = scene_chromosome$caption$fill,
                     anchor = "middle"
                 )
             )
         }
-        if (added && copy == 1L) {
-            group <- paste0(
-                group,
-                bam_svg_text(
-                    "Added", pair_center, top - 8,
-                    size = 9, weight = 700, fill = palette$addition,
-                    anchor = "middle"
-                )
-            )
-        }
-        if (copy == 1L || copies == 1L) {
-            label <- chromosome$label
-            if (is.null(label) || !nzchar(as.character(label))) {
-                label <- chromosome$name
-            }
-            if (is.null(label) || !nzchar(as.character(label))) {
-                label <- chromosome$component
-            }
-            label <- bam_svg_truncate(label, label_max)
+        if (isTRUE(scene_chromosome$show_label)) {
+            label <- bam_svg_truncate(bar_label, label_max)
             group <- paste0(
                 group,
                 bam_svg_text(

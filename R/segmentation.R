@@ -44,7 +44,7 @@
 }
 
 .segment_merge <- function(calls, profile, merge_gap, merge_floor,
-                           min_mb, merge_min = 0.5) {
+                           merge_min = 0.5) {
     if (nrow(calls) == 0L) {
         return(calls)
     }
@@ -190,7 +190,7 @@ segmentScores <- function(scores, mask = NULL, alpha = 0.001, undo_SD = 1,
         }
         profile <- stats::setNames(x$score, x$iid)
         segments <- .segment_merge(
-            segments, profile, merge_gap, merge_floor, min_mb, merge_min
+            segments, profile, merge_gap, merge_floor, merge_min
         )
         if (nrow(segments) == 0L) {
             return(NULL)

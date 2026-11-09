@@ -2,96 +2,9 @@
 ## downloadable result bundle. These helpers keep the bundle self-describing:
 ## every window, score, mask and calibration row that supports the calls can
 ## be inspected without reopening the dashboard.
-
-## Descriptive names for the per-window metric table.
-bam_bundle_metric_columns <- function() {
-    c(
-        sample = "sample_name",
-        chr_id = "contig_id",
-        chr_name = "contig_name",
-        group = "chromosome_group",
-        role = "role",
-        component = "component",
-        copy_number = "copy_number",
-        iid = "window_index",
-        start = "start_bp",
-        stop = "end_bp",
-        length = "window_length_bp",
-        count = "read_count",
-        covered = "covered_bases",
-        mapq_high = "high_mapq_read_count",
-        mapq_high_fraction = "high_mapq_read_fraction",
-        breadth = "breadth",
-        gc = "gc_fraction",
-        lambda_breadth = "expected_breadth",
-        lambda_count = "expected_read_count",
-        read_length = "read_length_bp"
-    )
-}
-
-## Descriptive names for the per-window score table.
-bam_bundle_score_columns <- function() {
-    c(
-        sample = "sample_name",
-        group = "chromosome_group",
-        iid = "window_index",
-        start = "start_bp",
-        stop = "end_bp",
-        mode = "analysis_mode",
-        metric = "coverage_metric",
-        score_type = "score_type",
-        score = "introgression_score",
-        donor_mean = "mean_donor_coverage",
-        recipient_mean = "mean_recipient_coverage",
-        donor_component = "donor_component",
-        n_donor = "n_donor_contigs",
-        n_recipient = "n_recipient_contigs",
-        donor_component_spread = "donor_component_spread",
-        recipient_component_spread = "recipient_component_spread",
-        n_donor_supported = "supporting_donor_contigs",
-        mapq_fraction = "high_mapq_read_fraction",
-        chr_name = "group_name",
-        length = "group_length_bp",
-        n_per_chromosome = "windows_per_chromosome",
-        gc_donor = "donor_gc_fraction",
-        gc_recipient = "recipient_gc_fraction",
-        log_donor = "log_donor_coverage",
-        log_recipient = "log_recipient_coverage",
-        log_total = "log_total_coverage",
-        donor_residual = "donor_residual",
-        recipient_residual = "recipient_residual",
-        total_residual = "total_depth_residual",
-        score_raw = "raw_introgression_score"
-    )
-}
-
-## Descriptive names for the mask table.
-bam_bundle_mask_columns <- function() {
-    c(
-        group = "chromosome_group",
-        iid = "window_index",
-        start = "start_bp",
-        stop = "end_bp",
-        f = "mask_signal",
-        posterior = "mask_posterior",
-        mask = "masked",
-        source = "mask_source",
-        version = "mask_version"
-    )
-}
-
-## Descriptive names for the calibration table.
-bam_bundle_calibration_columns <- function() {
-    c(
-        mode = "analysis_mode",
-        length_bin = "call_length_bin",
-        n_control = "control_calls",
-        q99 = "null_q99",
-        threshold = "calibration_threshold",
-        fdr = "target_fdr",
-        version = "calibration_version"
-    )
-}
+##
+## The descriptive rename maps and the required QC columns are declared in
+## R/bundle-schema.R.
 
 bam_bundle_rename_columns <- function(x, mapping) {
     if (!is.data.frame(x) || ncol(x) == 0L) {
@@ -1091,6 +1004,19 @@ bam_bundle_qc_files <- function(result, bundle, sample,
     )
     calibration <- bam_bundle_rename_columns(
         result$calibration, bam_bundle_calibration_columns()
+    )
+    ## Fail before writing anything when the result no longer satisfies the
+    ## declared QC contract. Zero-row tables with the required columns are
+    ## genuine empty results and pass.
+    bam_bundle_validate_qc_tables(
+        list(
+            metrics = metrics,
+            scores = scores,
+            masks = masks,
+            calibration = calibration
+        ),
+        include_masks = include_masks,
+        include_calibration = include_calibration
     )
 
     bam_bundle_write_csv(

@@ -118,8 +118,8 @@ mamamia_analysis_profile <- function(name = NULL) {
 #' can edit each value and the bundle can record exactly what ran.
 #'
 #' @param parameters A `parameters` list from [mamamia_analysis_profiles()].
-#' @return A named list with scalar parameters and a five-value
-#'   `calibration_floors` vector.
+#' @return A named list with scalar parameters and a `calibration_floors`
+#'   vector. The dashboard stretches it to the number of registry bins.
 #' @noRd
 mamamia_profile_flat_parameters <- function(parameters) {
     if (!is.list(parameters)) {

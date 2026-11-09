@@ -952,8 +952,9 @@ explorer_karyotype_ui <- function(id, height = "calc(100vh - 360px)") {
 #'   from the current view only.
 #' @param full Optional unfiltered payload for the full export.
 #'
-#' @return A karyotype payload with a `full_chromosomes` entry for the
-#'   unfiltered export.
+#' @return A self-contained karyotype payload. The top level is the current
+#'   view; `views$full` is a complete unfiltered payload with each chromosome
+#'   carrying its own calls and scores.
 #' @noRd
 karyotype_export_payload <- function(result, sample = NULL,
                                      mode = c("heatmap", "calls"),
@@ -979,13 +980,9 @@ karyotype_export_payload <- function(result, sample = NULL,
             hide_deletions = FALSE
         )
     }
-    payload$full_chromosomes <- lapply(
-        full$chromosomes,
-        function(chromosome) {
-            chromosome$scores <- numeric()
-            chromosome
-        }
-    )
+    ## Every view is a complete payload. No positional `full_calls` or
+    ## `full_chromosomes` pairing is needed by the exporter.
+    payload$views <- list(full = full)
     payload
 }
 
@@ -1075,52 +1072,18 @@ explorer_server <- function(id, result, sample = NULL) {
             }
         }, ignoreInit = TRUE)
 
-        call_display_group <- function(x) {
-            groups <- as.character(x$group)
-            if (all(c("recipient_group", "recipient_cross_group") %in%
-                names(x))) {
-                cross <- as.logical(x$recipient_cross_group) %in% TRUE
-                recipient <- as.character(x$recipient_group)
-                move <- cross & !is.na(recipient) & nzchar(recipient)
-                groups[move] <- recipient[move]
-            }
-            groups
-        }
-
         visible_calls <- shiny::reactive({
-            x <- calls()
-            if (is.null(x) || nrow(x) == 0L) {
-                return(x)
-            }
-            keep <- rep(TRUE, nrow(x))
-            if (isTRUE(input$pass_only) && "pass" %in% names(x)) {
-                keep <- keep & isTRUE_vec(x$pass)
-            }
-            groups <- group_filter()
-            if (length(groups) > 0L) {
-                keep <- keep & (
-                    as.character(x$group) %in% groups |
-                        call_display_group(x) %in% groups
-                )
-            }
-            if (length(input$class) > 0L) {
-                keep <- keep & x$class %in% input$class
-            }
-            if (length(input$class_status) > 0L) {
-                keep <- keep & x$class_status %in% input$class_status
-            }
-            if (length(input$copy_state) > 0L &&
-                "copy_state" %in% names(x)) {
-                keep <- keep & x$copy_state %in% input$copy_state
-            }
-            if (length(input$confidence) > 0L) {
-                keep <- keep & x$confidence %in% input$confidence
-            }
-            width <- suppressWarnings(as.numeric(input$min_width))
-            if (length(width) == 1L && is.finite(width) && width > 0) {
-                keep <- keep & x$width_bp >= width * 1e6
-            }
-            x[keep, , drop = FALSE]
+            explorer_calls(calls(), list(
+                pass_only = input$pass_only,
+                groups = group_filter(),
+                class = input$class,
+                class_status = input$class_status,
+                copy_state = input$copy_state,
+                confidence = input$confidence,
+                min_width_bp = suppressWarnings(
+                    as.numeric(input$min_width)
+                ) * 1e6
+            ))$calls
         })
 
         selected <- shiny::reactive({

@@ -636,28 +636,7 @@
 #' marks the call as heterogeneous rather than failing it.
 #' @noRd
 .assignment_component_status <- function(call) {
-    donor_spread <- if ("donor_component_spread" %in% names(call)) {
-        as.numeric(call$donor_component_spread[[1L]])
-    } else {
-        0
-    }
-    recipient_spread <- if ("recipient_component_spread" %in% names(call)) {
-        as.numeric(call$recipient_component_spread[[1L]])
-    } else {
-        0
-    }
-    supported <- if ("n_donor_supported" %in% names(call)) {
-        as.numeric(call$n_donor_supported[[1L]])
-    } else {
-        0
-    }
-    if ((is.finite(donor_spread) && donor_spread > 2) ||
-        (is.finite(recipient_spread) && recipient_spread > 2) ||
-        (is.finite(supported) && supported > 1)) {
-        "heterogeneous"
-    } else {
-        "consistent"
-    }
+    call_component_status_from(call)
 }
 
 #' Add assignment columns without clearing existing values
@@ -725,14 +704,7 @@
     if (!"mapq_fraction" %in% names(calls)) {
         calls$mapq_fraction <- rep(NA_real_, n)
     }
-    calls$mappability_status <- ifelse(
-        is.finite(as.numeric(calls$mapq_fraction)) &
-            as.numeric(calls$mapq_fraction) < 0.5,
-        "low", "ok"
-    )
-    calls$mappability_status[
-        !is.finite(as.numeric(calls$mapq_fraction))
-    ] <- NA_character_
+    calls$mappability_status <- call_mappability_status_from(calls)
     calls$recipient_weight <- rep(NA_real_, n)
     calls$recipient_margin <- rep(NA_real_, n)
     calls$recipient_assignment <- rep(NA_character_, n)
@@ -1237,9 +1209,11 @@ assignCallPositions <- function(
                 assigned_status <- "needs_review"
             }
             calls$copy_state[[i]] <- assigned_copy_state
-            if ((identical(calls$component_status[[i]], "heterogeneous") ||
-                identical(calls$mappability_status[[i]], "low")) &&
-                identical(assigned_confidence, "high")) {
+            if (call_status_downgrade(
+                calls$component_status[[i]],
+                calls$mappability_status[[i]],
+                assigned_confidence
+            )) {
                 assigned_confidence <- "moderate"
                 assigned_status <- "ambiguous"
             }

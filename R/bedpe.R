@@ -13,6 +13,64 @@
     .mamamia_error("MaMaMIABedpeError", fmt, ...)
 }
 
+#' Canonical BEDPE column order
+#'
+#' The same list declares the empty and non-empty BEDPE schema. Call fields
+#' come from the canonical call schema; the six interval columns are added by
+#' `.annotate_call_intervals()`.
+#' @noRd
+bam_bedpe_columns <- function() {
+    c(
+        "sample", "chr_id.don", "start.don", "stop.don",
+        "chr_id.rec", "start.rec", "stop.rec", "width_bp",
+        "score_mean", "donor_mean", "recipient_mean", "class",
+        "class_group", "class_evidence", "class_confidence", "class_status",
+        "copy_state", "total_evidence", "component_status",
+        "mappability_status", "mapq_fraction",
+        "confidence", "method", "mode", "group",
+        "start_iid", "end_iid", "pass", "recipient_component",
+        "recipient_chr_name", "recipient_group", "recipient_assignment",
+        "recipient_cross_group", "recipient_weight",
+        "recipient_expected_breadth", "recipient_observed_breadth",
+        "recipient_deletion_width_bp",
+        "recipient_alternative", "recipient_mean_depletion",
+        "recipient_depletion_se", "recipient_depletion_lower",
+        "recipient_depletion_z", "recipient_width_overlap",
+        "recipient_fraction_ratio", "recipient_mapq_fraction",
+        "total_mean",
+        "donor_component", "donor_chr_name"
+    )
+}
+
+.bam_bedpe_types <- function() {
+    types <- call_schema_types()
+    types[c("chr_id.don", "chr_id.rec")] <- "character"
+    types[c("start.don", "stop.don", "start.rec", "stop.rec")] <- "numeric"
+    types
+}
+
+#' Project calls onto the canonical BEDPE schema
+#'
+#' Missing columns become typed `NA` columns so an empty export and a populated
+#' export always describe the same fields.
+#' @noRd
+.bam_bedpe_table_schema <- function(calls) {
+    columns <- bam_bedpe_columns()
+    types <- .bam_bedpe_types()
+    n <- if (is.data.frame(calls)) nrow(calls) else 0L
+    out <- lapply(columns, function(name) {
+        if (is.data.frame(calls) && name %in% names(calls)) {
+            calls[[name]]
+        } else {
+            .call_schema_vector(unname(types[[name]]), n)
+        }
+    })
+    names(out) <- columns
+    as.data.frame(
+        out, stringsAsFactors = FALSE, check.names = FALSE, optional = TRUE
+    )
+}
+
 .annotate_call_intervals <- function(calls, windows) {
     if (nrow(calls) == 0L) {
         calls$chr_id.don <- character(0)
@@ -147,71 +205,11 @@
     if (!is.null(samples)) {
         calls <- calls[calls$sample %in% samples, , drop = FALSE]
     }
-    if (isTRUE(pass_only) && "pass" %in% names(calls)) {
-        calls <- calls[isTRUE_vec(calls$pass), , drop = FALSE]
-    }
+    calls <- explorer_calls(calls, list(pass_only = pass_only))$calls
     if (nrow(calls) == 0L) {
-        return(data.frame(
-            sample = character(0), chr_id.don = character(0),
-            start.don = numeric(0), stop.don = numeric(0),
-            chr_id.rec = character(0), start.rec = numeric(0),
-            stop.rec = numeric(0), width_bp = numeric(0),
-            score_mean = numeric(0), donor_mean = numeric(0),
-            recipient_mean = numeric(0), class = character(0),
-            class_group = character(0), class_evidence = character(0),
-            class_confidence = character(0), class_status = character(0),
-            copy_state = character(0), total_evidence = character(0),
-            component_status = character(0),
-            mappability_status = character(0),
-            confidence = character(0),
-            method = character(0),
-            mode = character(0), group = character(0),
-            pass = logical(0),
-            recipient_component = character(0),
-            recipient_chr_name = character(0),
-            recipient_group = character(0),
-            recipient_assignment = character(0),
-            recipient_cross_group = logical(0),
-            recipient_weight = numeric(0),
-            recipient_expected_breadth = numeric(0),
-            recipient_observed_breadth = numeric(0),
-            recipient_deletion_width_bp = numeric(0),
-            recipient_alternative = character(0),
-            recipient_mean_depletion = numeric(0),
-            recipient_depletion_se = numeric(0),
-            recipient_depletion_lower = numeric(0),
-            recipient_depletion_z = numeric(0),
-            recipient_width_overlap = numeric(0),
-            recipient_fraction_ratio = numeric(0),
-            recipient_mapq_fraction = numeric(0),
-            mapq_fraction = numeric(0),
-            total_mean = numeric(0),
-            donor_component = character(0),
-            donor_chr_name = character(0),
-            stringsAsFactors = FALSE
-        ))
+        return(.bam_bedpe_table_schema(NULL))
     }
-    columns <- c(
-        "sample", "chr_id.don", "start.don", "stop.don",
-        "chr_id.rec", "start.rec", "stop.rec", "width_bp",
-        "score_mean", "donor_mean", "recipient_mean", "class",
-        "class_group", "class_evidence", "class_confidence", "class_status",
-        "copy_state", "total_evidence", "component_status",
-        "mappability_status", "mapq_fraction",
-        "confidence", "method", "mode", "group",
-        "start_iid", "end_iid", "pass", "recipient_component",
-        "recipient_chr_name", "recipient_group", "recipient_assignment",
-        "recipient_cross_group", "recipient_weight",
-        "recipient_expected_breadth", "recipient_observed_breadth",
-        "recipient_deletion_width_bp",
-        "recipient_alternative", "recipient_mean_depletion",
-        "recipient_depletion_se", "recipient_depletion_lower",
-        "recipient_depletion_z", "recipient_width_overlap",
-        "recipient_fraction_ratio", "recipient_mapq_fraction",
-        "mapq_fraction", "total_mean",
-        "donor_component", "donor_chr_name"
-    )
-    calls[, intersect(columns, names(calls)), drop = FALSE]
+    .bam_bedpe_table_schema(calls)
 }
 
 writeCallsToBedpe <- function(x, file, samples = NULL, selected = NULL,

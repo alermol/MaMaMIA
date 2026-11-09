@@ -57,6 +57,10 @@ bam_bundle_write_cohort_qc <- function(result, bundle) {
     calibration <- bam_bundle_rename_columns(
         result$calibration, bam_bundle_calibration_columns()
     )
+    bam_bundle_validate_qc_tables(
+        list(masks = masks, calibration = calibration),
+        required_tables = character()
+    )
     masks_summary <- bam_bundle_masks_summary(masks)
     bam_bundle_write_csv(
         masks, file.path(qc_dir, "masks-windows.csv.gz"), gzip = TRUE
@@ -651,7 +655,9 @@ bam_write_cohort_bundle <- function(result, file, samples = NULL,
         , drop = FALSE
     ]
     calls <- bam_bundle_descriptive_calls(calls_raw)
-    passing <- isTRUE_vec(calls_raw$pass)
+    passing_calls <- bam_bundle_descriptive_calls(
+        explorer_calls(calls_raw, list(pass_only = TRUE))$calls
+    )
     confident_raw <- bam_confident_calls(calls_raw)
     confident_calls <- bam_bundle_descriptive_calls(confident_raw)
     calls_summary <- bam_bundle_call_summary(calls_raw)
@@ -672,7 +678,7 @@ bam_write_cohort_bundle <- function(result, file, samples = NULL,
         row.names = FALSE, na = "", fileEncoding = "UTF-8"
     )
     utils::write.csv(
-        calls[passing, , drop = FALSE],
+        passing_calls,
         file.path(bundle, "calls-passing.csv"),
         row.names = FALSE, na = "", fileEncoding = "UTF-8"
     )

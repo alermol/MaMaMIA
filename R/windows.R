@@ -28,84 +28,11 @@
 #'
 #' @return A data frame with `name`, `length` and `offset`.
 readContigsTsv <- function(path) {
-    if (!is.character(path) || length(path) != 1L || is.na(path) ||
-        !nzchar(path)) {
-        .window_error("`path` must be a single non-empty file path")
-    }
-    path <- path.expand(path)
-    if (!file.exists(path)) {
-        .window_error("Contigs file does not exist: %s", path)
-    }
-
-    lines <- tryCatch(
-        readLines(path, warn = FALSE),
-        error = function(e) {
-            .window_error("Could not read %s: %s", path, conditionMessage(e))
-        }
-    )
-    lines <- sub("\r$", "", lines)
-    lines <- lines[nzchar(trimws(lines))]
-    if (length(lines) == 0L) {
-        .window_error("No contigs found in %s", path)
-    }
-
-    fields <- strsplit(lines, "\t", fixed = TRUE)
-    widths <- lengths(fields)
-    if (any(widths != 3L)) {
-        row <- which(widths != 3L)[[1L]]
-        .window_error(
-            "%s line %d has %d tab-separated columns; expected exactly 3 (name, length, offset)",
-            path, row, widths[[row]]
-        )
-    }
-
-    name <- vapply(fields, `[[`, character(1), 1L)
-    length_text <- vapply(fields, `[[`, character(1), 2L)
-    offset_text <- vapply(fields, `[[`, character(1), 3L)
-
-    if (anyNA(name) || any(!nzchar(trimws(name)))) {
-        .window_error("Empty contig name in %s", path)
-    }
-    length <- suppressWarnings(as.numeric(length_text))
-    offset <- suppressWarnings(as.numeric(offset_text))
-    if (anyNA(length) || any(!is.finite(length))) {
-        row <- which(is.na(length) | !is.finite(length))[[1L]]
-        .window_error(
-            "Contig length on line %d of %s is not numeric: '%s'",
-            row, path, length_text[[row]]
-        )
-    }
-    if (anyNA(offset) || any(!is.finite(offset))) {
-        row <- which(is.na(offset) | !is.finite(offset))[[1L]]
-        .window_error(
-            "Contig offset on line %d of %s is not numeric: '%s'",
-            row, path, offset_text[[row]]
-        )
-    }
-    if (any(length <= 0) || any(length != floor(length))) {
-        .window_error("Contig lengths in %s must be positive integers", path)
-    }
-    if (any(offset < 0) || any(offset != floor(offset))) {
-        .window_error("Contig offsets in %s must be non-negative integers", path)
-    }
-    if (anyDuplicated(name)) {
-        duplicate <- unique(name[duplicated(name)])[[1L]]
-        .window_error("Duplicate contig '%s' in %s", duplicate, path)
-    }
-
-    expected_offsets <- c(0, utils::head(cumsum(length), -1L))
-    if (any(offset != expected_offsets)) {
-        row <- which(offset != expected_offsets)[[1L]]
-        .window_error(
-            "Contig offsets in %s must be the cumulative lengths of the preceding contigs (first mismatch on line %d)",
-            path, row
-        )
-    }
-
+    contigs <- .read_gcrank_contigs(path, error = .window_error)
     data.frame(
-        name = name,
-        length = as.numeric(length),
-        offset = as.numeric(offset),
+        name = contigs$id,
+        length = contigs$length,
+        offset = contigs$offset,
         stringsAsFactors = FALSE
     )
 }

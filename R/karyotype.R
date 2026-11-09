@@ -700,7 +700,8 @@ karyotype_payload <- function(result, sample = NULL,
             as.numeric(x$score)
         }
     )
-    make_call <- function(i, start_bp, end_bp, length_bp, n_per) {
+    make_call <- function(i, start_bp, end_bp, length_bp, n_per,
+                          chromosome_group = NULL) {
         start <- NA_real_
         end <- NA_real_
         if (is.finite(start_bp) && is.finite(length_bp) && length_bp > 0) {
@@ -720,7 +721,7 @@ karyotype_payload <- function(result, sample = NULL,
         }
         start <- max(0, min(1, start))
         end <- max(0, min(1, end))
-        list(
+        record <- call_record(list(
             start = start,
             end = end,
             start_bp = as.numeric(start_bp),
@@ -840,7 +841,16 @@ karyotype_payload <- function(result, sample = NULL,
             recipient_fraction_ratio = as.numeric(
                 call_value("recipient_fraction_ratio", i, NA_real_)
             )
+        ), include_missing = FALSE)
+        ## Tooltip text and formatting are projected once from the call schema
+        ## so the browser adapter never inspects canonical call fields.
+        record$tooltip <- call_tooltip(
+            record,
+            sample = sample,
+            chromosome_group = chromosome_group,
+            palette = karyotype_palette()
         )
+        record
     }
     recipient_calls <- function(chr_id, group, component, length_bp) {
         if (nrow(overlay) == 0L || chr_id %in% deleted) {
@@ -867,7 +877,8 @@ karyotype_payload <- function(result, sample = NULL,
         }
         lapply(rows, function(i) {
             make_call(i, recipient_start[[i]], recipient_end[[i]],
-                length_bp, n_per
+                length_bp, n_per,
+                chromosome_group = group
             )
         })
     }
@@ -884,7 +895,8 @@ karyotype_payload <- function(result, sample = NULL,
         rows <- which((own | fallback) & supported)
         lapply(rows, function(i) {
             make_call(i, donor_start[[i]], donor_end[[i]],
-                length_bp, n_per
+                length_bp, n_per,
+                chromosome_group = group
             )
         })
     }
@@ -1210,7 +1222,7 @@ karyotype_payload <- function(result, sample = NULL,
     if (length(limit) != 1L || !is.finite(limit) || limit <= 0) {
         limit <- 0.5
     }
-    list(
+    payload <- list(
         mode = mode,
         sample = sample,
         score_limit = max(0.5, as.numeric(limit)),
@@ -1222,6 +1234,10 @@ karyotype_payload <- function(result, sample = NULL,
         ),
         chromosomes = chromosome_payload
     )
+    ## Display policy is resolved once here so the browser and the static SVG
+    ## consume the same legend, call styles, labels and omitted note.
+    payload$scene <- karyotype_scene(payload)
+    payload
 }
 
 #' Asset dependencies for the karyotype widget
@@ -1242,7 +1258,7 @@ mamamia_karyotype_dependencies <- function() {
         ## file.
         htmltools::htmlDependency(
             name = "mamamiaKaryotypeCard-binding",
-            version = "0.1.2",
+            version = "0.1.4",
             src = src,
             script = "mamamiaKaryotypeCard.js",
             all_files = FALSE

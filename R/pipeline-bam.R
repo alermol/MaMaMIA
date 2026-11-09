@@ -47,8 +47,15 @@
             "`config` has no assembly: pair the species first with resolveSpeciesAssembly()"
         )
     }
-    if (is.null(config$defaults) || is.null(config$server)) {
-        config <- validateMaMaMIAConfig(config)
+    ## Every resolved configuration already passed registry validation. Filling
+    ## absent defaults must not re-validate the list: validateMaMaMIAConfig()
+    ## rejects a non-empty `assemblies` registry, which a resolved config
+    ## always has.
+    if (is.null(config$defaults)) {
+        config$defaults <- .config_defaults()
+    }
+    if (is.null(config$server)) {
+        config$server <- .config_server_defaults()
     }
     if (!identical(as.integer(config$version), 2L)) {
         .analysis_error(
@@ -76,24 +83,27 @@
 }
 
 .pipeline_contigs <- function(assembly) {
-    indexes <- assembly$gc_indexes
-    if (is.null(indexes) || length(indexes) == 0L) {
+    ## The registry reader already parsed every gcrank index, checked the
+    ## cumulative offsets and reconciled each contig length with the assembly.
+    ## Re-reading the indexes here would duplicate that work and open a window
+    ## in which the run sees a different index than the configuration proved.
+    roles <- c("recipient", "donor")
+    pieces <- lapply(roles, function(role) {
+        x <- assembly$contigs[[role]]
+        if (is.null(x) || nrow(x) == 0L) {
+            return(NULL)
+        }
+        data.frame(
+            name = as.character(x$id),
+            length = as.numeric(x$length),
+            stringsAsFactors = FALSE
+        )
+    })
+    contigs <- do.call(rbind, Filter(Negate(is.null), pieces))
+    if (is.null(contigs) || nrow(contigs) == 0L) {
         return(NULL)
     }
-    pieces <- lapply(
-        indexes,
-        function(index) readContigsTsv(file.path(index, "contigs.tsv"))
-    )
-    contigs <- do.call(rbind, lapply(pieces, function(x) {
-        x[, c("name", "length"), drop = FALSE]
-    }))
     rownames(contigs) <- NULL
-    if (anyDuplicated(contigs$name)) {
-        duplicate <- unique(contigs$name[duplicated(contigs$name)])[[1L]]
-        .analysis_error(
-            "Contig '%s' appears in more than one gc_index", duplicate
-        )
-    }
     contigs
 }
 
@@ -425,8 +435,10 @@
 #' components.
 #'
 #' @param bam_paths Character vector of coordinate-sorted BAM paths.
-#' @param config A validated configuration list from [readMaMaMIAConfig()] or a
-#'   path to a YAML configuration.
+#' @param config A validated configuration list from [readMaMaMIAConfig()], a
+#'   path to a YAML configuration, or an analysis context from
+#'   [openAnalysisConfig()]. A context also selects the assembly, so `assembly`
+#'   only needs to be passed for a plain configuration.
 #' @param assembly Optional assembly key. Without it, the BAM headers select the
 #'   most specific exact match.
 #' @param sample_composition Optional named recipient copy-number vector, for
@@ -485,6 +497,12 @@ analyzeBamInput <- function(bam_paths,
                             profile = NULL,
                             profile_base = NULL) {
     started_at <- Sys.time()
+    if (isMaMaMIAAnalysisContext(config)) {
+        if (is.null(assembly)) {
+            assembly <- config$assembly_key
+        }
+        config <- config$config
+    }
     config <- .pipeline_config(config)
     .validate_progress(progress)
     defaults <- config$defaults
@@ -629,55 +647,39 @@ analyzeBamInput <- function(bam_paths,
         source = unique(masks$source[masks$mask])
     ))
 
-    segment_args <- list(
-        alpha = 0.001,
-        undo_SD = 1,
-        min_width = 5L,
-        merge_gap = 100L,
-        merge_floor = -0.5,
-        min_mb = 5
+    calibration_parameters <- resolveCalibrationParameters(
+        defaults, overrides = calibration_args, mode = mode
     )
-    segment_keep <- intersect(names(calibration_args), names(segment_args))
-    segment_args[segment_keep] <- calibration_args[segment_keep]
     donor_lengths <- tapply(
         windows$table$stop[windows$table$role == "donor"],
         windows$table$group[windows$table$role == "donor"],
         max, na.rm = TRUE
     )
-    segment_args$lengths <- donor_lengths
-    calls <- do.call(
-        segmentScores,
-        c(list(scores = scores, mask = masks), segment_args)
+    segment_args <- c(
+        list(scores = scores, mask = masks),
+        calibration_parameters$segmentation,
+        list(lengths = donor_lengths)
     )
+    calls <- do.call(segmentScores, segment_args)
     .pipeline_progress(progress, "segmentation", list(
         n_segments = nrow(calls),
         n_samples = length(unique(calls$sample))
     ))
 
-    cal <- defaults$calibration
-    cal[names(calibration_args)] <- calibration_args
-    cal_floors <- cal$floors
-    if (is.null(cal_floors)) {
-        cal_floors <- if (identical(mode, "single")) {
-            cal$single_sample_floors
-        } else {
-            rep(0.25, max(1L, length(cal$length_bins_mb) - 1L))
-        }
-    }
     calibrated <- calibrateSegments(
         calls,
-        controls = cal$controls,
+        controls = calibration_parameters$controls,
         mode = mode,
-        length_bins_mb = cal$length_bins_mb,
-        fdr = cal$fdr,
-        floors = cal_floors
+        length_bins_mb = calibration_parameters$length_bins_mb,
+        fdr = calibration_parameters$fdr,
+        floors = calibration_parameters$floors
     )
     class_thresholds <- .call_class_thresholds(
-        calibrated$calls, cal$controls
+        calibrated$calls, calibration_parameters$controls
     )
     calls <- classifyCalls(
         calibrated$calls,
-        controls = cal$controls,
+        controls = calibration_parameters$controls,
         thresholds = class_thresholds
     )
     calls <- assignCallPositions(
@@ -688,11 +690,11 @@ analyzeBamInput <- function(bam_paths,
         assembly = assembly_config,
         masks = masks,
         class_thresholds = class_thresholds,
-        controls = cal$controls
+        controls = calibration_parameters$controls
     )
     .pipeline_progress(progress, "calibration", list(
         n_calls = sum(calls$pass, na.rm = TRUE),
-        fdr = cal$fdr
+        fdr = calibration_parameters$fdr
     ))
 
     sample_bam <- match(preflight$path, indexed$original_path)
@@ -731,10 +733,10 @@ analyzeBamInput <- function(bam_paths,
         donor_aggregation = donor_aggregation,
         mapq = mapq,
         calibration = list(
-            fdr = cal$fdr,
-            floors = as.numeric(cal_floors),
-            min_mb = segment_args$min_mb,
-            merge_gap = segment_args$merge_gap
+            fdr = calibration_parameters$fdr,
+            floors = as.numeric(calibration_parameters$floors),
+            min_mb = calibration_parameters$segmentation$min_mb,
+            merge_gap = calibration_parameters$segmentation$merge_gap
         )
     )
     provenance <- .pipeline_provenance(

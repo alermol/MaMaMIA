@@ -421,7 +421,7 @@ test_that("mamamia_karyotype() returns a widget with its stylesheet", {
         dependencies
     )
     expect_length(binding, 1L)
-    expect_identical(binding[[1L]]$version, "0.1.2")
+    expect_identical(binding[[1L]]$version, "0.1.4")
     expect_true(any(vapply(
         widget$dependencies,
         function(dependency) {
@@ -533,8 +533,12 @@ test_that("the karyotype export payload carries every call", {
     payload <- karyotype_export_payload(
         result, "example-sample", "calls", calls = visible
     )
+    expect_null(payload$full_calls)
+    expect_null(payload$full_chromosomes)
+    expect_true(is.list(payload$views$full))
     expect_true(
-        length(payload$full_chromosomes) >= length(payload$chromosomes)
+        length(payload$views$full$chromosomes) >=
+            length(payload$chromosomes)
     )
     current <- sum(vapply(
         payload$chromosomes,
@@ -542,7 +546,7 @@ test_that("the karyotype export payload carries every call", {
         integer(1)
     ))
     full <- sum(vapply(
-        payload$full_chromosomes,
+        payload$views$full$chromosomes,
         function(chromosome) length(chromosome$calls),
         integer(1)
     ))
@@ -681,6 +685,11 @@ test_that("the full export keeps deletions when the live view hides them", {
     expect_true(live$hide_deletions)
     expect_false(any(vapply(
         live$chromosomes, function(x) identical(x$name, "8A"), logical(1)
+    )))
+    expect_true(any(vapply(
+        live$views$full$chromosomes,
+        function(x) identical(x$name, "8A"),
+        logical(1)
     )))
     full <- bam_full_karyotype_payload(live)
     expect_false(full$hide_deletions)
