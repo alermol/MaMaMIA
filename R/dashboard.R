@@ -767,12 +767,13 @@ explorer_tooltip_help_ui <- function() {
         section(
             "Unplaced calls",
             paste(
-                "A call with no recipient host cannot be placed on the",
-                "recipient karyotype. With Hide unplaced off, its donor contig",
-                "is drawn as a neutral unplaced bar and its calls remain in",
-                "the table. With Hide unplaced on, the bar and table rows are",
-                "removed. The counter reports how many visible calls have no",
-                "host. Full exports keep every call."
+                "A call is unplaced when it cannot be drawn on a recipient",
+                "chromosome or an added donor bar. With Hide unplaced off, its",
+                "donor contig is drawn as a neutral unplaced bar and its calls",
+                "remain in the table. With Hide unplaced on, the bar and table",
+                "rows are removed. Donor-only additions are placed on added",
+                "donor bars and stay visible. The counter reports unplaced",
+                "calls in the current view; full exports keep every call."
             )
         ),
         section(
@@ -1045,9 +1046,10 @@ explorer_results_ui <- function(id) {
             shiny::div(
                 class = "small text-muted mb-2",
                 paste(
-                    "Calls with no recipient host are shown as neutral",
-                    "unplaced donor bars when Hide unplaced is off. The table",
-                    "lists only calls placed in the current karyotype."
+                    "Calls that cannot be placed on a recipient chromosome or",
+                    "an added donor bar appear as neutral unplaced donor bars",
+                    "when Hide unplaced is off. The table lists only calls",
+                    "placed in the current karyotype."
                 )
             ),
             DT::DTOutput(ns("calls"))
@@ -1156,12 +1158,12 @@ explorer_server <- function(id, result, sample = NULL) {
             if (is.null(result_value())) {
                 return("")
             }
-            state <- visible_call_state()
-            count <- state$unplaced
-            if (is.null(count) || length(count) != 1L || is.na(count)) {
-                count <- 0L
+            payload <- current_karyotype()
+            if (is.null(payload)) {
+                return("")
             }
-            count <- as.integer(count)
+            ids <- payload$unplaced_call_ids
+            count <- if (is.null(ids)) 0L else length(ids)
             if (count <= 0L) {
                 return("No unplaced calls")
             }

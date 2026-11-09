@@ -515,13 +515,6 @@ karyotype_payload <- function(result, sample = NULL,
         overlay <- overlay[
             as.character(overlay$sample) == sample, , drop = FALSE
         ]
-        if (hide_unplaced && "recipient_assignment" %in% names(overlay)) {
-            assignment <- as.character(overlay$recipient_assignment)
-            overlay <- overlay[
-                is.na(assignment) | assignment != "no_recipient_loss", ,
-                drop = FALSE
-            ]
-        }
         if (!".call_id" %in% names(overlay)) {
             overlay$.call_id <- seq_len(nrow(overlay))
         }
@@ -1085,13 +1078,14 @@ karyotype_payload <- function(result, sample = NULL,
         }
     }
 
-    ## Unplaced calls have no recipient host, so they cannot be drawn on the
-    ## recipient karyotype. When Hide unplaced is off, show their donor contigs
-    ## as neutral unplaced bars. They are not proper added donors: the bar only
-    ## gives the class-coloured calls a place to be reviewed.
+    ## A call with no recipient host can still be placed as an added donor.
+    ## Only calls that are not placed anywhere are unplaced. Compute that set
+    ## for the counter and table, and draw neutral unplaced bars only when the
+    ## current view asks for them.
     unplaced_donor_ids <- character()
     unplaced_donor_rows <- list()
-    if (show_unplaced && !hide_unplaced && nrow(overlay) > 0L) {
+    unplaced_call_ids <- integer()
+    if (nrow(overlay) > 0L) {
         unplaced <- !is.na(recipient_assignment) &
             recipient_assignment == "no_recipient_loss"
         for (i in which(unplaced)) {
@@ -1123,8 +1117,18 @@ karyotype_payload <- function(result, sample = NULL,
                     ])
                 }
             }
-            candidates <- setdiff(candidates, added_donor_ids)
             candidates <- candidates[!is.na(candidates) & nzchar(candidates)]
+            ## A donor-only addition is placed on its added-donor bar.
+            if (any(candidates %in% added_donor_ids)) {
+                next
+            }
+            call_id <- as.integer(call_value(".call_id", i, NA_integer_))
+            if (!is.na(call_id)) {
+                unplaced_call_ids <- c(unplaced_call_ids, call_id)
+            }
+            if (!show_unplaced || hide_unplaced) {
+                next
+            }
             for (id in candidates) {
                 if (is.null(unplaced_donor_rows[[id]])) {
                     unplaced_donor_rows[[id]] <- integer()
@@ -1136,6 +1140,7 @@ karyotype_payload <- function(result, sample = NULL,
             }
         }
     }
+    unplaced_call_ids <- unique(as.integer(unplaced_call_ids))
     unplaced_donor <- donor[
         as.character(donor$id) %in% unplaced_donor_ids, , drop = FALSE
     ]
@@ -1383,6 +1388,7 @@ karyotype_payload <- function(result, sample = NULL,
             bases = as.numeric(hidden_bases)
         ),
         rendered_call_ids = rendered_call_ids,
+        unplaced_call_ids = unplaced_call_ids,
         chromosomes = chromosome_payload
     )
     ## Display policy is resolved once here so the browser and the static SVG

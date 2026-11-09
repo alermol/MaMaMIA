@@ -283,6 +283,7 @@ test_that("unplaced calls render neutral bars when not hidden", {
         logical(1)
     )))
     expect_false(fake_id %in% hidden$rendered_call_ids)
+    expect_true(fake_id %in% hidden$unplaced_call_ids)
 
     shown <- karyotype_payload(
         result, "example-sample", "calls",
@@ -300,6 +301,7 @@ test_that("unplaced calls render neutral bars when not hidden", {
     expect_identical(bar$name, "3R")
     expect_identical(bar$calls[[1L]]$class, "other")
     expect_true(fake_id %in% shown$rendered_call_ids)
+    expect_true(fake_id %in% shown$unplaced_call_ids)
     scene_bar <- Filter(
         function(chromosome) {
             isTRUE(chromosome$unplaced) &&
@@ -348,6 +350,32 @@ test_that("unplaced calls render neutral bars when not hidden", {
         function(chromosome) isTRUE(chromosome$unplaced),
         logical(1)
     )))
+})
+
+test_that("donor-only additions stay placed when unplaced calls are hidden", {
+    result <- bam_example_result(1000)
+    calls <- result$calls[
+        as.character(result$calls$sample) == "example-sample", ,
+        drop = FALSE
+    ]
+    calls$.call_id <- seq_len(nrow(calls))
+    call_id <- which(
+        as.character(calls$donor_chr_name) == "5R" &
+            as.character(calls$class) == "addition"
+    )[[1L]]
+
+    payload <- karyotype_payload(
+        result, "example-sample", "calls",
+        calls = calls, hide_unplaced = TRUE
+    )
+    bar <- Filter(
+        function(chromosome) identical(chromosome$name, "5R"),
+        payload$chromosomes
+    )
+    expect_length(bar, 1L)
+    expect_true(bar[[1L]]$added)
+    expect_true(call_id %in% payload$rendered_call_ids)
+    expect_false(call_id %in% payload$unplaced_call_ids)
 })
 
 test_that("the scene respects calls, heatmap and hidden deletions", {
