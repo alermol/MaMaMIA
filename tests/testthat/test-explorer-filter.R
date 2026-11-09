@@ -13,6 +13,10 @@ explorer_filter_fixture <- function() {
         pass = c(TRUE, FALSE, TRUE, NA, TRUE),
         recipient_group = c(NA, "G1", NA, NA, "G2"),
         recipient_cross_group = c(FALSE, TRUE, FALSE, NA, TRUE),
+        recipient_assignment = c(
+            "assigned", "no_recipient_loss", "assigned", NA,
+            "no_recipient_loss"
+        ),
         stringsAsFactors = FALSE
     )
 }
@@ -20,12 +24,33 @@ explorer_filter_fixture <- function() {
 test_that("explorer_calls() passes NULL and empty calls through", {
     expect_identical(
         explorer_calls(NULL),
-        list(calls = NULL, display_group = character())
+        list(calls = NULL, display_group = character(), unplaced = 0L)
     )
     empty <- explorer_filter_fixture()[0, , drop = FALSE]
     out <- explorer_calls(empty, list(pass_only = TRUE))
     expect_identical(out$calls, empty)
     expect_identical(out$display_group, character())
+    expect_identical(out$unplaced, 0L)
+})
+
+test_that("explorer_calls() counts and optionally hides unplaced calls", {
+    calls <- explorer_filter_fixture()
+    out <- explorer_calls(calls)
+    expect_identical(out$unplaced, 2L)
+    expect_identical(
+        out$calls$group, c("G1", "G2", "G2", "G3", "G4")
+    )
+
+    hidden <- explorer_calls(calls, list(hide_unplaced = TRUE))
+    expect_identical(hidden$calls$group, c("G1", "G2", "G3"))
+    expect_identical(hidden$unplaced, 2L)
+    expect_identical(hidden$display_group, c("G1", "G2", "G3"))
+
+    passed <- explorer_calls(
+        calls, list(pass_only = TRUE, hide_unplaced = TRUE)
+    )
+    expect_identical(passed$calls$group, c("G1", "G2"))
+    expect_identical(passed$unplaced, 1L)
 })
 
 test_that("explorer_calls() applies pass-only without treating NA as pass", {

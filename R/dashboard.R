@@ -719,10 +719,10 @@ explorer_tooltip_help_ui <- function() {
             row(
                 "Added donor fill",
                 paste(
-                    "An added donor chromosome uses the light-blue",
-                    "chromosome-state colour. A call drawn on it keeps its",
-                    "class colour. In heatmap mode the score bins cover the",
-                    "call interval and the rest of the bar stays light blue."
+                    "Calls mode uses the light-blue added-donor state",
+                    "colour. Heatmap mode uses the heatmap zero-coverage",
+                    "colour outside the score bins. Calls drawn on the bar",
+                    "keep their class colour."
                 )
             ),
             row(
@@ -762,6 +762,16 @@ explorer_tooltip_help_ui <- function() {
                     "The added donor chromosome takes the place of the",
                     "deleted recipient chromosome."
                 )
+            )
+        ),
+        section(
+            "Unplaced calls",
+            paste(
+                "A call with no recipient host cannot be placed on the",
+                "karyotype. It stays in the call table and exports so it can",
+                "be reviewed. The Hide unplaced switch removes it from the",
+                "table and filtered exports, while full exports keep every",
+                "call. The counter reports how many visible calls have no host."
             )
         ),
         section(
@@ -879,6 +889,14 @@ explorer_karyotype_ui <- function(id, height = "calc(100vh - 360px)") {
                         value = FALSE
                     ),
                     shiny::textOutput(ns("deletion_info"), inline = TRUE)
+                ),
+                shiny::div(
+                    class = "mamamia-karyotype-deletions",
+                    bslib::input_switch(
+                        ns("hide_unplaced"), "Hide unplaced",
+                        value = FALSE
+                    ),
+                    shiny::textOutput(ns("unplaced_info"), inline = TRUE)
                 )
             ),
             shiny::div(
@@ -1014,6 +1032,14 @@ explorer_results_ui <- function(id) {
         ),
         bslib::nav_panel(
             "Calls",
+            shiny::div(
+                class = "small text-muted mb-2",
+                paste(
+                    "Calls with no recipient host cannot be placed on the",
+                    "karyotype. Use Hide unplaced to remove them from this",
+                    "table and filtered exports when they are not needed."
+                )
+            ),
             DT::DTOutput(ns("calls"))
         )
     )
@@ -1081,7 +1107,7 @@ explorer_server <- function(id, result, sample = NULL) {
             }
         }, ignoreInit = TRUE)
 
-        visible_calls <- shiny::reactive({
+        visible_call_state <- shiny::reactive({
             explorer_calls(calls(), list(
                 pass_only = input$pass_only,
                 groups = group_filter(),
@@ -1091,8 +1117,33 @@ explorer_server <- function(id, result, sample = NULL) {
                 confidence = input$confidence,
                 min_width_bp = suppressWarnings(
                     as.numeric(input$min_width)
-                ) * 1e6
-            ))$calls
+                ) * 1e6,
+                hide_unplaced = isTRUE(input$hide_unplaced)
+            ))
+        })
+
+        visible_calls <- shiny::reactive({
+            visible_call_state()$calls
+        })
+
+        output$unplaced_info <- shiny::renderText({
+            if (is.null(result_value())) {
+                return("")
+            }
+            state <- visible_call_state()
+            count <- state$unplaced
+            if (is.null(count) || length(count) != 1L || is.na(count)) {
+                count <- 0L
+            }
+            count <- as.integer(count)
+            if (count <= 0L) {
+                return("No unplaced calls")
+            }
+            if (isTRUE(input$hide_unplaced)) {
+                sprintf("%d unplaced hidden", count)
+            } else {
+                sprintf("%d unplaced visible", count)
+            }
         })
 
         selected <- shiny::reactive({

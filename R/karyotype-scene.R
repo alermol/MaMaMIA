@@ -311,16 +311,26 @@ karyotype_scene_chromosome <- function(chromosome, mode, heatmap_bins,
         display_length <= 0) {
         display_length <- if (length_bp > 0) length_bp else 0
     }
-    ## An added donor chromosome is a chromosome state. Its base and any
-    ## unsupported tail keep the state colour; calls drawn on it keep their
-    ## class colour. Using the sole call's class here painted the whole bar,
-    ## including bases the call never covered, in the call class colour.
+    ## An added donor chromosome is a chromosome state. In calls mode its base
+    ## uses the added-donor colour; in heatmap mode it uses the zero-coverage
+    ## colour so regions without score bins read as missing rather than as a
+    ## state block. Calls drawn on it keep their class colour. Using the sole
+    ## call's class here painted the whole bar, including bases the call never
+    ## covered, in the call class colour.
     added_fill <- as.character(palette$added %||% "#9cc3d5")[[1L]]
     added_text <- as.character(palette$added_text %||% added_fill)[[1L]]
+    zero_fill <- as.character(palette$zero %||% "#f1efe7")[[1L]]
+    heatmap <- identical(mode, "heatmap")
     base_fill <- if (deleted) {
         palette$deleted
     } else if (added) {
-        if (added_partial) "none" else added_fill
+        if (heatmap) {
+            zero_fill
+        } else if (added_partial) {
+            "none"
+        } else {
+            added_fill
+        }
     } else {
         "#f4f4f4"
     }

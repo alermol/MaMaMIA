@@ -149,6 +149,26 @@ test_that("the static karyotype renders calls and states", {
         full_added,
         fixed = TRUE
     )))
+
+    heatmap_payload <- karyotype_payload(result, sample, "heatmap")
+    heatmap_svg <- bam_karyotype_static_svg(heatmap_payload)
+    heatmap_groups <- regmatches(
+        heatmap_svg, gregexpr("<g>.*?</g>", heatmap_svg, perl = TRUE)
+    )[[1L]]
+    heatmap_added <- heatmap_groups[grepl(
+        "(added)", heatmap_groups, fixed = TRUE
+    )]
+    expect_gt(length(heatmap_added), 0L)
+    expect_true(all(grepl(
+        sprintf('fill="%s"', heatmap_payload$scene$palette$zero),
+        heatmap_added,
+        fixed = TRUE
+    )))
+    expect_false(any(grepl(
+        sprintf('fill="%s"', heatmap_payload$scene$palette$added),
+        heatmap_added,
+        fixed = TRUE
+    )))
     empty <- bam_karyotype_static_svg(
         list(chromosomes = list(), sample = "empty", palette = NULL)
     )

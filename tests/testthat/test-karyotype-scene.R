@@ -112,7 +112,7 @@ test_that("the scene resolves legend and call styles for the static SVG", {
     }
 })
 
-test_that("added donors keep the state colour while calls keep their class", {
+test_that("added donors use zero in heatmap and state colour in calls", {
     result <- st02_like_result()
     payload <- karyotype_payload(result, "example-sample", "heatmap")
     palette <- payload$scene$palette
@@ -123,7 +123,7 @@ test_that("added donors keep the state colour while calls keep their class", {
 
     expect_true(st02$added)
     expect_false(st02$added_partial)
-    expect_identical(st02$base$fill, palette$added)
+    expect_identical(st02$base$fill, palette$zero)
     expect_identical(st02$base$stroke, palette$added_text)
     expect_identical(st02$caption$fill, palette$added_text)
     expect_length(st02$calls, 1L)
@@ -138,10 +138,15 @@ test_that("added donors keep the state colour while calls keep their class", {
     st02_group <- groups[grepl("St02", groups, fixed = TRUE)]
     expect_length(st02_group, 1L)
     expect_match(
-        st02_group, sprintf('fill="%s"', palette$added), fixed = TRUE
+        st02_group, sprintf('fill="%s"', palette$zero), fixed = TRUE
     )
-    ## Heatmap mode draws bins over the call and no call rectangle, so the
-    ## class colour must not appear in the chromosome group.
+    ## Heatmap mode draws bins over the call and no call rectangle, so neither
+    ## the added-donor fill nor the class colour appears in the group.
+    expect_false(grepl(
+        sprintf('fill="%s"', palette$added),
+        st02_group,
+        fixed = TRUE
+    ))
     expect_false(grepl(
         sprintf('fill="%s"', palette$substitution),
         st02_group,
@@ -149,15 +154,20 @@ test_that("added donors keep the state colour while calls keep their class", {
     ))
 
     calls_payload <- karyotype_payload(result, "example-sample", "calls")
+    calls_st02 <- Filter(
+        function(chromosome) identical(chromosome$name, "St02"),
+        calls_payload$scene$chromosomes
+    )[[1L]]
+    expect_identical(calls_st02$base$fill, palette$added)
     calls_svg <- bam_karyotype_static_svg(calls_payload)
     calls_group <- svg_groups(calls_svg)
-    calls_st02 <- calls_group[grepl("St02", calls_group, fixed = TRUE)]
-    expect_length(calls_st02, 1L)
+    calls_st02_group <- calls_group[grepl("St02", calls_group, fixed = TRUE)]
+    expect_length(calls_st02_group, 1L)
     expect_match(
-        calls_st02, sprintf('fill="%s"', palette$added), fixed = TRUE
+        calls_st02_group, sprintf('fill="%s"', palette$added), fixed = TRUE
     )
     expect_match(
-        calls_st02, sprintf('fill="%s"', palette$substitution),
+        calls_st02_group, sprintf('fill="%s"', palette$substitution),
         fixed = TRUE
     )
 })
@@ -190,6 +200,29 @@ test_that("full additions use the state base and partial additions stay dashed",
     expect_identical(partial$base$fill, "none")
     expect_identical(partial$base$stroke, palette$negative)
     expect_identical(partial$calls[[1L]]$fill, palette$addition)
+
+    heatmap_payload <- karyotype_payload(
+        result, "example-sample", "heatmap"
+    )
+    heatmap_added <- Filter(
+        function(chromosome) isTRUE(chromosome$added),
+        heatmap_payload$scene$chromosomes
+    )
+    heatmap_full <- Filter(
+        function(chromosome) {
+            !isTRUE(chromosome$added_partial) &&
+                length(chromosome$calls) == 1L &&
+                identical(chromosome$calls[[1L]]$class, "addition")
+        },
+        heatmap_added
+    )[[1L]]
+    heatmap_partial <- Filter(
+        function(chromosome) isTRUE(chromosome$added_partial),
+        heatmap_added
+    )[[1L]]
+    expect_identical(heatmap_full$base$fill, palette$zero)
+    expect_identical(heatmap_partial$base$fill, palette$zero)
+    expect_identical(heatmap_partial$base$stroke, palette$negative)
 })
 
 test_that("the scene respects calls, heatmap and hidden deletions", {

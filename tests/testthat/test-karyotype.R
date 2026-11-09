@@ -507,6 +507,9 @@ test_that("the explorer exposes the karyotype tab and mode switch", {
     expect_match(html, "explorer-hide_deletions", fixed = TRUE)
     expect_match(html, "explorer-deletion_info", fixed = TRUE)
     expect_match(html, "Hide deletions", fixed = TRUE)
+    expect_match(html, "explorer-hide_unplaced", fixed = TRUE)
+    expect_match(html, "explorer-unplaced_info", fixed = TRUE)
+    expect_match(html, "Hide unplaced", fixed = TRUE)
     expect_match(html, "explorer-karyotype", fixed = TRUE)
     expect_match(html, "explorer-tooltip_help", fixed = TRUE)
     expect_match(html, "Tooltip help", fixed = TRUE)
@@ -602,6 +605,16 @@ test_that("a full substitution splits into a lost recipient and added donor", {
     expect_identical(scene_donor$base$fill, payload$scene$palette$added)
     expect_identical(
         scene_donor$calls[[1L]]$fill, payload$scene$palette$substitution
+    )
+    heatmap_payload <- karyotype_payload(
+        result, "example-sample", "heatmap"
+    )
+    heatmap_donor <- Filter(
+        function(x) identical(x$name, "8R"),
+        heatmap_payload$scene$chromosomes
+    )[[1L]]
+    expect_identical(
+        heatmap_donor$base$fill, heatmap_payload$scene$palette$zero
     )
 })
 

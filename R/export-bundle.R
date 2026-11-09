@@ -798,8 +798,10 @@ bam_bundle_readme <- function(sample, calls, generated, version,
     karyotype_lines <- c(
         if (has_file("karyotype-full.svg")) {
             c(
-                "karyotype-full.svg    Every call for the sample, without display",
-                "                      filters."
+                "karyotype-full.svg    Every renderable call for the sample,",
+                "                      without display filters. Calls with no",
+                "                      recipient host remain in calls-full.csv",
+                "                      and the BEDPE files."
             )
         },
         if (has_file("karyotype-current.svg")) {
