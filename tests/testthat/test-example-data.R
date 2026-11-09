@@ -32,6 +32,9 @@ test_that("the bundled example replays a result and progress", {
     skip_if_not(bam_example_available(), "bundled example is not installed")
     result <- bam_example_result(1000)
     expect_s3_class(result, "BamAnalysisResult")
+    expect_identical(
+        result$provenance$analysis_id, "example-1000"
+    )
     expect_named(result, c(
         "assembly", "config", "bams", "samples", "windows", "gc", "metrics",
         "scores", "masks", "calibration", "calls", "provenance"

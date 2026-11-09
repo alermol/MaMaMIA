@@ -1064,6 +1064,8 @@ explorer_results_ui <- function(id) {
 explorer_server <- function(id, result, sample = NULL) {
     shiny::moduleServer(id, function(input, output, session) {
         selected_group <- shiny::reactiveVal(NULL)
+        bundle_cache <- bundle_cache_state()
+        session$onSessionEnded(function() bundle_cache_clear(bundle_cache))
         result_value <- function() {
             if (shiny::is.reactive(result)) result() else result
         }
@@ -1118,7 +1120,11 @@ explorer_server <- function(id, result, sample = NULL) {
         }, ignoreInit = TRUE)
 
         visible_call_state <- shiny::reactive({
-            state <- explorer_calls(calls(), list(
+            raw <- calls()
+            if (!is.null(raw)) {
+                raw$.call_id <- seq_len(nrow(raw))
+            }
+            explorer_calls(raw, list(
                 pass_only = input$pass_only,
                 groups = group_filter(),
                 class = input$class,
@@ -1129,10 +1135,6 @@ explorer_server <- function(id, result, sample = NULL) {
                     as.numeric(input$min_width)
                 ) * 1e6
             ))
-            if (!is.null(state$calls)) {
-                state$calls$.call_id <- seq_len(nrow(state$calls))
-            }
-            state
         })
 
         visible_calls <- shiny::reactive({
@@ -1263,6 +1265,33 @@ explorer_server <- function(id, result, sample = NULL) {
                 hide_unplaced = isTRUE(input$hide_unplaced),
                 show_unplaced = !isTRUE(input$hide_unplaced),
                 full = full_karyotype()
+            )
+        })
+
+        bundle_request_value <- shiny::reactive({
+            res <- result_value()
+            payload <- current_karyotype()
+            if (is.null(res) || is.null(payload)) {
+                return(NULL)
+            }
+            sample <- sample_value()
+            if (is.null(sample)) {
+                sample <- karyotype_sample(res, NULL)
+            }
+            mode <- input$karyotype_mode
+            if (length(mode) != 1L || is.na(mode) ||
+                !mode %in% c("heatmap", "calls")) {
+                mode <- "heatmap"
+            }
+            bundle_request(
+                res,
+                sample = sample,
+                mode = mode,
+                calls = rendered_calls(),
+                groups = group_filter(),
+                hide_deletions = isTRUE(input$hide_deletions),
+                hide_unplaced = isTRUE(input$hide_unplaced),
+                current_payload = payload
             )
         })
 
@@ -1432,60 +1461,42 @@ explorer_server <- function(id, result, sample = NULL) {
                 bam_bundle_filename(sample_value())
             },
             content = function(file) {
-                res <- result_value()
-                if (is.null(res)) {
+                request <- bundle_request_value()
+                if (is.null(request)) {
                     stop(
                         "Run the analysis before downloading",
                         call. = FALSE
                     )
                 }
-                sample <- sample_value()
-                if (is.null(sample)) {
-                    sample <- karyotype_sample(res, NULL)
-                }
-                mode <- input$karyotype_mode
-                if (length(mode) != 1L || is.na(mode) ||
-                    !mode %in% c("heatmap", "calls")) {
-                    mode <- "heatmap"
-                }
-                shown <- rendered_calls()
-                if (!is.null(shown) && nrow(shown) > 0L) {
-                    shown <- shown[
-                        as.character(shown$sample) == sample, ,
-                        drop = FALSE
-                    ]
-                }
-                current_payload <- karyotype_export_payload(
-                    res,
-                    sample = sample,
-                    mode = mode,
-                    calls = shown,
-                    selected_groups = group_filter(),
-                    hide_deletions = isTRUE(input$hide_deletions),
-                    hide_unplaced = isTRUE(input$hide_unplaced),
-                    show_unplaced = !isTRUE(input$hide_unplaced)
-                )
-                full_payload <- bam_full_karyotype_payload(current_payload)
-                confident_calls <- bam_confident_calls(
-                    res$calls[
-                        as.character(res$calls$sample) == sample, ,
-                        drop = FALSE
-                    ]
-                )
-                confident_payload <- karyotype_payload(
-                    res,
-                    sample = sample,
-                    mode = "calls",
-                    calls = confident_calls,
-                    selected_groups = NULL
-                )
-                bam_write_cohort_bundle(
-                    res, file,
-                    current_sample = sample,
-                    current_payload = current_payload,
-                    full_payload = full_payload,
-                    confident_payload = confident_payload
-                )
+                key <- bundle_request_key(request)
+                bundle_cache_serve(bundle_cache, key, file, function(path) {
+                    res <- request$result
+                    sample <- request$sample
+                    current_payload <- request$current_payload
+                    full_payload <- bam_full_karyotype_payload(
+                        current_payload
+                    )
+                    confident_calls <- bam_confident_calls(
+                        res$calls[
+                            as.character(res$calls$sample) == sample, ,
+                            drop = FALSE
+                        ]
+                    )
+                    confident_payload <- karyotype_payload(
+                        res,
+                        sample = sample,
+                        mode = "calls",
+                        calls = confident_calls,
+                        selected_groups = NULL
+                    )
+                    bam_write_cohort_bundle(
+                        res, path,
+                        current_sample = sample,
+                        current_payload = current_payload,
+                        full_payload = full_payload,
+                        confident_payload = confident_payload
+                    )
+                })
             }
         )
 

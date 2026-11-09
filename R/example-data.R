@@ -93,6 +93,12 @@ bam_example_available <- function() {
                         mamamia_version()
                     }
                 }
+                if (is.null(provenance$analysis_id) ||
+                    length(provenance$analysis_id) != 1L ||
+                    is.na(provenance$analysis_id) ||
+                    !nzchar(provenance$analysis_id)) {
+                    provenance$analysis_id <- paste0("example-", key)
+                }
                 provenance$bams <- rewrite_bam(provenance$bams)
                 if ("config_path" %in% names(provenance)) {
                     provenance$config_path <- "example/assemblies.yml"

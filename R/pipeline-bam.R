@@ -254,8 +254,15 @@
         stringsAsFactors = FALSE
     )
     mask_sources <- unique(mask$source[mask$mask %in% TRUE])
+    analysis_id <- paste0(
+        "run-",
+        format(started_at, "%Y%m%dT%H%M%OS6", tz = "UTC"),
+        "-",
+        basename(tempfile("id-"))
+    )
     list(
         pipeline_version = .MaMaMIAPipelineVersion,
+        analysis_id = analysis_id,
         app = "MaMaMIA",
         app_version = mamamia_version(),
         r_version = as.character(getRversion()),
