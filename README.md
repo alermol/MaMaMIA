@@ -24,19 +24,17 @@ unplaced are on by default; the call table follows the rendered karyotype.*
 The supported deployment is the Docker image under ShinyProxy, or the same
 image run directly.
 
-## Highlights
+## What you get
 
-- One bar per chromosome, with deleted recipients, added donors, and neutral
-  unplaced donors shown as distinct states.
-- **Hide deletions** splices partial deletion intervals out of the bar and
-  removes fully deleted recipients, with an omitted-segment counter.
-- **Hide unplaced** hides calls that cannot be placed on a recipient or added
-  donor bar. Donor-only additions remain visible.
-- The Calls table lists exactly the calls rendered in the current karyotype.
-- Full, partial, and split donor additions are placed beside their chromosome
-  group.
-- Result bundles include current, full, confident, and actual-view karyotype
-  SVGs. Repeated downloads with an unchanged view reuse the session cache.
+The karyotype draws one bar per chromosome and tracks deleted recipients,
+added donors, and neutral unplaced donors as separate states. Hide deletions
+removes deletion evidence from the current view. Hide unplaced hides only calls
+that cannot be placed anywhere, so donor-only additions stay visible. Each
+control has a counter beside it.
+
+The Calls tab mirrors that view instead of keeping its own wider filtered
+table. Result bundles contain current, full, confident, and actual-view
+karyotype SVGs. Downloads with the same view reuse a cached archive.
 
 ## Quick start
 
