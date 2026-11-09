@@ -20,6 +20,7 @@ karyotype_palette <- function() {
         other = "#7570b3",
         deleted = "#d7d3c6",
         added = "#9cc3d5",
+        added_text = "#4f8fae",
         grid = "#e8e4da",
         text = "#3a3d35"
     )

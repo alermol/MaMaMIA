@@ -717,6 +717,15 @@ explorer_tooltip_help_ui <- function() {
                 )
             ),
             row(
+                "Added donor fill",
+                paste(
+                    "An added donor chromosome uses the light-blue",
+                    "chromosome-state colour. A call drawn on it keeps its",
+                    "class colour. In heatmap mode the score bins cover the",
+                    "call interval and the rest of the bar stays light blue."
+                )
+            ),
+            row(
                 "Call block",
                 paste(
                     "Calls mode only: says that no assigned donor segment is",

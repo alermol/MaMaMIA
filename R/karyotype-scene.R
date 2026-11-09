@@ -311,28 +311,23 @@ karyotype_scene_chromosome <- function(chromosome, mode, heatmap_bins,
         display_length <= 0) {
         display_length <- if (length_bp > 0) length_bp else 0
     }
-    added_class <- if (added && length(calls) == 1L) {
-        as.character(calls[[1L]]$class)
-    } else {
-        NULL
-    }
-    added_colour <- if (!is.null(added_class) &&
-        !is.null(palette[[added_class]])) {
-        palette[[added_class]]
-    } else {
-        palette$added
-    }
+    ## An added donor chromosome is a chromosome state. Its base and any
+    ## unsupported tail keep the state colour; calls drawn on it keep their
+    ## class colour. Using the sole call's class here painted the whole bar,
+    ## including bases the call never covered, in the call class colour.
+    added_fill <- as.character(palette$added %||% "#9cc3d5")[[1L]]
+    added_text <- as.character(palette$added_text %||% added_fill)[[1L]]
     base_fill <- if (deleted) {
         palette$deleted
     } else if (added) {
-        if (added_partial) "none" else added_colour
+        if (added_partial) "none" else added_fill
     } else {
         "#f4f4f4"
     }
     base_stroke <- if (deleted) {
         palette$negative
     } else if (added) {
-        if (added_partial) palette$negative else added_colour
+        if (added_partial) palette$negative else added_text
     } else {
         "#666666"
     }
@@ -351,7 +346,7 @@ karyotype_scene_chromosome <- function(chromosome, mode, heatmap_bins,
     caption <- if (deleted && copy == 1L) {
         list(text = "Deleted", fill = palette$negative)
     } else if (added && copy == 1L) {
-        list(text = "Added", fill = palette$addition)
+        list(text = "Added", fill = added_text)
     } else {
         NULL
     }

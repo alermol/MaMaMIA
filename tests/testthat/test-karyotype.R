@@ -596,6 +596,13 @@ test_that("a full substitution splits into a lost recipient and added donor", {
             identical(call$class, "substitution")
         }, logical(1)))
     }, logical(1))))
+    scene_donor <- Filter(
+        function(x) identical(x$name, "8R"), payload$scene$chromosomes
+    )[[1L]]
+    expect_identical(scene_donor$base$fill, payload$scene$palette$added)
+    expect_identical(
+        scene_donor$calls[[1L]]$fill, payload$scene$palette$substitution
+    )
 })
 
 test_that("hiding deletions removes whole chromosomes and partial segments", {

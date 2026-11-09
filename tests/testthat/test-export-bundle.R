@@ -137,6 +137,18 @@ test_that("the static karyotype renders calls and states", {
     expect_match(svg, "Deleted recipient", fixed = TRUE)
     expect_match(svg, "Added donor", fixed = TRUE)
     expect_match(svg, sample, fixed = TRUE)
+    groups <- regmatches(svg, gregexpr("<g>.*?</g>", svg, perl = TRUE))[[1L]]
+    added_groups <- groups[grepl("(added)", groups, fixed = TRUE)]
+    expect_gt(length(added_groups), 0L)
+    full_added <- added_groups[!grepl(
+        'stroke-dasharray="4 3"', added_groups, fixed = TRUE
+    )]
+    expect_gt(length(full_added), 0L)
+    expect_true(all(grepl(
+        sprintf('fill="%s"', payload$scene$palette$added),
+        full_added,
+        fixed = TRUE
+    )))
     empty <- bam_karyotype_static_svg(
         list(chromosomes = list(), sample = "empty", palette = NULL)
     )
