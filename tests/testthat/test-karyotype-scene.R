@@ -285,7 +285,8 @@ test_that("unplaced calls render neutral bars when not hidden", {
     expect_false(fake_id %in% hidden$rendered_call_ids)
 
     shown <- karyotype_payload(
-        result, "example-sample", "calls", hide_unplaced = FALSE
+        result, "example-sample", "calls",
+        hide_unplaced = FALSE, show_unplaced = TRUE
     )
     bars <- Filter(
         function(chromosome) isTRUE(chromosome$unplaced),
@@ -313,7 +314,8 @@ test_that("unplaced calls render neutral bars when not hidden", {
     expect_identical(scene_bar$caption$text, "Unplaced")
 
     heatmap <- karyotype_payload(
-        result, "example-sample", "heatmap", hide_unplaced = FALSE
+        result, "example-sample", "heatmap",
+        hide_unplaced = FALSE, show_unplaced = TRUE
     )
     heatmap_bar <- Filter(
         function(chromosome) {

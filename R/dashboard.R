@@ -978,8 +978,9 @@ explorer_karyotype_ui <- function(id, height = "calc(100vh - 360px)") {
 #' @param selected_groups Groups currently selected in the explorer.
 #' @param hide_deletions Remove deleted chromosomes and deletion segments
 #'   from the current view only.
-#' @param hide_unplaced Remove unplaced calls and neutral unplaced bars from
-#'   the current view only.
+#' @param hide_unplaced Remove unplaced calls from the current view only.
+#' @param show_unplaced Draw neutral unplaced donor bars when unplaced calls
+#'   are not hidden.
 #' @param full Optional unfiltered payload for the full export.
 #'
 #' @return A self-contained karyotype payload. The top level is the current
@@ -990,7 +991,8 @@ karyotype_export_payload <- function(result, sample = NULL,
                                      mode = c("heatmap", "calls"),
                                      calls = NULL, selected_groups = NULL,
                                      hide_deletions = FALSE,
-                                     hide_unplaced = TRUE,
+                                     hide_unplaced = FALSE,
+                                     show_unplaced = FALSE,
                                      full = NULL) {
     mode <- match.arg(mode)
     payload <- karyotype_payload(
@@ -1000,7 +1002,8 @@ karyotype_export_payload <- function(result, sample = NULL,
         calls = calls,
         selected_groups = selected_groups,
         hide_deletions = hide_deletions,
-        hide_unplaced = hide_unplaced
+        hide_unplaced = hide_unplaced,
+        show_unplaced = show_unplaced
     )
     if (is.null(full)) {
         full <- karyotype_payload(
@@ -1010,7 +1013,8 @@ karyotype_export_payload <- function(result, sample = NULL,
             calls = NULL,
             selected_groups = NULL,
             hide_deletions = FALSE,
-            hide_unplaced = TRUE
+            hide_unplaced = FALSE,
+            show_unplaced = FALSE
         )
     }
     ## Every view is a complete payload. No positional `full_calls` or
@@ -1232,7 +1236,8 @@ explorer_server <- function(id, result, sample = NULL) {
                 calls = NULL,
                 selected_groups = NULL,
                 hide_deletions = FALSE,
-                hide_unplaced = TRUE
+                hide_unplaced = FALSE,
+                show_unplaced = FALSE
             )
         })
 
@@ -1256,6 +1261,7 @@ explorer_server <- function(id, result, sample = NULL) {
                 selected_groups = group_filter(),
                 hide_deletions = isTRUE(input$hide_deletions),
                 hide_unplaced = isTRUE(input$hide_unplaced),
+                show_unplaced = !isTRUE(input$hide_unplaced),
                 full = full_karyotype()
             )
         })
@@ -1456,7 +1462,8 @@ explorer_server <- function(id, result, sample = NULL) {
                     calls = shown,
                     selected_groups = group_filter(),
                     hide_deletions = isTRUE(input$hide_deletions),
-                    hide_unplaced = isTRUE(input$hide_unplaced)
+                    hide_unplaced = isTRUE(input$hide_unplaced),
+                    show_unplaced = !isTRUE(input$hide_unplaced)
                 )
                 full_payload <- bam_full_karyotype_payload(current_payload)
                 confident_calls <- bam_confident_calls(

@@ -474,7 +474,7 @@ karyotype_compress_scores <- function(scores, intervals, surviving) {
 #' @param hide_deletions Remove deleted recipient chromosomes and splice
 #'   partial-deletion intervals out of the remaining chromosomes.
 #' @param hide_unplaced Remove calls with no recipient host from the payload.
-#'   When `FALSE`, their donor contigs are drawn as neutral unplaced bars.
+#' @param show_unplaced Draw their donor contigs as neutral unplaced bars.
 #'
 #' @return A list suitable for `mamamia_karyotype()`.
 #' @noRd
@@ -484,10 +484,12 @@ karyotype_payload <- function(result, sample = NULL,
                               deletion_breadth = 0.001,
                               deletion_relative = 0.1,
                               hide_deletions = FALSE,
-                              hide_unplaced = TRUE) {
+                              hide_unplaced = FALSE,
+                              show_unplaced = FALSE) {
     mode <- match.arg(mode)
     hide_deletions <- isTRUE(hide_deletions)
     hide_unplaced <- isTRUE(hide_unplaced)
+    show_unplaced <- isTRUE(show_unplaced)
     hidden_segments <- 0L
     hidden_bases <- 0
     sample <- karyotype_sample(result, sample)
@@ -513,6 +515,13 @@ karyotype_payload <- function(result, sample = NULL,
         overlay <- overlay[
             as.character(overlay$sample) == sample, , drop = FALSE
         ]
+        if (hide_unplaced && "recipient_assignment" %in% names(overlay)) {
+            assignment <- as.character(overlay$recipient_assignment)
+            overlay <- overlay[
+                is.na(assignment) | assignment != "no_recipient_loss", ,
+                drop = FALSE
+            ]
+        }
         if (!".call_id" %in% names(overlay)) {
             overlay$.call_id <- seq_len(nrow(overlay))
         }
@@ -1082,7 +1091,7 @@ karyotype_payload <- function(result, sample = NULL,
     ## gives the class-coloured calls a place to be reviewed.
     unplaced_donor_ids <- character()
     unplaced_donor_rows <- list()
-    if (!hide_unplaced && nrow(overlay) > 0L) {
+    if (show_unplaced && !hide_unplaced && nrow(overlay) > 0L) {
         unplaced <- !is.na(recipient_assignment) &
             recipient_assignment == "no_recipient_loss"
         for (i in which(unplaced)) {
@@ -1368,6 +1377,7 @@ karyotype_payload <- function(result, sample = NULL,
         palette = karyotype_palette(),
         hide_deletions = hide_deletions,
         hide_unplaced = hide_unplaced,
+        show_unplaced = show_unplaced,
         hidden_deletions = list(
             segments = as.integer(hidden_segments),
             bases = as.numeric(hidden_bases)
