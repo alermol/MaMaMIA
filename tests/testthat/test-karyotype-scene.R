@@ -71,6 +71,51 @@ svg_groups <- function(svg) {
     regmatches(svg, gregexpr("<g>.*?</g>", svg, perl = TRUE))[[1L]]
 }
 
+## One full-span neutral call with no recipient host, on a donor contig that
+## is not otherwise added to the example karyotype.
+unplaced_result <- function() {
+    result <- bam_example_result(1000)
+    donor <- result$assembly$contigs$donor[3L, , drop = FALSE]
+    call <- result$calls[1L, , drop = FALSE]
+    call$sample <- "example-sample"
+    call$group <- as.character(donor$group)
+    call$start_iid <- 0L
+    call$end_iid <- 999L
+    call$start_bp <- 0
+    call$end_bp <- as.numeric(donor$length)
+    call$width_bp <- as.numeric(donor$length)
+    call$score_mean <- 0.1
+    call$donor_mean <- 0.1
+    call$recipient_mean <- 0
+    call$total_mean <- 0
+    call$class <- "other"
+    call$class_evidence <- "none"
+    call$class_confidence <- "low"
+    call$class_status <- "needs_review"
+    call$confidence <- "low"
+    call$copy_state <- "neutral"
+    call$total_evidence <- "neutral"
+    call$pass <- FALSE
+    call$recipient_assignment <- "no_recipient_loss"
+    call$recipient_chr_id <- NA_character_
+    call$recipient_chr_name <- NA_character_
+    call$recipient_component <- NA_character_
+    call$recipient_group <- NA_character_
+    call$recipient_start_bp <- NA_real_
+    call$recipient_end_bp <- NA_real_
+    call$recipient_run_start_bp <- NA_real_
+    call$recipient_run_end_bp <- NA_real_
+    call$recipient_deletion_width_bp <- NA_real_
+    call$donor_chr_id <- as.character(donor$id)
+    call$donor_chr_name <- as.character(donor$name)
+    call$donor_component <- as.character(donor$component)
+    call$donor_start_bp <- 0
+    call$donor_end_bp <- as.numeric(donor$length)
+    call$n_windows <- 1000L
+    result$calls <- rbind(result$calls, call)
+    result
+}
+
 test_that("the scene resolves legend and call styles for the static SVG", {
     result <- bam_example_result(1000)
     payload <- karyotype_payload(result, "example-sample", "calls")
@@ -82,7 +127,7 @@ test_that("the scene resolves legend and call styles for the static SVG", {
         scene_legend_keys(scene),
         c(
             "substitution", "addition", "deletion", "complex",
-            "other", "deleted", "added"
+            "other", "deleted", "added", "unplaced"
         )
     )
     for (entry in scene$legend$entries) {
@@ -223,6 +268,84 @@ test_that("full additions use the state base and partial additions stay dashed",
     expect_identical(heatmap_full$base$fill, palette$zero)
     expect_identical(heatmap_partial$base$fill, palette$zero)
     expect_identical(heatmap_partial$base$stroke, palette$negative)
+})
+
+test_that("unplaced calls render neutral bars when not hidden", {
+    result <- unplaced_result()
+    fake_id <- nrow(result$calls)
+
+    hidden <- karyotype_payload(
+        result, "example-sample", "calls", hide_unplaced = TRUE
+    )
+    expect_false(any(vapply(
+        hidden$chromosomes,
+        function(chromosome) isTRUE(chromosome$unplaced),
+        logical(1)
+    )))
+    expect_false(fake_id %in% hidden$rendered_call_ids)
+
+    shown <- karyotype_payload(
+        result, "example-sample", "calls", hide_unplaced = FALSE
+    )
+    bars <- Filter(
+        function(chromosome) isTRUE(chromosome$unplaced),
+        shown$chromosomes
+    )
+    expect_gte(length(bars), 1L)
+    bar <- Filter(
+        function(chromosome) identical(chromosome$name, "3R"),
+        bars
+    )[[1L]]
+    expect_identical(bar$name, "3R")
+    expect_identical(bar$calls[[1L]]$class, "other")
+    expect_true(fake_id %in% shown$rendered_call_ids)
+    scene_bar <- Filter(
+        function(chromosome) {
+            isTRUE(chromosome$unplaced) &&
+                identical(chromosome$name, "3R")
+        },
+        shown$scene$chromosomes
+    )[[1L]]
+    expect_identical(scene_bar$base$fill, shown$scene$palette$unplaced)
+    expect_identical(
+        scene_bar$base$stroke, shown$scene$palette$unplaced_text
+    )
+    expect_identical(scene_bar$caption$text, "Unplaced")
+
+    heatmap <- karyotype_payload(
+        result, "example-sample", "heatmap", hide_unplaced = FALSE
+    )
+    heatmap_bar <- Filter(
+        function(chromosome) {
+            isTRUE(chromosome$unplaced) &&
+                identical(chromosome$name, "3R")
+        },
+        heatmap$scene$chromosomes
+    )[[1L]]
+    expect_identical(heatmap_bar$base$fill, heatmap$scene$palette$zero)
+    expect_gt(length(heatmap_bar$heatmap_bins), 0L)
+
+    calls <- result$calls[
+        as.character(result$calls$sample) == "example-sample", ,
+        drop = FALSE
+    ]
+    calls$.call_id <- seq_len(nrow(calls))
+    rendered <- explorer_rendered_calls(calls, shown$rendered_call_ids)
+    expect_true(fake_id %in% rendered$.call_id)
+    expect_false(any(
+        !is.na(rendered$recipient_assignment) &
+            rendered$recipient_assignment == "no_recipient_loss" &
+            !rendered$.call_id %in% shown$rendered_call_ids
+    ))
+
+    export <- karyotype_export_payload(
+        result, "example-sample", "calls", hide_unplaced = TRUE
+    )
+    expect_false(any(vapply(
+        export$views$full$chromosomes,
+        function(chromosome) isTRUE(chromosome$unplaced),
+        logical(1)
+    )))
 })
 
 test_that("the scene respects calls, heatmap and hidden deletions", {

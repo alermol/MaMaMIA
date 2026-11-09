@@ -49,24 +49,47 @@ explorer_unplaced <- function(calls) {
     !is.na(assignment) & assignment == "no_recipient_loss"
 }
 
+#' Calls rendered by the current karyotype payload
+#'
+#' The payload records the ids of the visible calls it actually placed on a
+#' chromosome. The Calls table uses this projection so it cannot show rows the
+#' karyotype did not render.
+#'
+#' @param calls Visible calls carrying `.call_id`.
+#' @param rendered_ids Integer ids from `payload$rendered_call_ids`.
+#' @return The subset of `calls` whose ids were rendered. When the payload
+#'   lacks ids, `calls` is returned unchanged for backwards compatibility.
+#' @noRd
+explorer_rendered_calls <- function(calls, rendered_ids) {
+    if (is.null(calls) || nrow(calls) == 0L) {
+        return(calls)
+    }
+    if (is.null(rendered_ids) || !".call_id" %in% names(calls)) {
+        return(calls)
+    }
+    ids <- suppressWarnings(as.integer(rendered_ids))
+    ids <- ids[!is.na(ids)]
+    if (length(ids) == 0L) {
+        return(calls[0, , drop = FALSE])
+    }
+    calls[as.integer(calls$.call_id) %in% ids, , drop = FALSE]
+}
+
 #' Visible explorer calls
 #'
 #' Applies the explorer filters in one place. Every supplied filter follows
 #' the same precedence as the dashboard: pass-only first, then group
-#' membership, call class, class status, copy state, confidence, minimum
-#' width, and finally hiding unplaced calls. `NULL` and zero-row calls pass
-#' through unchanged.
+#' membership, call class, class status, copy state, confidence, and finally
+#' minimum width. `NULL` and zero-row calls pass through unchanged.
 #'
 #' @param calls A call data frame, or `NULL`.
 #' @param filters A plain list with any of:
 #'   `pass_only` (logical), `groups` (character), `class`, `class_status`,
-#'   `copy_state`, `confidence` (character), `min_width_bp` (numeric,
-#'   already in base pairs) and `hide_unplaced` (logical). Missing or empty
-#'   entries do not filter.
+#'   `copy_state`, `confidence` (character) and `min_width_bp` (numeric,
+#'   already in base pairs). Missing or empty entries do not filter.
 #' @return A list with `calls` (the visible rows), `display_group` (the
-#'   display group for each visible row) and `unplaced` (how many rows that
-#'   passed the other filters have no recipient host, including rows hidden
-#'   by `hide_unplaced`).
+#'   display group for each visible row) and `unplaced` (how many rows have
+#'   no recipient host and therefore cannot be placed on the karyotype).
 #' @noRd
 explorer_calls <- function(calls, filters = list()) {
     if (is.null(calls) || nrow(calls) == 0L) {
@@ -109,9 +132,6 @@ explorer_calls <- function(calls, filters = list()) {
     }
     unplaced <- explorer_unplaced(calls)
     unplaced_count <- sum(keep & unplaced, na.rm = TRUE)
-    if (isTRUE(filters[["hide_unplaced"]])) {
-        keep <- keep & !unplaced
-    }
     list(
         calls = calls[keep, , drop = FALSE],
         display_group = explorer_display_group(calls)[keep],

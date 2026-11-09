@@ -510,6 +510,9 @@ test_that("the explorer exposes the karyotype tab and mode switch", {
     expect_match(html, "explorer-hide_unplaced", fixed = TRUE)
     expect_match(html, "explorer-unplaced_info", fixed = TRUE)
     expect_match(html, "Hide unplaced", fixed = TRUE)
+    expect_match(
+        html, 'id="explorer-hide_unplaced"[^>]*checked', perl = TRUE
+    )
     expect_match(html, "explorer-karyotype", fixed = TRUE)
     expect_match(html, "explorer-tooltip_help", fixed = TRUE)
     expect_match(html, "Tooltip help", fixed = TRUE)

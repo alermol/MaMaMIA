@@ -89,7 +89,8 @@ karyotype_scene_legend_entries <- function(palette, hide_deletions) {
         list(key = "complex", label = "Complex"),
         list(key = "other", label = "Other"),
         list(key = "deleted", label = "Deleted recipient"),
-        list(key = "added", label = "Added donor")
+        list(key = "added", label = "Added donor"),
+        list(key = "unplaced", label = "Unplaced donor")
     )
     if (isTRUE(hide_deletions)) {
         entries <- Filter(
@@ -299,7 +300,8 @@ karyotype_scene_chromosome <- function(chromosome, mode, heatmap_bins,
                                        palette, limit) {
     added <- isTRUE(chromosome$added)
     added_partial <- added && isTRUE(chromosome$added_partial)
-    deleted <- !added && isTRUE(chromosome$deleted)
+    unplaced <- isTRUE(chromosome$unplaced)
+    deleted <- !added && !unplaced && isTRUE(chromosome$deleted)
     calls <- chromosome$calls
     if (!is.list(calls)) {
         calls <- list()
@@ -319,10 +321,16 @@ karyotype_scene_chromosome <- function(chromosome, mode, heatmap_bins,
     ## covered, in the call class colour.
     added_fill <- as.character(palette$added %||% "#9cc3d5")[[1L]]
     added_text <- as.character(palette$added_text %||% added_fill)[[1L]]
+    unplaced_fill <- as.character(palette$unplaced %||% "#bdbdbd")[[1L]]
+    unplaced_text <- as.character(
+        palette$unplaced_text %||% unplaced_fill
+    )[[1L]]
     zero_fill <- as.character(palette$zero %||% "#f1efe7")[[1L]]
     heatmap <- identical(mode, "heatmap")
     base_fill <- if (deleted) {
         palette$deleted
+    } else if (unplaced) {
+        if (heatmap) zero_fill else unplaced_fill
     } else if (added) {
         if (heatmap) {
             zero_fill
@@ -336,6 +344,8 @@ karyotype_scene_chromosome <- function(chromosome, mode, heatmap_bins,
     }
     base_stroke <- if (deleted) {
         palette$negative
+    } else if (unplaced) {
+        unplaced_text
     } else if (added) {
         if (added_partial) palette$negative else added_text
     } else {
@@ -343,18 +353,26 @@ karyotype_scene_chromosome <- function(chromosome, mode, heatmap_bins,
     }
     base_stroke_width <- if (deleted) {
         1.4
+    } else if (unplaced) {
+        1.4
     } else if (added) {
         if (added_partial) 1.4 else 1.8
     } else {
         0.7
     }
-    base_dash <- if (deleted || added_partial) "4 3" else NULL
+    base_dash <- if (deleted || added_partial || unplaced) {
+        if (unplaced) "3 2" else "4 3"
+    } else {
+        NULL
+    }
     copies <- suppressWarnings(as.integer(chromosome$copies))
     if (length(copies) != 1L || is.na(copies) || copies < 1L) copies <- 1L
     copy <- suppressWarnings(as.integer(chromosome$copy))
     if (length(copy) != 1L || is.na(copy) || copy < 1L) copy <- 1L
     caption <- if (deleted && copy == 1L) {
         list(text = "Deleted", fill = palette$negative)
+    } else if (unplaced && copy == 1L) {
+        list(text = "Unplaced", fill = unplaced_text)
     } else if (added && copy == 1L) {
         list(text = "Added", fill = added_text)
     } else {
@@ -368,6 +386,7 @@ karyotype_scene_chromosome <- function(chromosome, mode, heatmap_bins,
         group = as.character(chromosome$group %||% "")[[1L]],
         added = added,
         added_partial = added_partial,
+        unplaced = unplaced,
         deleted = deleted,
         selected = !identical(chromosome$selected, FALSE),
         copy = copy,

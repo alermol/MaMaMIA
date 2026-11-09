@@ -21,6 +21,8 @@ karyotype_palette <- function() {
         deleted = "#d7d3c6",
         added = "#9cc3d5",
         added_text = "#4f8fae",
+        unplaced = "#bdbdbd",
+        unplaced_text = "#6b6b6b",
         grid = "#e8e4da",
         text = "#3a3d35"
     )
@@ -471,6 +473,8 @@ karyotype_compress_scores <- function(scores, intervals, surviving) {
 #' @param deletion_relative Relative-to-median cutoff for a deletion.
 #' @param hide_deletions Remove deleted recipient chromosomes and splice
 #'   partial-deletion intervals out of the remaining chromosomes.
+#' @param hide_unplaced Remove calls with no recipient host from the payload.
+#'   When `FALSE`, their donor contigs are drawn as neutral unplaced bars.
 #'
 #' @return A list suitable for `mamamia_karyotype()`.
 #' @noRd
@@ -479,9 +483,11 @@ karyotype_payload <- function(result, sample = NULL,
                               calls = NULL, selected_groups = NULL,
                               deletion_breadth = 0.001,
                               deletion_relative = 0.1,
-                              hide_deletions = FALSE) {
+                              hide_deletions = FALSE,
+                              hide_unplaced = TRUE) {
     mode <- match.arg(mode)
     hide_deletions <- isTRUE(hide_deletions)
+    hide_unplaced <- isTRUE(hide_unplaced)
     hidden_segments <- 0L
     hidden_bases <- 0
     sample <- karyotype_sample(result, sample)
@@ -507,6 +513,9 @@ karyotype_payload <- function(result, sample = NULL,
         overlay <- overlay[
             as.character(overlay$sample) == sample, , drop = FALSE
         ]
+        if (!".call_id" %in% names(overlay)) {
+            overlay$.call_id <- seq_len(nrow(overlay))
+        }
     }
     full <- karyotype_full_calls(
         result, sample, n_per, calls = overlay
@@ -843,6 +852,9 @@ karyotype_payload <- function(result, sample = NULL,
                 call_value("recipient_fraction_ratio", i, NA_real_)
             )
         ), include_missing = FALSE)
+        record$call_id <- as.integer(
+            call_value(".call_id", i, NA_integer_)
+        )
         ## Tooltip text and formatting are projected once from the call schema
         ## so the browser adapter never inspects canonical call fields.
         record$tooltip <- call_tooltip(
@@ -1064,6 +1076,69 @@ karyotype_payload <- function(result, sample = NULL,
         }
     }
 
+    ## Unplaced calls have no recipient host, so they cannot be drawn on the
+    ## recipient karyotype. When Hide unplaced is off, show their donor contigs
+    ## as neutral unplaced bars. They are not proper added donors: the bar only
+    ## gives the class-coloured calls a place to be reviewed.
+    unplaced_donor_ids <- character()
+    unplaced_donor_rows <- list()
+    if (!hide_unplaced && nrow(overlay) > 0L) {
+        unplaced <- !is.na(recipient_assignment) &
+            recipient_assignment == "no_recipient_loss"
+        for (i in which(unplaced)) {
+            group <- call_groups[[i]]
+            candidates <- character()
+            id <- donor_ids[[i]]
+            if (!is.na(id) && nzchar(id) &&
+                id %in% as.character(donor$id)) {
+                candidates <- id
+            }
+            if (length(candidates) == 0L &&
+                "donor_chr_name" %in% names(overlay)) {
+                name <- as.character(overlay$donor_chr_name[[i]])
+                if (length(name) == 1L && !is.na(name) && nzchar(name)) {
+                    candidates <- as.character(donor$id[
+                        as.character(donor$name) == name &
+                            as.character(donor$group) == group
+                    ])
+                }
+            }
+            if (length(candidates) == 0L &&
+                "donor_component" %in% names(overlay)) {
+                component <- as.character(overlay$donor_component[[i]])
+                if (length(component) == 1L && !is.na(component) &&
+                    nzchar(component)) {
+                    candidates <- as.character(donor$id[
+                        as.character(donor$component) == component &
+                            as.character(donor$group) == group
+                    ])
+                }
+            }
+            candidates <- setdiff(candidates, added_donor_ids)
+            candidates <- candidates[!is.na(candidates) & nzchar(candidates)]
+            for (id in candidates) {
+                if (is.null(unplaced_donor_rows[[id]])) {
+                    unplaced_donor_rows[[id]] <- integer()
+                    unplaced_donor_ids <- c(unplaced_donor_ids, id)
+                }
+                unplaced_donor_rows[[id]] <- union(
+                    unplaced_donor_rows[[id]], i
+                )
+            }
+        }
+    }
+    unplaced_donor <- donor[
+        as.character(donor$id) %in% unplaced_donor_ids, , drop = FALSE
+    ]
+    for (i in seq_len(nrow(unplaced_donor))) {
+        id <- as.character(unplaced_donor$id[[i]])
+        if (is.null(donor_order_anchor[[id]])) {
+            donor_order_anchor[[id]] <- last_recipient_index(
+                as.character(unplaced_donor$group[[i]])
+            ) + 0.6
+        }
+    }
+
     ## Hide fully deleted chromosomes, including full-substitution recipients.
     hidden_ids <- intersect(deleted, as.character(recipient$id))
     if (hide_deletions) {
@@ -1202,6 +1277,46 @@ karyotype_payload <- function(result, sample = NULL,
         )
     }
 
+    for (i in seq_len(nrow(unplaced_donor))) {
+        chr_id <- as.character(unplaced_donor$id[[i]])
+        chr_name <- as.character(unplaced_donor$name[[i]])
+        chr_component <- as.character(unplaced_donor$component[[i]])
+        chr_group <- as.character(unplaced_donor$group[[i]])
+        chr_length <- as.numeric(unplaced_donor$length[[i]])
+        rows <- unplaced_donor_rows[[chr_id]]
+        chr_calls <- lapply(rows, function(row) {
+            make_call(
+                row, donor_start[[row]], donor_end[[row]],
+                chr_length, n_per,
+                chromosome_group = chr_group
+            )
+        })
+        chromosome_payload[[length(chromosome_payload) + 1L]] <- list(
+            id = chr_id,
+            name = chr_name,
+            label = chr_name,
+            component = chr_component,
+            group = chr_group,
+            length = chr_length,
+            display_length = chr_length,
+            deleted_intervals = list(),
+            deleted = FALSE,
+            added = FALSE,
+            added_partial = FALSE,
+            unplaced = TRUE,
+            copy = 1L,
+            copies = 1L,
+            selected = chr_group %in% selected_groups,
+            scores = if (is.null(score_values[[chr_group]])) {
+                numeric()
+            } else {
+                score_values[[chr_group]]
+            },
+            calls = chr_calls,
+            order_anchor = donor_order_anchor[[chr_id]]
+        )
+    }
+
     ## Keep each added donor chromosome next to its recipient group. A hidden
     ## substitution recipient hands its exact slot to the added donor.
     if (length(chromosome_payload) > 0L) {
@@ -1217,6 +1332,29 @@ karyotype_payload <- function(result, sample = NULL,
         })
     }
 
+    rendered_call_ids <- unlist(lapply(
+        chromosome_payload,
+        function(chromosome) {
+            ids <- vapply(
+                chromosome$calls,
+                function(call) {
+                    id <- call$call_id
+                    if (is.null(id) || length(id) != 1L || is.na(id)) {
+                        NA_integer_
+                    } else {
+                        as.integer(id)
+                    }
+                },
+                integer(1)
+            )
+            ids[!is.na(ids)]
+        }
+    ), use.names = FALSE)
+    if (is.null(rendered_call_ids)) {
+        rendered_call_ids <- integer()
+    }
+    rendered_call_ids <- as.integer(rendered_call_ids)
+
     limit <- suppressWarnings(stats::quantile(
         abs(scores$score), 0.99, na.rm = TRUE, names = FALSE
     ))
@@ -1229,10 +1367,12 @@ karyotype_payload <- function(result, sample = NULL,
         score_limit = max(0.5, as.numeric(limit)),
         palette = karyotype_palette(),
         hide_deletions = hide_deletions,
+        hide_unplaced = hide_unplaced,
         hidden_deletions = list(
             segments = as.integer(hidden_segments),
             bases = as.numeric(hidden_bases)
         ),
+        rendered_call_ids = rendered_call_ids,
         chromosomes = chromosome_payload
     )
     ## Display policy is resolved once here so the browser and the static SVG

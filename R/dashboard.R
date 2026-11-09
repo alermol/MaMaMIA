@@ -768,10 +768,11 @@ explorer_tooltip_help_ui <- function() {
             "Unplaced calls",
             paste(
                 "A call with no recipient host cannot be placed on the",
-                "karyotype. It stays in the call table and exports so it can",
-                "be reviewed. The Hide unplaced switch removes it from the",
-                "table and filtered exports, while full exports keep every",
-                "call. The counter reports how many visible calls have no host."
+                "recipient karyotype. With Hide unplaced off, its donor contig",
+                "is drawn as a neutral unplaced bar and its calls remain in",
+                "the table. With Hide unplaced on, the bar and table rows are",
+                "removed. The counter reports how many visible calls have no",
+                "host. Full exports keep every call."
             )
         ),
         section(
@@ -894,7 +895,7 @@ explorer_karyotype_ui <- function(id, height = "calc(100vh - 360px)") {
                     class = "mamamia-karyotype-deletions",
                     bslib::input_switch(
                         ns("hide_unplaced"), "Hide unplaced",
-                        value = FALSE
+                        value = TRUE
                     ),
                     shiny::textOutput(ns("unplaced_info"), inline = TRUE)
                 )
@@ -977,6 +978,8 @@ explorer_karyotype_ui <- function(id, height = "calc(100vh - 360px)") {
 #' @param selected_groups Groups currently selected in the explorer.
 #' @param hide_deletions Remove deleted chromosomes and deletion segments
 #'   from the current view only.
+#' @param hide_unplaced Remove unplaced calls and neutral unplaced bars from
+#'   the current view only.
 #' @param full Optional unfiltered payload for the full export.
 #'
 #' @return A self-contained karyotype payload. The top level is the current
@@ -987,6 +990,7 @@ karyotype_export_payload <- function(result, sample = NULL,
                                      mode = c("heatmap", "calls"),
                                      calls = NULL, selected_groups = NULL,
                                      hide_deletions = FALSE,
+                                     hide_unplaced = TRUE,
                                      full = NULL) {
     mode <- match.arg(mode)
     payload <- karyotype_payload(
@@ -995,7 +999,8 @@ karyotype_export_payload <- function(result, sample = NULL,
         mode = mode,
         calls = calls,
         selected_groups = selected_groups,
-        hide_deletions = hide_deletions
+        hide_deletions = hide_deletions,
+        hide_unplaced = hide_unplaced
     )
     if (is.null(full)) {
         full <- karyotype_payload(
@@ -1004,7 +1009,8 @@ karyotype_export_payload <- function(result, sample = NULL,
             mode = mode,
             calls = NULL,
             selected_groups = NULL,
-            hide_deletions = FALSE
+            hide_deletions = FALSE,
+            hide_unplaced = TRUE
         )
     }
     ## Every view is a complete payload. No positional `full_calls` or
@@ -1035,9 +1041,9 @@ explorer_results_ui <- function(id) {
             shiny::div(
                 class = "small text-muted mb-2",
                 paste(
-                    "Calls with no recipient host cannot be placed on the",
-                    "karyotype. Use Hide unplaced to remove them from this",
-                    "table and filtered exports when they are not needed."
+                    "Calls with no recipient host are shown as neutral",
+                    "unplaced donor bars when Hide unplaced is off. The table",
+                    "lists only calls placed in the current karyotype."
                 )
             ),
             DT::DTOutput(ns("calls"))
@@ -1108,7 +1114,7 @@ explorer_server <- function(id, result, sample = NULL) {
         }, ignoreInit = TRUE)
 
         visible_call_state <- shiny::reactive({
-            explorer_calls(calls(), list(
+            state <- explorer_calls(calls(), list(
                 pass_only = input$pass_only,
                 groups = group_filter(),
                 class = input$class,
@@ -1117,13 +1123,27 @@ explorer_server <- function(id, result, sample = NULL) {
                 confidence = input$confidence,
                 min_width_bp = suppressWarnings(
                     as.numeric(input$min_width)
-                ) * 1e6,
-                hide_unplaced = isTRUE(input$hide_unplaced)
+                ) * 1e6
             ))
+            if (!is.null(state$calls)) {
+                state$calls$.call_id <- seq_len(nrow(state$calls))
+            }
+            state
         })
 
         visible_calls <- shiny::reactive({
             visible_call_state()$calls
+        })
+
+        ## The table follows exactly what the current karyotype payload placed
+        ## on a chromosome. `current_karyotype()` is defined below; reactive
+        ## bodies resolve it when they run.
+        rendered_calls <- shiny::reactive({
+            payload <- current_karyotype()
+            explorer_rendered_calls(
+                visible_calls(),
+                if (is.null(payload)) NULL else payload$rendered_call_ids
+            )
         })
 
         output$unplaced_info <- shiny::renderText({
@@ -1142,12 +1162,12 @@ explorer_server <- function(id, result, sample = NULL) {
             if (isTRUE(input$hide_unplaced)) {
                 sprintf("%d unplaced hidden", count)
             } else {
-                sprintf("%d unplaced visible", count)
+                sprintf("%d unplaced shown", count)
             }
         })
 
         selected <- shiny::reactive({
-            x <- visible_calls()
+            x <- rendered_calls()
             rows <- input$calls_rows_selected
             if (is.null(x) || length(rows) == 0L) {
                 return(integer())
@@ -1167,11 +1187,11 @@ explorer_server <- function(id, result, sample = NULL) {
         proxy <- DT::dataTableProxy("calls", session = session)
         ## A new sample or filter produces a different table; row indices from
         ## the previous table would silently select different calls.
-        shiny::observeEvent(visible_calls(), {
+        shiny::observeEvent(rendered_calls(), {
             DT::selectRows(proxy, NULL)
         }, ignoreNULL = FALSE)
         shiny::observeEvent(input$select_all, {
-            x <- visible_calls()
+            x <- rendered_calls()
             if (!is.null(x) && nrow(x) > 0L) {
                 DT::selectRows(proxy, seq_len(nrow(x)))
             }
@@ -1211,7 +1231,8 @@ explorer_server <- function(id, result, sample = NULL) {
                 mode = mode,
                 calls = NULL,
                 selected_groups = NULL,
-                hide_deletions = FALSE
+                hide_deletions = FALSE,
+                hide_unplaced = TRUE
             )
         })
 
@@ -1234,6 +1255,7 @@ explorer_server <- function(id, result, sample = NULL) {
                 calls = visible_calls(),
                 selected_groups = group_filter(),
                 hide_deletions = isTRUE(input$hide_deletions),
+                hide_unplaced = isTRUE(input$hide_unplaced),
                 full = full_karyotype()
             )
         })
@@ -1290,7 +1312,7 @@ explorer_server <- function(id, result, sample = NULL) {
             shiny::validate(
                 shiny::need(!is.null(result_value()), "Run the analysis to list calls")
             )
-            x <- visible_calls()
+            x <- rendered_calls()
             defaults <- intersect(bam_brief_call_columns(x), names(x))
             selected_columns <- input$call_columns
             if (is.null(selected_columns)) {
@@ -1420,7 +1442,7 @@ explorer_server <- function(id, result, sample = NULL) {
                     !mode %in% c("heatmap", "calls")) {
                     mode <- "heatmap"
                 }
-                shown <- visible_calls()
+                shown <- rendered_calls()
                 if (!is.null(shown) && nrow(shown) > 0L) {
                     shown <- shown[
                         as.character(shown$sample) == sample, ,
@@ -1432,7 +1454,9 @@ explorer_server <- function(id, result, sample = NULL) {
                     sample = sample,
                     mode = mode,
                     calls = shown,
-                    selected_groups = group_filter()
+                    selected_groups = group_filter(),
+                    hide_deletions = isTRUE(input$hide_deletions),
+                    hide_unplaced = isTRUE(input$hide_unplaced)
                 )
                 full_payload <- bam_full_karyotype_payload(current_payload)
                 confident_calls <- bam_confident_calls(
@@ -1507,7 +1531,7 @@ explorer_server <- function(id, result, sample = NULL) {
             },
             content = function(file) {
                 res <- result_value()
-                x <- visible_calls()
+                x <- rendered_calls()
                 rows <- selected()
                 if (is.null(res) || is.null(x) || length(rows) == 0L) {
                     stop(

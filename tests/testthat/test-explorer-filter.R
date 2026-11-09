@@ -33,7 +33,7 @@ test_that("explorer_calls() passes NULL and empty calls through", {
     expect_identical(out$unplaced, 0L)
 })
 
-test_that("explorer_calls() counts and optionally hides unplaced calls", {
+test_that("explorer_calls() counts unplaced calls", {
     calls <- explorer_filter_fixture()
     out <- explorer_calls(calls)
     expect_identical(out$unplaced, 2L)
@@ -41,16 +41,19 @@ test_that("explorer_calls() counts and optionally hides unplaced calls", {
         out$calls$group, c("G1", "G2", "G2", "G3", "G4")
     )
 
-    hidden <- explorer_calls(calls, list(hide_unplaced = TRUE))
-    expect_identical(hidden$calls$group, c("G1", "G2", "G3"))
-    expect_identical(hidden$unplaced, 2L)
-    expect_identical(hidden$display_group, c("G1", "G2", "G3"))
-
-    passed <- explorer_calls(
-        calls, list(pass_only = TRUE, hide_unplaced = TRUE)
-    )
-    expect_identical(passed$calls$group, c("G1", "G2"))
+    passed <- explorer_calls(calls, list(pass_only = TRUE))
+    expect_identical(passed$calls$group, c("G1", "G2", "G4"))
     expect_identical(passed$unplaced, 1L)
+})
+
+test_that("explorer_rendered_calls() projects the karyotype call set", {
+    calls <- explorer_filter_fixture()
+    calls$.call_id <- seq_len(nrow(calls))
+    out <- explorer_rendered_calls(calls, c(1L, 3L, 5L))
+    expect_identical(out$.call_id, c(1L, 3L, 5L))
+    expect_identical(explorer_rendered_calls(calls, NULL), calls)
+    empty <- explorer_rendered_calls(calls, integer())
+    expect_identical(nrow(empty), 0L)
 })
 
 test_that("explorer_calls() applies pass-only without treating NA as pass", {
