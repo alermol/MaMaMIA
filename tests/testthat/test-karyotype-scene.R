@@ -634,6 +634,7 @@ test_that("the browser uses the scene, its bins and the self-contained full view
     )
     expect_true(any(grepl("payload.scene", js, fixed = TRUE)))
     expect_true(any(grepl("heatmap_bins", js, fixed = TRUE)))
+    expect_true(any(grepl("unplaced donor", js, fixed = TRUE)))
     expect_false(any(grepl("bar.height / 2", js, fixed = TRUE)))
     expect_true(any(grepl(
         "payload.views && payload.views.full", js, fixed = TRUE

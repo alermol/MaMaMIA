@@ -403,11 +403,13 @@ HTMLWidgets.widget({
           subParts.push(fmtBp(sourceFraction(fraction, chromosome) *
             chromosome.length));
         }
-        var className = chromosome.deleted
-          ? "deleted recipient"
-          : chromosome.added
-            ? "added donor"
-            : "recipient chromosome";
+        var className = chromosome.unplaced
+          ? "unplaced donor"
+          : chromosome.deleted
+            ? "deleted recipient"
+            : chromosome.added
+              ? "added donor"
+              : "recipient chromosome";
         html = tooltipHeader({
           accent: "#6c757d",
           title: className,
@@ -421,7 +423,11 @@ HTMLWidgets.widget({
         if (hasValue(chromosome.component)) {
           chromosomeRows.push(tipRow("Component", chromosome.component));
         }
-        if (chromosome.deleted === true) {
+        if (chromosome.unplaced === true) {
+          chromosomeRows.push(tipRow(
+            "State", "unplaced donor chromosome"
+          ));
+        } else if (chromosome.deleted === true) {
           chromosomeRows.push(tipRow(
             "State", "deleted recipient (no coverage)"
           ));
