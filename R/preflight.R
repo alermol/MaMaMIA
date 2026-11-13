@@ -59,40 +59,48 @@
     list(index_path = index_path, status = status, action = action)
 }
 
-.preflight_warnings <- function(header, targets, index, path, assembly_label) {
+.preflight_warnings <- function(header, targets, index, path, assembly_label,
+                                lang = mamamia_language_default()) {
     warnings <- character(0)
 
     if (identical(header$sample_source, "basename")) {
         warnings <- c(
             warnings,
-            "No @RG SM value; the sample name is derived from the file name."
+            mamamia_tr("log.preflight_warning_no_rg", lang)
         )
     }
 
     extra <- setdiff(header$targets$name, targets$chr_id)
     if (length(extra) > 0L) {
-        warnings <- c(
-            warnings,
-            sprintf(
-                "The BAM header contains %d target(s) not in assembly '%s'; they will be ignored.",
+        if (identical(lang, "ru")) {
+            warnings <- c(warnings, sprintf(
+                mamamia_tr("log.preflight_warning_targets", "ru"),
+                assembly_label, length(extra)
+            ))
+        } else {
+            warnings <- c(warnings, sprintf(
+                mamamia_tr("log.preflight_warning_targets", "en"),
                 length(extra), assembly_label
-            )
-        )
+            ))
+        }
     }
 
     if (file.exists(paste0(path, ".bai"))) {
         warnings <- c(
             warnings,
-            "A BAI index is present but ignored; MaMaMIA requires a CSI index."
+            mamamia_tr("log.preflight_warning_bai", lang)
         )
     }
 
-    index_warning <- switch(index$action,
-        create = "A CSI index will be created next to the BAM.",
-        rebuild = "The existing CSI index is stale or corrupt and will be rebuilt.",
-        stage = "The BAM directory is not writable; the BAM will be staged in session temp and indexed there.",
+    index_warning <- if (identical(index$action, "create")) {
+        mamamia_tr("log.preflight_warning_csi_create", lang)
+    } else if (identical(index$action, "rebuild")) {
+        mamamia_tr("log.preflight_warning_csi_rebuild", lang)
+    } else if (identical(index$action, "stage")) {
+        mamamia_tr("log.preflight_warning_csi_stage", lang)
+    } else {
         NULL
-    )
+    }
     if (!is.null(index_warning)) {
         warnings <- c(warnings, index_warning)
     }
@@ -125,7 +133,8 @@
 #'   `sample`, `sample_source`, `n_samples`, `assembly`, `n_targets`,
 #'   `n_assembly_targets`, `index_path`, `index_status`, `index_action`,
 #'   `warnings` and `valid`.
-preflightBams <- function(paths, config, assembly = NULL) {
+preflightBams <- function(paths, config, assembly = NULL,
+                          lang = mamamia_language_default()) {
     if (isMaMaMIAAnalysisContext(config)) {
         if (is.null(assembly)) {
             assembly <- config$assembly_key
@@ -230,7 +239,8 @@ preflightBams <- function(paths, config, assembly = NULL) {
     indexes <- lapply(checked, .csi_status)
     warnings <- vapply(seq_len(n), function(i) {
         .preflight_warnings(
-            headers[[i]], targets, indexes[[i]], checked[[i]], assembly_label
+            headers[[i]], targets, indexes[[i]], checked[[i]], assembly_label,
+            lang = lang
         )
     }, character(1))
 

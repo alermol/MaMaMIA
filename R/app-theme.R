@@ -12,7 +12,7 @@ mamamia_font_dependency <- function() {
     }
     htmltools::htmlDependency(
         name = "mamamia-font",
-        version = "1.0.0",
+        version = "1.0.1",
         src = c(file = path),
         stylesheet = "mamamia-font.css",
         all_files = TRUE
@@ -58,8 +58,9 @@ bam_dashboard_theme <- function() {
         bg = "#f6f5f0",
         fg = "#1b1e1a",
         base_font = paste(
-            "'Inter'", "system-ui", "-apple-system", "'Segoe UI'", "Roboto",
-            "'Helvetica Neue'", "Arial", "sans-serif",
+            "'Inter'", "'Noto Sans'", "'DejaVu Sans'", "system-ui",
+            "-apple-system", "'Segoe UI'", "Roboto", "'Helvetica Neue'",
+            "Arial", "sans-serif",
             sep = ", "
         ),
         code_font = paste(
@@ -193,12 +194,15 @@ bam_dashboard_css <- function() {
         display: flex;
         align-items: center;
         gap: .45rem;
+        min-width: 0;
+        max-width: 46ch;
         color: var(--mm-muted);
         font-size: .64rem;
         font-weight: 600;
         letter-spacing: .1em;
+        line-height: 1.25;
         text-transform: uppercase;
-        white-space: nowrap;
+        white-space: normal;
     }
     .mamamia-header-note::before {
         content: '';
@@ -210,6 +214,30 @@ bam_dashboard_css <- function() {
     }
     @media (max-width: 980px) {
         .mamamia-header-note { display: none; }
+    }
+    .mamamia-lang-switch {
+        display: flex;
+        flex: 0 0 auto;
+        align-items: center;
+        min-width: 0;
+    }
+    .mamamia-lang-switch .btn-group {
+        flex-wrap: nowrap;
+    }
+    .mamamia-lang-switch .btn {
+        padding: .12rem .42rem;
+        font-size: .66rem;
+        font-weight: 700;
+        letter-spacing: .04em;
+        line-height: 1.2;
+    }
+    @media (max-width: 620px) {
+        .mamamia-header { gap: .4rem; padding: 0 .55rem; }
+        .mamamia-subtitle { display: none; }
+        .mamamia-lang-switch .btn {
+            padding: .1rem .3rem;
+            font-size: .6rem;
+        }
     }
 
     .mamamia-sidebar {

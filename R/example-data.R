@@ -258,7 +258,7 @@ bam_example_species_selection <- function() {
 }
 
 #' @noRd
-bam_example_note <- function() {
+bam_example_note <- function(lang = mamamia_language_default()) {
     selection <- bam_example_species_selection()
     config <- bam_example_config()
     recipient <- config$species[[selection$recipient]]
@@ -274,7 +274,7 @@ bam_example_note <- function() {
         donor$label
     }
     sprintf(
-        "Example dataset: %s recipient and %s donor; events on eight chromosomes.",
+        mamamia_tr("log.example_note", lang),
         recipient_label, donor_label
     )
 }

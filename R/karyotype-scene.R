@@ -81,16 +81,26 @@ karyotype_scene_score_colour <- function(value, limit, palette,
 
 #' Call legend entries resolved from the payload policy
 #' @noRd
-karyotype_scene_legend_entries <- function(palette, hide_deletions) {
+karyotype_scene_legend_entries <- function(
+        palette, hide_deletions, labels = list()) {
+    label <- function(key, fallback) {
+        value <- labels[[paste0("legend_", key)]]
+        if (is.null(value) || length(value) != 1L || is.na(value) ||
+            !nzchar(value)) {
+            fallback
+        } else {
+            as.character(value)
+        }
+    }
     entries <- list(
-        list(key = "substitution", label = "Substitution"),
-        list(key = "addition", label = "Addition"),
-        list(key = "deletion", label = "Deletion"),
-        list(key = "complex", label = "Complex"),
-        list(key = "other", label = "Other"),
-        list(key = "deleted", label = "Deleted recipient"),
-        list(key = "added", label = "Added donor"),
-        list(key = "unplaced", label = "Unplaced donor")
+        list(key = "substitution", label = label("substitution", "Substitution")),
+        list(key = "addition", label = label("addition", "Addition")),
+        list(key = "deletion", label = label("deletion", "Deletion")),
+        list(key = "complex", label = label("complex", "Complex")),
+        list(key = "other", label = label("other", "Other")),
+        list(key = "deleted", label = label("deleted", "Deleted recipient")),
+        list(key = "added", label = label("added", "Added donor")),
+        list(key = "unplaced", label = label("unplaced", "Unplaced donor"))
     )
     if (isTRUE(hide_deletions)) {
         entries <- Filter(
@@ -297,7 +307,7 @@ karyotype_scene_label <- function(chromosome) {
 #' Resolve one chromosome's geometry and styles
 #' @noRd
 karyotype_scene_chromosome <- function(chromosome, mode, heatmap_bins,
-                                       palette, limit) {
+                                       palette, limit, labels = list()) {
     added <- isTRUE(chromosome$added)
     added_partial <- added && isTRUE(chromosome$added_partial)
     unplaced <- isTRUE(chromosome$unplaced)
@@ -369,12 +379,30 @@ karyotype_scene_chromosome <- function(chromosome, mode, heatmap_bins,
     if (length(copies) != 1L || is.na(copies) || copies < 1L) copies <- 1L
     copy <- suppressWarnings(as.integer(chromosome$copy))
     if (length(copy) != 1L || is.na(copy) || copy < 1L) copy <- 1L
+    caption_label <- function(name, fallback) {
+        value <- labels[[paste0("caption_", name)]]
+        if (is.null(value) || length(value) != 1L || is.na(value) ||
+            !nzchar(value)) {
+            fallback
+        } else {
+            as.character(value)
+        }
+    }
     caption <- if (deleted && copy == 1L) {
-        list(text = "Deleted", fill = palette$negative)
+        list(
+            text = caption_label("deleted", "Deleted"),
+            fill = palette$negative
+        )
     } else if (unplaced && copy == 1L) {
-        list(text = "Unplaced", fill = unplaced_text)
+        list(
+            text = caption_label("unplaced", "Unplaced"),
+            fill = unplaced_text
+        )
     } else if (added && copy == 1L) {
-        list(text = "Added", fill = added_text)
+        list(
+            text = caption_label("added", "Added"),
+            fill = added_text
+        )
     } else {
         NULL
     }
@@ -425,7 +453,8 @@ karyotype_scene_chromosome <- function(chromosome, mode, heatmap_bins,
 #'   resolved entry per chromosome.
 #' @noRd
 karyotype_scene <- function(payload,
-                            heatmap_bins = karyotype_scene_heatmap_bin_count()) {
+                            heatmap_bins = karyotype_scene_heatmap_bin_count(),
+                            labels = NULL) {
     if (!is.list(payload)) {
         payload <- list()
     }
@@ -435,6 +464,12 @@ karyotype_scene <- function(payload,
         mode <- "calls"
     }
     hide_deletions <- isTRUE(payload$hide_deletions)
+    if (is.null(labels)) {
+        labels <- payload$labels
+    }
+    if (!is.list(labels)) {
+        labels <- list()
+    }
     chromosomes <- payload$chromosomes
     if (!is.list(chromosomes)) {
         chromosomes <- list()
@@ -450,13 +485,23 @@ karyotype_scene <- function(payload,
         hidden_segments <- 0L
     }
     omitted_note <- if (hide_deletions && hidden_segments > 0L) {
-        list(
-            segments = hidden_segments,
-            text = paste0(
+        text <- labels$omitted_note
+        if (is.null(text) || length(text) != 1L || is.na(text) ||
+            !nzchar(text)) {
+            text <- paste0(
                 hidden_segments, " segment",
                 if (hidden_segments == 1L) "" else "s", " omitted"
             )
-        )
+        } else if (identical(labels$lang, "ru")) {
+            text <- sprintf(text, hidden_segments)
+        } else {
+            text <- sprintf(
+                text,
+                hidden_segments,
+                if (hidden_segments == 1L) "" else "s"
+            )
+        }
+        list(segments = hidden_segments, text = text)
     } else {
         NULL
     }
@@ -470,7 +515,9 @@ karyotype_scene <- function(payload,
         legend = list(
             kind = mode,
             entries = if (identical(mode, "calls")) {
-                karyotype_scene_legend_entries(palette, hide_deletions)
+                karyotype_scene_legend_entries(
+                    palette, hide_deletions, labels
+                )
             } else {
                 list()
             },
@@ -487,7 +534,8 @@ karyotype_scene <- function(payload,
             mode = mode,
             heatmap_bins = heatmap_bins,
             palette = palette,
-            limit = limit
+            limit = limit,
+            labels = labels
         )
     )
 }

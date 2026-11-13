@@ -44,10 +44,14 @@ require_dashboard_packages <- function() {
     scores
 }
 
-explorer_view_filters_ui <- function(id) {
+explorer_view_filters_ui <- function(id, lang = mamamia_language_default(),
+                                     selected = list()) {
     ns <- shiny::NS(id)
-    picker <- function(inputId, label, title, choices,
-                       selected = character(0)) {
+    selected_value <- function(name) {
+        value <- selected[[name]]
+        if (is.null(value)) character(0) else as.character(value)
+    }
+    picker <- function(inputId, label, title, choices, selected) {
         shinyWidgets::pickerInput(
             ns(inputId),
             label = shiny::span(class = "visually-hidden", label),
@@ -60,61 +64,101 @@ explorer_view_filters_ui <- function(id) {
                 title = title,
                 noneSelectedText = title,
                 selectedTextFormat = "count > 1",
-                countSelectedText = "{0} selected",
+                countSelectedText = mamamia_tr("results.picker_selected", lang),
                 liveSearch = FALSE
             )
         )
     }
+    class_choices <- c(
+        stats::setNames(
+            "substitution", mamamia_tr("results.class_substitution", lang)
+        ),
+        stats::setNames(
+            "addition", mamamia_tr("results.class_addition", lang)
+        ),
+        stats::setNames(
+            "deletion", mamamia_tr("results.class_deletion", lang)
+        ),
+        stats::setNames("complex", mamamia_tr("results.class_complex", lang)),
+        stats::setNames("other", mamamia_tr("results.class_other", lang))
+    )
+    status_choices <- c(
+        stats::setNames(
+            "confident", mamamia_tr("results.status_confident", lang)
+        ),
+        stats::setNames(
+            "ambiguous", mamamia_tr("results.status_ambiguous", lang)
+        ),
+        stats::setNames(
+            "needs_review", mamamia_tr("results.status_needs_review", lang)
+        )
+    )
+    copy_choices <- c(
+        stats::setNames("balanced", mamamia_tr("results.copy_balanced", lang)),
+        stats::setNames("gain", mamamia_tr("results.copy_gain", lang)),
+        stats::setNames("loss", mamamia_tr("results.copy_loss", lang)),
+        stats::setNames("compound", mamamia_tr("results.copy_compound", lang)),
+        stats::setNames("neutral", mamamia_tr("results.copy_neutral", lang))
+    )
+    confidence_choices <- c(
+        stats::setNames("high", mamamia_tr("results.confidence_high", lang)),
+        stats::setNames(
+            "moderate", mamamia_tr("results.confidence_moderate", lang)
+        ),
+        stats::setNames("low", mamamia_tr("results.confidence_low", lang))
+    )
+    pass_only <- selected[["pass_only"]]
+    if (is.null(pass_only) || length(pass_only) != 1L || is.na(pass_only)) {
+        pass_only <- TRUE
+    }
     shiny::div(
         class = "mamamia-filter-pills",
         picker(
-            "class", "Call class", "Class",
-            c(
-                "Substitution" = "substitution",
-                "Addition" = "addition",
-                "Deletion" = "deletion",
-                "Complex" = "complex",
-                "Other" = "other"
-            )
+            "class", mamamia_tr("results.filter_class", lang),
+            mamamia_tr("results.filter_class_title", lang),
+            class_choices, selected_value("class")
         ),
         picker(
-            "class_status", "Class status", "Status",
-            c(
-                "Confident" = "confident",
-                "Ambiguous" = "ambiguous",
-                "Needs review" = "needs_review"
-            )
+            "class_status", mamamia_tr("results.filter_status", lang),
+            mamamia_tr("results.filter_status_title", lang),
+            status_choices, selected_value("class_status")
         ),
         picker(
-            "copy_state", "Copy state", "Copy",
-            c(
-                "Balanced" = "balanced",
-                "Gain" = "gain",
-                "Loss" = "loss",
-                "Compound" = "compound",
-                "Neutral" = "neutral"
-            )
+            "copy_state", mamamia_tr("results.filter_copy", lang),
+            mamamia_tr("results.filter_copy_title", lang),
+            copy_choices, selected_value("copy_state")
         ),
         picker(
-            "confidence", "Confidence", "Confidence",
-            c("High" = "high", "Moderate" = "moderate", "Low" = "low")
+            "confidence", mamamia_tr("results.filter_confidence", lang),
+            mamamia_tr("results.filter_confidence", lang),
+            confidence_choices, selected_value("confidence")
         ),
         shiny::div(
             class = "mamamia-filter-switch",
             bslib::input_switch(
-                ns("pass_only"), "Passing only", value = TRUE
+                ns("pass_only"), mamamia_tr("results.filter_passing", lang),
+                value = isTRUE(pass_only)
             )
         )
     )
 }
 
-explorer_call_filters_ui <- function(id) {
+explorer_call_filters_ui <- function(id, lang = mamamia_language_default(),
+                                     selected = list()) {
     ns <- shiny::NS(id)
+    minimum <- selected[["min_width"]]
+    if (is.null(minimum) || length(minimum) != 1L || is.na(minimum)) {
+        minimum <- 0
+    }
+    columns <- selected[["call_columns"]]
+    if (is.null(columns)) {
+        columns <- character(0)
+    }
     shiny::tagList(
         shiny::numericInput(
             ns("min_width"),
-            "Minimum call width (Mb)",
-            value = 0,
+            mamamia_tr("results.min_width", lang),
+            value = minimum,
             min = 0,
             step = 1
         ),
@@ -122,18 +166,22 @@ explorer_call_filters_ui <- function(id) {
             class = "mamamia-call-columns",
             shinyWidgets::pickerInput(
                 ns("call_columns"),
-                "Additional columns",
+                mamamia_tr("results.additional_columns", lang),
                 choices = bam_call_extra_column_choices(),
-                selected = character(0),
+                selected = as.character(columns),
                 multiple = TRUE,
                 width = "fit",
                 options = shinyWidgets::pickerOptions(
                     actionsBox = TRUE,
                     liveSearch = TRUE,
-                    title = "Add columns",
-                    noneSelectedText = "Add columns",
+                    title = mamamia_tr("results.add_columns", lang),
+                    noneSelectedText = mamamia_tr(
+                        "results.add_columns", lang
+                    ),
                     selectedTextFormat = "count > 0",
-                    countSelectedText = "{0} added"
+                    countSelectedText = mamamia_tr(
+                        "results.picker_added", lang
+                    )
                 )
             )
         )
@@ -163,19 +211,35 @@ bam_table_header <- function(metadata) {
     )
 }
 
-bam_call_table_header <- function(columns) {
-    bam_table_header(bam_call_column_metadata(columns))
+bam_call_table_header <- function(columns,
+                                  lang = mamamia_language_default()) {
+    metadata <- bam_call_column_metadata(columns)
+    keys <- mamamia_i18n_keys(lang)
+    for (i in seq_len(nrow(metadata))) {
+        column <- metadata$column[[i]]
+        label_key <- paste0("call_table.label.", column)
+        desc_key <- paste0("call_table.desc.", column)
+        if (label_key %in% keys) {
+            metadata$label[[i]] <- mamamia_tr(label_key, lang)
+        }
+        if (desc_key %in% keys) {
+            metadata$description[[i]] <- mamamia_tr(desc_key, lang)
+        }
+    }
+    bam_table_header(metadata)
 }
 
-explorer_selection_ui <- function(id) {
+explorer_selection_ui <- function(id, lang = mamamia_language_default()) {
     ns <- shiny::NS(id)
     shiny::div(
         class = "d-flex gap-2",
         shiny::actionButton(
-            ns("select_all"), "Select visible", class = "btn-sm flex-fill"
+            ns("select_all"), mamamia_tr("results.select_visible", lang),
+            class = "btn-sm flex-fill"
         ),
         shiny::actionButton(
-            ns("clear_selection"), "Clear", class = "btn-sm flex-fill"
+            ns("clear_selection"), mamamia_tr("results.clear", lang),
+            class = "btn-sm flex-fill"
         )
     )
 }
@@ -202,624 +266,419 @@ explorer_download_button <- function(id, label, class = "btn-sm",
     )
 }
 
-explorer_export_ui <- function(id) {
+explorer_export_ui <- function(id, lang = mamamia_language_default()) {
     ns <- shiny::NS(id)
     shiny::div(
         class = "mamamia-export-actions",
         shiny::div(
             class = "mamamia-export-section mamamia-export-card",
-            shiny::h5("Results bundle"),
+            shiny::h5(mamamia_tr("export.results_bundle", lang)),
             shiny::p(
                 class = "mamamia-export-lead",
-                paste(
-                    "Download full and confident call tables, all-call,",
-                    "passing and confident BEDPE files, and matching",
-                    "karyotype SVGs in one ZIP archive. The archive has one",
-                    "folder per sample plus run-wide summaries at the top",
-                    "level."
-                )
+                mamamia_tr("export.results_lead", lang)
             ),
             explorer_download_button(
                 ns("download_bundle"),
-                "Download results bundle (.zip)",
+                mamamia_tr("export.download_bundle", lang),
                 class = "btn-sm btn-primary",
-                busy = "Preparing bundle..."
+                busy = mamamia_tr("export.preparing_bundle", lang)
             )
         ),
         shiny::div(
             class = "mamamia-export-section mamamia-export-card",
-            shiny::h5("All calls"),
+            shiny::h5(mamamia_tr("export.all_calls", lang)),
             shiny::p(
                 class = "mamamia-export-lead",
-                paste(
-                    "Download every call in the current run as one BEDPE",
-                    "file, without the rest of the bundle."
-                )
+                mamamia_tr("export.all_calls_lead", lang)
             ),
             explorer_download_button(
                 ns("download_all_bedpe"),
-                "Download all BEDPE",
+                mamamia_tr("export.download_all_bedpe", lang),
                 class = "btn-sm",
-                busy = "Preparing BEDPE..."
+                busy = mamamia_tr("export.preparing_bedpe", lang)
             )
         ),
         shiny::div(
             class = "mamamia-export-section mamamia-export-card",
-            shiny::h5("Selected calls"),
+            shiny::h5(mamamia_tr("export.selected_calls", lang)),
             shiny::textOutput(ns("selection_status")),
             explorer_download_button(
                 ns("download_bedpe"),
-                "Download selected BEDPE",
+                mamamia_tr("export.download_selected_bedpe", lang),
                 class = "btn-sm",
-                busy = "Preparing BEDPE..."
+                busy = mamamia_tr("export.preparing_bedpe", lang)
             )
         )
     )
 }
 
-explorer_tooltip_help_ui <- function() {
-    row <- function(term, description) {
-        if (inherits(description, "shiny.tag.list")) {
-            parts <- vapply(
-                description,
-                function(part) as.character(part),
-                character(1)
-            )
-            rendered <- parts[[1L]]
-            if (length(parts) > 1L) {
-                for (i in seq.int(2L, length(parts))) {
-                    previous <- gsub("<[^>]*>", "", parts[[i - 1L]])
-                    following <- gsub("<[^>]*>", "", parts[[i]])
-                    previous_end <- substr(
-                        previous[[1L]],
-                        nchar(previous[[1L]]),
-                        nchar(previous[[1L]])
-                    )
-                    following_start <- substr(following[[1L]], 1L, 1L)
-                    add_space <- nzchar(previous_end) &&
-                        nzchar(following_start) &&
-                        !grepl("[[:space:]]", previous_end) &&
-                        !grepl("[[:space:]]", following_start) &&
-                        !following_start %in% c(
-                            ".", ",", ";", ":", "!", "?", "%", ")", "]", "}"
-                        )
-                    rendered <- paste0(
-                        rendered,
-                        if (add_space) " " else "",
-                        parts[[i]]
-                    )
-                }
-            }
-            description <- shiny::HTML(rendered)
+explorer_tooltip_help_ui <- function(lang = mamamia_language_default()) {
+    mark_strong <- function(text, tokens) {
+        if (length(tokens) == 0L) {
+            return(text)
         }
+        marks <- paste0("\u0001", seq_along(tokens), "\u0002")
+        for (i in seq_along(tokens)) {
+            text <- gsub(tokens[[i]], marks[[i]], text, fixed = TRUE)
+        }
+        for (i in seq_along(tokens)) {
+            text <- gsub(
+                marks[[i]],
+                paste0("<strong>", tokens[[i]], "</strong>"),
+                text,
+                fixed = TRUE
+            )
+        }
+        text
+    }
+    row <- function(term, description, strong = character()) {
         shiny::tagList(
             shiny::tags$dt(term),
-            shiny::tags$dd(description)
+            shiny::tags$dd(shiny::HTML(
+                mark_strong(as.character(description), strong)
+            ))
         )
+    }
+    row_key <- function(term_key, desc_key = NULL, strong = character()) {
+        desc <- if (is.null(desc_key)) "" else mamamia_tr(desc_key, lang)
+        row(mamamia_tr(term_key, lang), desc, strong)
     }
     section <- function(title, intro = NULL, ...) {
         shiny::div(
             class = "mamamia-help-section",
             shiny::tags$h6(title),
-            if (!is.null(intro)) {
+            if (!is.null(intro) && nzchar(intro)) {
                 shiny::p(class = "mamamia-help-intro", intro)
             },
             shiny::tags$dl(class = "mamamia-help-list", ...)
         )
     }
+    tr <- function(key) mamamia_tr(key, lang)
+    ru <- identical(lang, "ru")
     shiny::div(
         class = "mamamia-tooltip-help",
-        shiny::p(
-            class = "mamamia-help-lead",
-            paste(
-                "Hover a chromosome bar to inspect the nearest introgression",
-                "call. The card is a call-level summary, not a per-window",
-                "trace. It follows the current class, class-status, copy-state,",
-                "confidence and width filters, so a filtered-out call cannot",
-                "appear."
-            )
-        ),
+        shiny::p(class = "mamamia-help-lead", tr("tooltip_guide.lead")),
         shiny::div(
             class = "mamamia-help-callout",
-            paste(
-                "Read top to bottom: the header identifies the call and its",
-                "class confidence; Placement says where it was matched;",
-                "Evidence says why; Geometry describes what changed;",
-                "Position (heatmap only) adds local context."
+            tr("tooltip_guide.callout")
+        ),
+        section(
+            tr("tooltip_guide.quick_interpretation.title"),
+            tr("tooltip_guide.quick_interpretation.intro"),
+            row_key(
+                "tooltip_guide.quick_interpretation.balanced_substitution",
+                "tooltip_guide.quick_interpretation.balanced_substitution.desc",
+                if (ru) {
+                    c("почти нейтральная сумма", "замещение", "сбалансированное")
+                } else {
+                    c("near-neutral total", "substitution", "balanced")
+                }
+            ),
+            row_key(
+                "tooltip_guide.quick_interpretation.addition",
+                "tooltip_guide.quick_interpretation.addition.desc",
+                if (ru) "прирост" else "gain"
+            ),
+            row_key(
+                "tooltip_guide.quick_interpretation.deletion",
+                "tooltip_guide.quick_interpretation.deletion.desc",
+                if (ru) "потеря" else "loss"
+            ),
+            row_key(
+                "tooltip_guide.quick_interpretation.complex",
+                "tooltip_guide.quick_interpretation.complex.desc"
+            ),
+            row_key(
+                "tooltip_guide.quick_interpretation.other",
+                "tooltip_guide.quick_interpretation.other.desc"
+            ),
+            row_key(
+                "tooltip_guide.quick_interpretation.no_host",
+                "tooltip_guide.quick_interpretation.no_host.desc"
             )
         ),
         section(
-            "Quick interpretation",
-            paste(
-                "Use these patterns as a starting point, then check placement",
-                "and geometry before treating a call as a confirmed event."
+            tr("tooltip_guide.header.title"),
+            tr("tooltip_guide.header.intro"),
+            row_key(
+                "tooltip_guide.header.class",
+                "tooltip_guide.header.class.desc",
+                if (ru) {
+                    c("замещение", "добавление", "делеция", "сложный", "прочее")
+                } else {
+                    c("substitution", "addition", "deletion", "complex", "other")
+                }
             ),
-            row(
-                "Balanced substitution",
-                shiny::tagList(
-                    "Donor excess, matching recipient loss, and a ",
-                    shiny::tags$strong("near-neutral total"),
-                    ". Usually class ",
-                    shiny::tags$strong("substitution"),
-                    " with copy state ",
-                    shiny::tags$strong("balanced"), "."
-                )
+            row_key(
+                "tooltip_guide.header.status",
+                "tooltip_guide.header.status.desc",
+                if (ru) {
+                    c("уверенный", "неоднозначный", "требует проверки")
+                } else {
+                    c("confident", "ambiguous", "needs_review")
+                }
             ),
-            row(
-                "Addition (gain)",
-                shiny::tagList(
-                    "Donor excess without reciprocal recipient loss, so total",
-                    "depth rises. Usually copy state ",
-                    shiny::tags$strong("gain"), "."
-                )
+            row_key(
+                "tooltip_guide.header.context",
+                "tooltip_guide.header.context.desc"
             ),
-            row(
-                "Deletion (loss)",
-                shiny::tagList(
-                    "Recipient loss without donor support, so total depth",
-                    "falls. Usually copy state ",
-                    shiny::tags$strong("loss"), "."
-                )
-            ),
-            row(
-                "Complex",
-                shiny::tagList(
-                    "Donor and recipient evidence disagree, or the donor and",
-                    "recipient spans are geometrically incompatible. Check",
-                    "Evidence and Geometry together."
-                )
-            ),
-            row(
-                "Other",
-                shiny::tagList(
-                    "A scored segment with enough signal to report but not",
-                    "enough support for a more specific class. Treat it as a",
-                    "review lead, not a confirmed event."
-                )
-            ),
-            row(
-                "No host",
-                shiny::tagList(
-                    "The donor segment is assigned by chromosome group but",
-                    "there is no recipient deletion to anchor it. The class",
-                    "can still be confident; the host is not."
-                )
+            row_key(
+                "tooltip_guide.header.accent_colour",
+                "tooltip_guide.header.accent_colour.desc"
             )
         ),
         section(
-            "Header",
-            paste(
-                "The header always answers three questions: what is the",
-                "call, how confident is the class, and which group and donor",
-                "span does it describe?"
+            tr("tooltip_guide.placement.title"),
+            tr("tooltip_guide.placement.intro"),
+            row_key(
+                "tooltip_guide.placement.recipient",
+                "tooltip_guide.placement.recipient.desc"
             ),
-            row(
-                "Class",
-                shiny::tagList(
-                    shiny::tags$strong("substitution"),
-                    ", ",
-                    shiny::tags$strong("addition"),
-                    ", ",
-                    shiny::tags$strong("deletion"),
-                    ", ",
-                    shiny::tags$strong("complex"),
-                    " or ",
-                    shiny::tags$strong("other"),
-                    ". The left border and class title use the same colour as",
-                    "the legend."
-                )
+            row_key(
+                "tooltip_guide.placement.donor",
+                "tooltip_guide.placement.donor.desc"
             ),
-            row(
-                "Status",
-                shiny::tagList(
-                    "Class confidence: ",
-                    shiny::tags$strong("confident"),
-                    ", ",
-                    shiny::tags$strong("ambiguous"),
-                    " or ",
-                    shiny::tags$strong("needs_review"),
-                    ". This describes the class, not the recipient placement."
-                )
+            row_key(
+                "tooltip_guide.placement.relation",
+                "tooltip_guide.placement.relation.desc",
+                if (ru) {
+                    c("та же группа", "межгрупповой кандидат", "не размещено")
+                } else {
+                    c("same group", "cross-group candidate", "not placed")
+                }
             ),
-            row(
-                "Context",
-                paste(
-                    "Sample name, chromosome group and donor span. Compare",
-                    "the donor span with the recipient span under Placement."
-                )
+            row_key(
+                "tooltip_guide.placement.assignment",
+                "tooltip_guide.placement.assignment.desc",
+                if (ru) {
+                    c(
+                        "размещён", "межгрупповой кандидат", "неоднозначный",
+                        "нет реципиента", "только группа"
+                    )
+                } else {
+                    c(
+                        "assigned", "cross-group candidate", "ambiguous",
+                        "no host", "group only"
+                    )
+                }
             ),
-            row(
-                "Accent colour",
-                paste(
-                    "The card border and class title inherit the call colour",
-                    "from the legend; the status pill uses the class-status",
-                    "palette."
-                )
+            row_key(
+                "tooltip_guide.placement.margin",
+                "tooltip_guide.placement.margin.desc"
+            ),
+            row_key(
+                "tooltip_guide.placement.group_class",
+                "tooltip_guide.placement.group_class.desc"
+            ),
+            row_key(
+                "tooltip_guide.placement.alternative",
+                "tooltip_guide.placement.alternative.desc"
+            ),
+            row_key(
+                "tooltip_guide.placement.reading",
+                "tooltip_guide.placement.reading.desc"
             )
         ),
         section(
-            "Placement",
-            paste(
-                "Placement answers where the donor segment was matched.",
-                "Placement confidence and class confidence are separate: a",
-                "confident substitution can still have an ambiguous host."
+            tr("tooltip_guide.evidence.title"),
+            tr("tooltip_guide.evidence.intro"),
+            row_key(
+                "tooltip_guide.evidence.score",
+                "tooltip_guide.evidence.score.desc"
             ),
-            row(
-                "Recipient",
-                paste(
-                    "Assigned recipient chromosome and interval. The interval",
-                    "is the deletion run used for placement, not necessarily",
-                    "the full donor span."
-                )
+            row_key(
+                "tooltip_guide.evidence.donor",
+                "tooltip_guide.evidence.donor.desc"
             ),
-            row(
-                "Donor",
-                "Donor chromosome, group and interval."
+            row_key(
+                "tooltip_guide.evidence.recipient",
+                "tooltip_guide.evidence.recipient.desc"
             ),
-            row(
-                "Relation",
-                shiny::tagList(
-                    shiny::tags$strong("same group"),
-                    ", ",
-                    shiny::tags$strong("cross-group candidate"),
-                    " or ",
-                    shiny::tags$strong("not placed"),
-                    ". A cross-group call is a translocation candidate, not a",
-                    "confirmed host."
-                )
+            row_key(
+                "tooltip_guide.evidence.total",
+                "tooltip_guide.evidence.total.desc"
             ),
-            row(
-                "Assignment",
-                shiny::tagList(
-                    shiny::tags$strong("assigned"),
-                    ", ",
-                    shiny::tags$strong("cross-group candidate"),
-                    ", ",
-                    shiny::tags$strong("ambiguous"),
-                    ", ",
-                    shiny::tags$strong("no host"),
-                    " or ",
-                    shiny::tags$strong("group only"),
-                    ". This is the placement state used in the Calls table."
-                )
+            row_key(
+                "tooltip_guide.evidence.colour",
+                "tooltip_guide.evidence.colour.desc"
             ),
-            row(
-                "Margin",
-                paste(
-                    "Lead of the chosen host over the next candidate. A small",
-                    "margin is a reason to inspect the alternative placement."
-                )
+            row_key(
+                "tooltip_guide.evidence.copy_state",
+                "tooltip_guide.evidence.copy_state.desc",
+                if (ru) {
+                    c(
+                        "сбалансированное", "прирост", "потеря", "составное",
+                        "нейтральное"
+                    )
+                } else {
+                    c("balanced", "gain", "loss", "compound", "neutral")
+                }
             ),
-            row(
-                "Group class",
-                paste(
-                    "Shown only when recipient placement changes the call",
-                    "class, for example addition to substitution."
-                )
+            row_key(
+                "tooltip_guide.evidence.evidence_source",
+                "tooltip_guide.evidence.evidence_source.desc",
+                if (ru) {
+                    c("донор+реципиент", "донор", "реципиент", "нет")
+                } else {
+                    c("donor+recipient", "donor", "recipient", "none")
+                }
             ),
-            row(
-                "Alternative",
-                paste(
-                    "Another possible host shown when the assignment is",
-                    "ambiguous. Compare its group, interval and margin before",
-                    "choosing a host."
-                )
-            ),
-            row(
-                "Reading placement",
-                paste(
-                    "Strongest: same group and assigned. Cross-group is a",
-                    "candidate only. No host means there is no recipient loss",
-                    "to anchor the call. Group only is a fallback when no",
-                    "contig-level host is available."
-                )
+            row_key(
+                "tooltip_guide.evidence.typical_pattern",
+                "tooltip_guide.evidence.typical_pattern.desc"
             )
         ),
         section(
-            "Evidence",
-            paste(
-                "Evidence compares donor and recipient breadth in the same",
-                "windows. This is the core reason for the call; the numbers",
-                "are signed residuals, not raw read counts."
+            tr("tooltip_guide.status.title"),
+            tr("tooltip_guide.status.intro"),
+            row_key(
+                "tooltip_guide.status.class_confidence",
+                "tooltip_guide.status.class_confidence.desc"
             ),
-            row(
-                "Score",
-                paste(
-                    "Paired donor/recipient statistic for the segment. Larger",
-                    "positive values mean stronger donor excess. Thresholds are",
-                    "calibrated for the window count and segment width."
-                )
+            row_key(
+                "tooltip_guide.status.evidence_sides",
+                "tooltip_guide.status.evidence_sides.desc"
             ),
-            row(
-                "Donor",
-                "Mean donor-side residual. Positive means donor gain; negative means donor loss."
+            row_key(
+                "tooltip_guide.status.copy_states",
+                "tooltip_guide.status.copy_states.desc"
             ),
-            row(
-                "Recipient",
-                "Mean recipient-side residual. Positive means recipient gain; negative means recipient loss."
+            row_key(
+                "tooltip_guide.status.total",
+                "tooltip_guide.status.total.desc"
             ),
-            row(
-                "Total",
-                paste(
-                    "Relative total-depth residual. Near zero means balanced;",
-                    "positive means total gain; negative means total loss. This",
-                    "is what separates a replacement from an addition or",
-                    "deletion."
-                )
+            row_key(
+                "tooltip_guide.status.components",
+                "tooltip_guide.status.components.desc"
             ),
-            row(
-                "Colour",
-                paste(
-                    "Metrics use two decimals: green is positive, red is",
-                    "negative and muted is missing. The sign matters more than",
-                    "the absolute size for interpretation."
-                )
+            row_key(
+                "tooltip_guide.status.low_mappability",
+                "tooltip_guide.status.low_mappability.desc"
             ),
-            row(
-                "Copy state",
-                shiny::tagList(
-                    shiny::tags$strong("balanced"),
-                    ", ",
-                    shiny::tags$strong("gain"),
-                    ", ",
-                    shiny::tags$strong("loss"),
-                    ", ",
-                    shiny::tags$strong("compound"),
-                    " or ",
-                    shiny::tags$strong("neutral"),
-                    ". This is a relative read-depth direction, not a",
-                    "quantitative measure."
-                )
-            ),
-            row(
-                "Evidence source",
-                shiny::tagList(
-                    shiny::tags$strong("donor"),
-                    ", ",
-                    shiny::tags$strong("recipient"),
-                    ", ",
-                    shiny::tags$strong("donor+recipient"),
-                    " or ",
-                    shiny::tags$strong("none"),
-                    ". It says which side drove the class."
-                )
-            ),
-            row(
-                "Typical pattern",
-                paste(
-                    "Substitution: donor positive, recipient negative, total",
-                    "near zero. Addition: donor positive, recipient near zero,",
-                    "total positive. Deletion: donor near zero, recipient",
-                    "negative, total negative. Complex: conflicting signs or a",
-                    "width mismatch."
-                )
+            row_key(
+                "tooltip_guide.status.not_passing",
+                "tooltip_guide.status.not_passing.desc"
             )
         ),
         section(
-            "Status chips",
-            paste(
-                "Chips appear only when their condition holds. They are",
-                "shortcuts into the call table and the full result columns."
+            tr("tooltip_guide.geometry.title"),
+            tr("tooltip_guide.geometry.intro"),
+            row_key(
+                "tooltip_guide.geometry.donor_width",
+                "tooltip_guide.geometry.donor_width.desc"
             ),
-            row(
-                "class high / moderate / low",
-                "Class confidence reported by the classifier."
+            row_key(
+                "tooltip_guide.geometry.recipient_run",
+                "tooltip_guide.geometry.recipient_run.desc"
             ),
-            row(
-                "donor / recipient / donor+recipient / none",
-                "Which evidence sides supported the class."
+            row_key(
+                "tooltip_guide.geometry.overlap",
+                "tooltip_guide.geometry.overlap.desc"
             ),
-            row(
-                "balanced / gain / loss / compound / neutral",
-                "The copy-state hypothesis for the segment."
+            row_key(
+                "tooltip_guide.geometry.width_ratio",
+                "tooltip_guide.geometry.width_ratio.desc"
             ),
-            row(
-                "total gain / total loss",
-                "Total-depth evidence is not neutral."
-            ),
-            row(
-                "components heterogeneous",
-                paste(
-                    "Component spread or donor-component support is uneven;",
-                    "the group-level score may hide a component-specific event."
-                )
-            ),
-            row(
-                "low mappability",
-                paste(
-                    "BAM-derived high-MAPQ fraction is below 0.5; placement",
-                    "is less reliable."
-                )
-            ),
-            row(
-                "not passing",
-                "The call is shown for review but did not pass the configured filters."
+            row_key(
+                "tooltip_guide.geometry.interpretation",
+                "tooltip_guide.geometry.interpretation.desc"
             )
         ),
         section(
-            "Geometry",
-            paste(
-                "Geometry checks whether the donor and recipient spans are",
-                "compatible. It can turn a substitution into a complex call",
-                "even when the depth evidence looks clean."
+            tr("tooltip_guide.position.title"),
+            tr("tooltip_guide.position.intro"),
+            row_key(
+                "tooltip_guide.position.position",
+                "tooltip_guide.position.position.desc"
             ),
-            row("Donor width", "Width of the donor segment."),
-            row(
-                "Recipient run",
-                "Width of the recipient deletion run used for placement."
+            row_key(
+                "tooltip_guide.position.score",
+                "tooltip_guide.position.score.desc"
             ),
-            row(
-                "Overlap",
-                paste(
-                    "Reciprocal overlap of donor and recipient intervals in",
-                    "contig-fraction space. Low overlap weakens the pairing."
-                )
+            row_key(
+                "tooltip_guide.position.mode",
+                "tooltip_guide.position.mode.desc"
             ),
-            row(
-                "Width ratio",
-                paste(
-                    "Donor fraction divided by recipient-run fraction. A value",
-                    "near 1 supports a balanced replacement; values far from 1",
-                    "suggest an addition, deletion or complex event."
-                )
-            ),
-            row(
-                "Interpretation",
-                paste(
-                    "Overlap below 0.5 or a width ratio far from 1 is a reason",
-                    "to prefer complex or review the recipient assignment."
-                )
+            row_key(
+                "tooltip_guide.position.click",
+                "tooltip_guide.position.click.desc"
             )
         ),
         section(
-            "Position and footer",
-            paste(
-                "Position is available in Heatmap mode; Calls mode ends with",
-                "the footer instead."
+            tr("tooltip_guide.no_call.title"),
+            tr("tooltip_guide.no_call.intro"),
+            row_key(
+                "tooltip_guide.no_call.header",
+                "tooltip_guide.no_call.header.desc"
             ),
-            row(
-                "Position",
-                "Hovered position along the chromosome, in bp, kb or Mb."
+            row_key(
+                "tooltip_guide.no_call.chromosome_block",
+                "tooltip_guide.no_call.chromosome_block.desc"
             ),
-            row("Score", "Heatmap score at that relative position."),
-            row(
-                "Mode",
-                "Heatmap shows the score profile; Calls shows coloured call segments."
+            row_key(
+                "tooltip_guide.no_call.partial_addition",
+                "tooltip_guide.no_call.partial_addition.desc"
             ),
-            row(
-                "Click",
-                paste(
-                    "Click a chromosome to filter its group; click the",
-                    "background to clear the filter."
-                )
+            row_key(
+                "tooltip_guide.no_call.added_donor_fill",
+                "tooltip_guide.no_call.added_donor_fill.desc"
+            ),
+            row_key(
+                "tooltip_guide.no_call.call_block",
+                "tooltip_guide.no_call.call_block.desc"
+            ),
+            row_key(
+                "tooltip_guide.no_call.position_block",
+                "tooltip_guide.no_call.position_block.desc"
             )
         ),
         section(
-            "No-call card",
-            paste(
-                "When the pointer is not over a call, the tooltip describes",
-                "the chromosome instead of a call."
+            tr("tooltip_guide.hide_deletions.title"),
+            tr("tooltip_guide.hide_deletions.intro"),
+            row_key(
+                "tooltip_guide.hide_deletions.partial_deletion",
+                "tooltip_guide.hide_deletions.partial_deletion.desc"
             ),
-            row(
-                "Header",
-                "Chromosome state: recipient chromosome, deleted recipient or added donor."
+            row_key(
+                "tooltip_guide.hide_deletions.complete_deletion",
+                "tooltip_guide.hide_deletions.complete_deletion.desc"
             ),
-            row(
-                "Chromosome block",
-                "Component, state and configured length."
-            ),
-            row(
-                "Partial addition",
-                paste(
-                    "A donor chromosome bar appears when a partial addition",
-                    "covers at least 20% of that donor. Only the added part",
-                    "is blue; the remainder is an empty dashed donor deletion."
-                )
-            ),
-            row(
-                "Added donor fill",
-                paste(
-                    "Calls mode uses the light-blue added-donor state",
-                    "colour. Heatmap mode uses the heatmap zero-coverage",
-                    "colour outside the score bins. Calls drawn on the bar",
-                    "keep their class colour."
-                )
-            ),
-            row(
-                "Call block",
-                paste(
-                    "Calls mode only: says that no assigned donor segment is",
-                    "present at the hovered position."
-                )
-            ),
-            row(
-                "Position block",
-                "Heatmap mode only: the hovered position and score."
+            row_key(
+                "tooltip_guide.hide_deletions.substitution",
+                "tooltip_guide.hide_deletions.substitution.desc"
             )
         ),
         section(
-            "Hide deletions",
-            paste(
-                "The switch beside the Plot buttons removes deletions from",
-                "the karyotype instead of drawing them as dashed or red",
-                "segments. The counter beside it reports how many segments",
-                "were omitted in the current view."
-            ),
-            row(
-                "Partial deletion",
-                paste(
-                    "The deleted interval is spliced out and the remaining",
-                    "recipient chromosome closes the gap and becomes shorter."
-                )
-            ),
-            row(
-                "Complete deletion",
-                "The recipient chromosome is not drawn at all."
-            ),
-            row(
-                "Substitution",
-                paste(
-                    "The added donor chromosome takes the place of the",
-                    "deleted recipient chromosome."
-                )
-            )
+            tr("tooltip_guide.unplaced.title"),
+            tr("tooltip_guide.unplaced.intro")
         ),
         section(
-            "Unplaced calls",
-            paste(
-                "A call is unplaced when it cannot be drawn on a recipient",
-                "chromosome or an added donor bar. With Hide unplaced off, its",
-                "donor contig is drawn as a neutral unplaced bar and its calls",
-                "remain in the table. With Hide unplaced on, the bar and table",
-                "rows are removed. Donor-only additions are placed on added",
-                "donor bars and stay visible. The counter reports unplaced",
-                "calls in the current view; full exports keep every call."
-            )
-        ),
-        section(
-            "Caveats",
+            tr("tooltip_guide.caveats.title"),
             NULL,
-            row(
-                "Relative, not absolute",
-                paste(
-                    "Copy state describes a relative read-depth direction.",
-                    "It is not a quantitative measure."
-                )
+            row_key(
+                "tooltip_guide.caveats.relative",
+                "tooltip_guide.caveats.relative.desc"
             ),
-            row(
-                "Class vs placement",
-                paste(
-                    "Class status describes confidence in the label; the",
-                    "Assignment row describes confidence in the host."
-                )
+            row_key(
+                "tooltip_guide.caveats.class_vs_placement",
+                "tooltip_guide.caveats.class_vs_placement.desc"
             ),
-            row(
-                "Cross-group",
-                paste(
-                    "A cross-group result is a translocation candidate, not a",
-                    "confirmed donor-recipient pair."
-                )
+            row_key(
+                "tooltip_guide.caveats.cross_group",
+                "tooltip_guide.caveats.cross_group.desc"
             ),
-            row(
-                "Filters",
-                paste(
-                    "The card follows the visible calls. Clear a filter to",
-                    "inspect calls that are currently hidden."
-                )
+            row_key(
+                "tooltip_guide.caveats.filters",
+                "tooltip_guide.caveats.filters.desc"
             ),
-            row(
-                "Heatmap score",
-                paste(
-                    "A heatmap value is local context, not call-level evidence.",
-                    "Use the Score, Donor, Recipient and Total metrics for",
-                    "the call itself."
-                )
+            row_key(
+                "tooltip_guide.caveats.heatmap_score",
+                "tooltip_guide.caveats.heatmap_score.desc"
             )
         )
     )
 }
 
-#' @noRd
 mamamia_analysis_loader_ui <- function() {
     shiny::div(
         class = "mamamia-analysis-loading",
@@ -847,7 +706,11 @@ mamamia_analysis_loader_ui <- function() {
                 "</svg>"
             ))
         ),
-        shiny::div(class = "mamamia-analysis-eyebrow", "Analysis"),
+        shiny::div(
+            class = "mamamia-analysis-eyebrow",
+            `data-mamamia-i18n` = "run.analysis_eyebrow",
+            "Analysis"
+        ),
         shiny::div(
             class = "mamamia-analysis-stage", "Preparing analysis"
         ),
@@ -855,7 +718,9 @@ mamamia_analysis_loader_ui <- function() {
             class = "mamamia-analysis-timer",
             `aria-live` = "off",
             shiny::span(
-                class = "mamamia-analysis-timer-label", "Processing time"
+                class = "mamamia-analysis-timer-label",
+                `data-mamamia-i18n` = "run.processing_time",
+                "Processing time"
             ),
             shiny::span(
                 class = "mamamia-analysis-timer-value", "00:00"
@@ -868,74 +733,105 @@ mamamia_analysis_loader_ui <- function() {
     )
 }
 
-explorer_karyotype_ui <- function(id, height = "calc(100vh - 360px)") {
+explorer_karyotype_controls_ui <- function(id,
+                                             lang = mamamia_language_default(),
+                                             selected = list()) {
     ns <- shiny::NS(id)
+    mode <- selected[["mode"]]
+    if (is.null(mode) || length(mode) != 1L || is.na(mode) ||
+        !mode %in% c("heatmap", "calls")) {
+        mode <- "heatmap"
+    }
+    hide_deletions <- selected[["hide_deletions"]]
+    if (is.null(hide_deletions) || length(hide_deletions) != 1L ||
+        is.na(hide_deletions)) {
+        hide_deletions <- FALSE
+    }
+    hide_unplaced <- selected[["hide_unplaced"]]
+    if (is.null(hide_unplaced) || length(hide_unplaced) != 1L ||
+        is.na(hide_unplaced)) {
+        hide_unplaced <- TRUE
+    }
     shiny::div(
-        class = "mamamia-karyotype",
+        style = paste(
+            "display:flex; flex-wrap:wrap; align-items:center;",
+            "gap:.75rem; padding:.2rem .3rem .1rem;"
+        ),
         shiny::div(
-            style = paste(
-                "display:flex; flex-wrap:wrap; align-items:center;",
-                "gap:.75rem; padding:.2rem .3rem .1rem;"
+            class = "mamamia-karyotype-plot-controls",
+            shiny::radioButtons(
+                ns("karyotype_mode"), mamamia_tr("karyotype.plot", lang),
+                choices = stats::setNames(
+                    c("heatmap", "calls"),
+                    c(
+                        mamamia_tr("karyotype.heatmap", lang),
+                        mamamia_tr("karyotype.calls", lang)
+                    )
+                ),
+                selected = mode, inline = TRUE
             ),
             shiny::div(
-                class = "mamamia-karyotype-plot-controls",
-                shiny::radioButtons(
-                    ns("karyotype_mode"), "Plot",
-                    choices = c("Heatmap" = "heatmap", "Calls" = "calls"),
-                    selected = "heatmap", inline = TRUE
+                class = "mamamia-karyotype-deletions",
+                bslib::input_switch(
+                    ns("hide_deletions"),
+                    mamamia_tr("karyotype.hide_deletions", lang),
+                    value = isTRUE(hide_deletions)
                 ),
-                shiny::div(
-                    class = "mamamia-karyotype-deletions",
-                    bslib::input_switch(
-                        ns("hide_deletions"), "Hide deletions",
-                        value = FALSE
-                    ),
-                    shiny::textOutput(ns("deletion_info"), inline = TRUE)
-                ),
-                shiny::div(
-                    class = "mamamia-karyotype-deletions",
-                    bslib::input_switch(
-                        ns("hide_unplaced"), "Hide unplaced",
-                        value = TRUE
-                    ),
-                    shiny::textOutput(ns("unplaced_info"), inline = TRUE)
-                )
+                shiny::textOutput(ns("deletion_info"), inline = TRUE)
             ),
             shiny::div(
-                class = paste(
-                    "ms-auto d-flex flex-wrap align-items-center gap-2"
+                class = "mamamia-karyotype-deletions",
+                bslib::input_switch(
+                    ns("hide_unplaced"),
+                    mamamia_tr("karyotype.hide_unplaced", lang),
+                    value = isTRUE(hide_unplaced)
                 ),
-                shiny::tags$button(
-                    id = ns("download_karyotype_current"),
-                    type = "button",
-                    class = "btn btn-sm btn-outline-secondary",
-                    disabled = "disabled",
-                    title = paste(
-                        "Download the karyotype exactly as filtered",
-                        "and displayed (SVG)."
-                    ),
-                    shiny::icon("download"),
-                    "Current view"
-                ),
-                shiny::tags$button(
-                    id = ns("download_karyotype_full"),
-                    type = "button",
-                    class = "btn btn-sm btn-outline-secondary",
-                    disabled = "disabled",
-                    title = paste(
-                        "Download every call for this sample,",
-                        "ignoring the active filters (SVG)."
-                    ),
-                    shiny::icon("download"),
-                    "Full view"
-                ),
-                shiny::actionButton(
-                    ns("tooltip_help"), "Tooltip help",
-                    icon = shiny::icon("circle-question"),
-                    class = "btn-sm btn-outline-secondary"
-                )
+                shiny::textOutput(ns("unplaced_info"), inline = TRUE)
             )
         ),
+        shiny::div(
+            class = paste(
+                "ms-auto d-flex flex-wrap align-items-center gap-2"
+            ),
+            shiny::tags$button(
+                id = ns("download_karyotype_current"),
+                type = "button",
+                class = "btn btn-sm btn-outline-secondary",
+                disabled = "disabled",
+                title = mamamia_tr("karyotype.download_current_title", lang),
+                shiny::icon("download"),
+                mamamia_tr("karyotype.current_view", lang)
+            ),
+            shiny::tags$button(
+                id = ns("download_karyotype_full"),
+                type = "button",
+                class = "btn btn-sm btn-outline-secondary",
+                disabled = "disabled",
+                title = mamamia_tr("karyotype.download_full_title", lang),
+                shiny::icon("download"),
+                mamamia_tr("karyotype.full_view", lang)
+            ),
+            shiny::actionButton(
+                ns("tooltip_help"), mamamia_tr("karyotype.tooltip_help", lang),
+                icon = shiny::icon("circle-question"),
+                class = "btn-sm btn-outline-secondary"
+            )
+        )
+    )
+}
+
+explorer_karyotype_ui <- function(id, height = "calc(100vh - 360px)",
+                                  lang = mamamia_language_default(),
+                                  dynamic = FALSE) {
+    ns <- shiny::NS(id)
+    controls <- if (isTRUE(dynamic)) {
+        shiny::uiOutput("karyotype_controls_ui")
+    } else {
+        explorer_karyotype_controls_ui(id, lang = lang)
+    }
+    shiny::div(
+        class = "mamamia-karyotype",
+        controls,
         shiny::div(
             class = "mamamia-karyotype-plot",
             mamamia_karyotype_output(ns("karyotype"), height = height),
@@ -994,7 +890,8 @@ karyotype_export_payload <- function(result, sample = NULL,
                                      hide_deletions = FALSE,
                                      hide_unplaced = FALSE,
                                      show_unplaced = FALSE,
-                                     full = NULL) {
+                                     full = NULL,
+                                     lang = mamamia_language_default()) {
     mode <- match.arg(mode)
     payload <- karyotype_payload(
         result,
@@ -1004,7 +901,8 @@ karyotype_export_payload <- function(result, sample = NULL,
         selected_groups = selected_groups,
         hide_deletions = hide_deletions,
         hide_unplaced = hide_unplaced,
-        show_unplaced = show_unplaced
+        show_unplaced = show_unplaced,
+        lang = lang
     )
     if (is.null(full)) {
         full <- karyotype_payload(
@@ -1015,7 +913,8 @@ karyotype_export_payload <- function(result, sample = NULL,
             selected_groups = NULL,
             hide_deletions = FALSE,
             hide_unplaced = FALSE,
-            show_unplaced = FALSE
+            show_unplaced = FALSE,
+            lang = lang
         )
     }
     ## Every view is a complete payload. No positional `full_calls` or
@@ -1024,33 +923,32 @@ karyotype_export_payload <- function(result, sample = NULL,
     payload
 }
 
-explorer_controls_ui <- function(id) {
+explorer_controls_ui <- function(id, lang = mamamia_language_default()) {
     shiny::tagList(
-        explorer_view_filters_ui(id),
-        explorer_call_filters_ui(id),
-        explorer_selection_ui(id),
-        explorer_export_ui(id)
+        explorer_view_filters_ui(id, lang = lang),
+        explorer_call_filters_ui(id, lang = lang),
+        explorer_selection_ui(id, lang = lang),
+        explorer_export_ui(id, lang = lang)
     )
 }
 
-explorer_results_ui <- function(id) {
+explorer_results_ui <- function(id, lang = mamamia_language_default()) {
     ns <- shiny::NS(id)
     bslib::navset_card_tab(
         id = ns("tabs"),
         bslib::nav_panel(
-            "Karyotype",
-            explorer_karyotype_ui(id, height = "calc(100vh - 360px)")
+            mamamia_tr("tabs.karyotype", lang),
+            value = "karyotype",
+            explorer_karyotype_ui(
+                id, height = "calc(100vh - 360px)", lang = lang
+            )
         ),
         bslib::nav_panel(
-            "Calls",
+            mamamia_tr("tabs.calls", lang),
+            value = "calls",
             shiny::div(
                 class = "small text-muted mb-2",
-                paste(
-                    "Calls that cannot be placed on a recipient chromosome or",
-                    "an added donor bar appear as neutral unplaced donor bars",
-                    "when Hide unplaced is off. The table lists only calls",
-                    "placed in the current karyotype."
-                )
+                mamamia_tr("results.unplaced_note", lang)
             ),
             DT::DTOutput(ns("calls"))
         )
@@ -1063,8 +961,14 @@ explorer_results_ui <- function(id) {
 #' @param result Reactive returning a `BamAnalysisResult`, or the result itself.
 #' @param sample Optional sample name or reactive.
 #' @noRd
-explorer_server <- function(id, result, sample = NULL) {
+explorer_server <- function(id, result, sample = NULL,
+                            lang = shiny::reactive(
+                                mamamia_language_default()
+                            )) {
     shiny::moduleServer(id, function(input, output, session) {
+        lang_value <- function() {
+            if (shiny::is.reactive(lang)) lang() else lang
+        }
         selected_group <- shiny::reactiveVal(NULL)
         bundle_cache <- bundle_cache_state()
         session$onSessionEnded(function() bundle_cache_clear(bundle_cache))
@@ -1165,12 +1069,18 @@ explorer_server <- function(id, result, sample = NULL) {
             ids <- payload$unplaced_call_ids
             count <- if (is.null(ids)) 0L else length(ids)
             if (count <= 0L) {
-                return("No unplaced calls")
+                return(mamamia_tr("results.unplaced_none", lang_value()))
             }
             if (isTRUE(input$hide_unplaced)) {
-                sprintf("%d unplaced hidden", count)
+                sprintf(
+                    mamamia_tr("results.unplaced_hidden", lang_value()),
+                    as.integer(count)
+                )
             } else {
-                sprintf("%d unplaced shown", count)
+                sprintf(
+                    mamamia_tr("results.unplaced_shown", lang_value()),
+                    as.integer(count)
+                )
             }
         })
 
@@ -1187,9 +1097,17 @@ explorer_server <- function(id, result, sample = NULL) {
 
         output$selection_status <- shiny::renderText({
             if (is.null(result_value())) {
-                return("No analysis loaded yet")
+                return(mamamia_tr("results.no_analysis", lang_value()))
             }
-            paste(length(selected()), "call(s) selected for BEDPE export")
+            n <- length(selected())
+            if (identical(lang_value(), "ru")) {
+                sprintf(
+                    mamamia_tr("results.selection_status", "ru"),
+                    as.integer(n)
+                )
+            } else {
+                paste(n, mamamia_tr("results.selection_status", "en"))
+            }
         })
 
         proxy <- DT::dataTableProxy("calls", session = session)
@@ -1210,11 +1128,13 @@ explorer_server <- function(id, result, sample = NULL) {
 
         shiny::observeEvent(input$tooltip_help, {
             dialog <- shiny::modalDialog(
-                title = "Tooltip guide",
-                explorer_tooltip_help_ui(),
+                title = mamamia_tr("export.tooltip_guide", lang_value()),
+                explorer_tooltip_help_ui(lang_value()),
                 size = "l",
                 easyClose = TRUE,
-                footer = shiny::modalButton("Close")
+                footer = shiny::modalButton(
+                    mamamia_tr("errors.modal_close", lang_value())
+                )
             )
             dialog <- htmltools::tagAppendAttributes(
                 dialog,
@@ -1241,7 +1161,8 @@ explorer_server <- function(id, result, sample = NULL) {
                 selected_groups = NULL,
                 hide_deletions = FALSE,
                 hide_unplaced = FALSE,
-                show_unplaced = FALSE
+                show_unplaced = FALSE,
+                lang = lang_value()
             )
         })
 
@@ -1266,7 +1187,8 @@ explorer_server <- function(id, result, sample = NULL) {
                 hide_deletions = isTRUE(input$hide_deletions),
                 hide_unplaced = isTRUE(input$hide_unplaced),
                 show_unplaced = !isTRUE(input$hide_unplaced),
-                full = full_karyotype()
+                full = full_karyotype(),
+                lang = lang_value()
             )
         })
 
@@ -1303,18 +1225,25 @@ explorer_server <- function(id, result, sample = NULL) {
                 return("")
             }
             if (!isTRUE(payload$hide_deletions)) {
-                return("Deletions shown")
+                return(mamamia_tr("results.deletions_shown", lang_value()))
             }
             segments <- payload$hidden_deletions$segments
             if (is.null(segments) || length(segments) != 1L ||
                 is.na(segments) || segments <= 0L) {
-                return("No deletions omitted")
+                return(mamamia_tr("results.deletions_none", lang_value()))
             }
-            sprintf(
-                "%d segment%s omitted",
-                as.integer(segments),
-                if (as.integer(segments) == 1L) "" else "s"
-            )
+            if (identical(lang_value(), "ru")) {
+                sprintf(
+                    mamamia_tr("results.deletions_omitted", "ru"),
+                    as.integer(segments)
+                )
+            } else {
+                sprintf(
+                    mamamia_tr("results.deletions_omitted", "en"),
+                    as.integer(segments),
+                    if (as.integer(segments) == 1L) "" else "s"
+                )
+            }
         })
 
         output$karyotype <- render_mamamia_karyotype({
@@ -1331,11 +1260,9 @@ explorer_server <- function(id, result, sample = NULL) {
                     score_limit = 0.5,
                     palette = karyotype_palette(),
                     groups = list(),
-                    message = "Run the analysis to plot",
-                    hint = paste(
-                        "Load a BAM or the bundled example data, then run",
-                        "the analysis to map introgressions."
-                    )
+                    message = mamamia_tr("results.run_to_plot", lang_value()),
+                    hint = mamamia_tr("results.run_hint", lang_value()),
+                    labels = mamamia_karyotype_labels(lang_value())
                 )))
             }
             payload <- current_karyotype()
@@ -1347,7 +1274,10 @@ explorer_server <- function(id, result, sample = NULL) {
 
         output$calls <- DT::renderDT({
             shiny::validate(
-                shiny::need(!is.null(result_value()), "Run the analysis to list calls")
+                shiny::need(
+                    !is.null(result_value()),
+                    mamamia_tr("results.run_to_list", lang_value())
+                )
             )
             x <- rendered_calls()
             defaults <- intersect(bam_brief_call_columns(x), names(x))
@@ -1368,44 +1298,79 @@ explorer_server <- function(id, result, sample = NULL) {
             }
             if ("class" %in% names(display)) {
                 display$class <- humanise(display$class, c(
-                    substitution = "Substitution",
-                    addition = "Addition",
-                    deletion = "Deletion",
-                    complex = "Complex",
-                    other = "Other"
+                    substitution = mamamia_tr(
+                        "results.class_substitution", lang_value()
+                    ),
+                    addition = mamamia_tr(
+                        "results.class_addition", lang_value()
+                    ),
+                    deletion = mamamia_tr(
+                        "results.class_deletion", lang_value()
+                    ),
+                    complex = mamamia_tr(
+                        "results.class_complex", lang_value()
+                    ),
+                    other = mamamia_tr(
+                        "results.class_other", lang_value()
+                    )
                 ))
             }
             if ("copy_state" %in% names(display)) {
                 display$copy_state <- humanise(display$copy_state, c(
-                    balanced = "Balanced",
-                    gain = "Gain",
-                    loss = "Loss",
-                    compound = "Compound",
-                    neutral = "Neutral"
+                    balanced = mamamia_tr(
+                        "results.copy_balanced", lang_value()
+                    ),
+                    gain = mamamia_tr("results.copy_gain", lang_value()),
+                    loss = mamamia_tr("results.copy_loss", lang_value()),
+                    compound = mamamia_tr(
+                        "results.copy_compound", lang_value()
+                    ),
+                    neutral = mamamia_tr(
+                        "results.copy_neutral", lang_value()
+                    )
                 ))
             }
             if ("class_status" %in% names(display)) {
                 display$class_status <- humanise(display$class_status, c(
-                    confident = "Confident",
-                    ambiguous = "Ambiguous",
-                    needs_review = "Needs review"
+                    confident = mamamia_tr(
+                        "results.status_confident", lang_value()
+                    ),
+                    ambiguous = mamamia_tr(
+                        "results.status_ambiguous", lang_value()
+                    ),
+                    needs_review = mamamia_tr(
+                        "results.status_needs_review", lang_value()
+                    )
                 ))
             }
             if ("recipient_assignment" %in% names(display)) {
                 display$recipient_assignment <- humanise(
                     display$recipient_assignment,
                     c(
-                        assigned = "Assigned",
-                        ambiguous = "Ambiguous",
-                        cross_group = "Cross-group",
-                        no_recipient_loss = "No host"
+                        assigned = mamamia_tr(
+                            "results.assignment_assigned", lang_value()
+                        ),
+                        ambiguous = mamamia_tr(
+                            "results.status_ambiguous", lang_value()
+                        ),
+                        cross_group = mamamia_tr(
+                            "results.assignment_cross_group", lang_value()
+                        ),
+                        no_recipient_loss = mamamia_tr(
+                            "results.assignment_no_recipient_loss",
+                            lang_value()
+                        )
                     )
                 )
             }
             if ("pass" %in% names(display)) {
                 display$pass <- ifelse(
                     is.na(display$pass), NA_character_,
-                    ifelse(isTRUE_vec(display$pass), "Yes", "No")
+                    ifelse(
+                        isTRUE_vec(display$pass),
+                        mamamia_tr("common.yes", lang_value()),
+                        mamamia_tr("common.no", lang_value())
+                    )
                 )
             }
             logical_columns <- extras[vapply(
@@ -1415,7 +1380,11 @@ explorer_server <- function(id, result, sample = NULL) {
                 values <- x[[column]]
                 display[[column]] <- ifelse(
                     is.na(values), NA_character_,
-                    ifelse(values, "Yes", "No")
+                    ifelse(
+                        values,
+                        mamamia_tr("common.yes", lang_value()),
+                        mamamia_tr("common.no", lang_value())
+                    )
                 )
             }
             number_columns <- extras[vapply(
@@ -1423,7 +1392,9 @@ explorer_server <- function(id, result, sample = NULL) {
             )]
             table <- DT::datatable(
                 display,
-                container = bam_call_table_header(columns),
+                container = bam_call_table_header(
+                    columns, lang = lang_value()
+                ),
                 rownames = FALSE,
                 selection = "multiple",
                 options = list(
@@ -1466,7 +1437,9 @@ explorer_server <- function(id, result, sample = NULL) {
                 request <- bundle_request_value()
                 if (is.null(request)) {
                     stop(
-                        "Run the analysis before downloading",
+                        mamamia_tr(
+                            "results.run_before_download", lang_value()
+                        ),
                         call. = FALSE
                     )
                 }
@@ -1518,7 +1491,9 @@ explorer_server <- function(id, result, sample = NULL) {
                 res <- result_value()
                 if (is.null(res)) {
                     stop(
-                        "Run the analysis before downloading",
+                        mamamia_tr(
+                            "results.run_before_download", lang_value()
+                        ),
                         call. = FALSE
                     )
                 }
@@ -1555,7 +1530,9 @@ explorer_server <- function(id, result, sample = NULL) {
                 rows <- selected()
                 if (is.null(res) || is.null(x) || length(rows) == 0L) {
                     stop(
-                        "Select at least one call before downloading",
+                        mamamia_tr(
+                            "results.select_before_download", lang_value()
+                        ),
                         call. = FALSE
                     )
                 }

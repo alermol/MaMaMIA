@@ -74,6 +74,22 @@
     )
 )
 
+#' Localized stage suggestions
+#' @noRd
+mamamia_error_suggestions <- function(lang = mamamia_language_default()) {
+    stages <- names(.bam_error_suggestions)
+    values <- vapply(stages, function(stage) {
+        key <- paste0("errors.suggestion.", stage)
+        value <- mamamia_tr(key, lang)
+        if (identical(value, key)) .bam_error_suggestions[[stage]] else value
+    }, character(1))
+    names(values) <- stages
+    values[["upload"]] <- sprintf(
+        values[["upload"]], .bamhusk_url, .bamhusk_command
+    )
+    values
+}
+
 #' @noRd
 bam_error_stage <- function(e) {
     if (inherits(e, "MaMaMIAConfigError")) {
@@ -183,7 +199,8 @@ bam_error_files <- function(e, files = NULL, table = NULL) {
 
 #' Render a compact `File:`/`Files:` line
 #' @noRd
-bam_error_file_label <- function(files, max_files = 5L) {
+bam_error_file_label <- function(files, max_files = 5L,
+                                 lang = mamamia_language_default()) {
     files <- as.character(files)
     files <- files[!is.na(files) & nzchar(files)]
     if (length(files) == 0L) {
@@ -193,14 +210,15 @@ bam_error_file_label <- function(files, max_files = 5L) {
     if (hidden > 0L) {
         files <- c(
             utils::head(files, max_files),
-            sprintf("(+%d more)", hidden)
+            sprintf(mamamia_tr("errors.file_more", lang), hidden)
         )
     }
-    sprintf(
-        "%s: %s",
-        if (length(files) == 1L) "File" else "Files",
-        paste(files, collapse = ", ")
-    )
+    label <- if (length(files) == 1L) {
+        mamamia_tr("errors.file_label", lang)
+    } else {
+        mamamia_tr("errors.file_label_plural", lang)
+    }
+    sprintf("%s: %s", label, paste(files, collapse = ", "))
 }
 
 #' Describe a user-facing error with a stage, file and a suggested fix
@@ -213,11 +231,13 @@ bam_error_file_label <- function(files, max_files = 5L) {
 #' @return A list with `stage`, `class`, `message`, `files`, `suggestion`,
 #'   and optional `size`/`limit` fields for upload-limit errors.
 #' @noRd
-bam_error_info <- function(e, files = NULL, table = NULL) {
+bam_error_info <- function(e, files = NULL, table = NULL,
+                           lang = mamamia_language_default()) {
     stage <- bam_error_stage(e)
-    suggestion <- .bam_error_suggestions[[stage]]
+    suggestions <- mamamia_error_suggestions(lang)
+    suggestion <- suggestions[[stage]]
     if (is.null(suggestion) || is.na(suggestion)) {
-        suggestion <- .bam_error_suggestions[["analysis"]]
+        suggestion <- suggestions[["analysis"]]
     }
     data <- if (inherits(e, "condition")) e$data else NULL
     list(
@@ -232,13 +252,18 @@ bam_error_info <- function(e, files = NULL, table = NULL) {
 }
 
 #' @noRd
-bam_error_text <- function(info) {
-    lines <- sprintf("[%s] %s", info$stage, info$message)
-    file_label <- bam_error_file_label(info$files)
+bam_error_text <- function(info, lang = mamamia_language_default()) {
+    lines <- sprintf(
+        mamamia_tr("errors.prefix", lang), info$stage, info$message
+    )
+    file_label <- bam_error_file_label(info$files, lang = lang)
     if (!is.null(file_label)) {
         lines <- c(lines, file_label)
     }
-    paste(c(lines, paste("Suggested fix:", info$suggestion)), collapse = "\n")
+    paste(c(
+        lines,
+        sprintf(mamamia_tr("log.suggested_fix", lang), info$suggestion)
+    ), collapse = "\n")
 }
 
 ## Configuration -------------------------------------------------------------
@@ -404,7 +429,8 @@ bam_resolution_range <- function(defaults = .config_defaults(),
 
 #' @noRd
 bam_resolution_slider_ui <- function(defaults = .config_defaults(),
-                                     locked = FALSE) {
+                                     locked = FALSE,
+                                     lang = mamamia_language_default()) {
     range <- bam_resolution_range(defaults)
     positions <- if (range$max > range$min) {
         100 * (range$ticks - range$min) / (range$max - range$min)
@@ -440,8 +466,8 @@ bam_resolution_slider_ui <- function(defaults = .config_defaults(),
     }
     exact <- exact_query$
         addAttrs(
-            `aria-label` = "Exact resolution in windows per chromosome",
-            title = "Exact resolution in windows per chromosome"
+            `aria-label` = mamamia_tr("params.resolution_aria", lang),
+            title = mamamia_tr("params.resolution_aria", lang)
         )$
         allTags()
     shiny::div(
@@ -465,7 +491,9 @@ bam_resolution_slider_ui <- function(defaults = .config_defaults(),
 }
 
 #' @noRd
-bam_example_resolution_slider_ui <- function(defaults = .config_defaults()) {
+bam_example_resolution_slider_ui <- function(
+        defaults = .config_defaults(),
+        lang = mamamia_language_default()) {
     resolution <- as.integer(bam_example_default_resolution())
     display <- defaults
     display$allowed_windows <- sort(unique(c(
@@ -475,21 +503,27 @@ bam_example_resolution_slider_ui <- function(defaults = .config_defaults()) {
     shiny::tagList(
         shiny::div(
             class = "mamamia-resolution-locked",
-            bam_resolution_slider_ui(display, locked = TRUE),
+            bam_resolution_slider_ui(display, locked = TRUE, lang = lang),
             shiny::actionButton(
                 "resolution_locked", "",
                 class = "mamamia-resolution-lock",
-                title = "Resolution is fixed for the bundled example",
-                `aria-label` = "Resolution is fixed for the bundled example"
+                title = mamamia_tr(
+                    "params.resolution_locked_title", lang
+                ),
+                `aria-label` = mamamia_tr(
+                    "params.resolution_locked_title", lang
+                )
             )
         ),
         shiny::p(
             class = "mamamia-resolution-note",
+            `data-mamamia-i18n` = "params.resolution_fixed_note",
+            `data-mamamia-i18n-arg` = format(
+                as.integer(resolution),
+                big.mark = ",", scientific = FALSE
+            ),
             sprintf(
-                paste(
-                    "Fixed at %s windows per chromosome.",
-                    "Upload a BAM to change it."
-                ),
+                mamamia_tr("params.resolution_fixed_note", lang),
                 format(
                     as.integer(resolution),
                     big.mark = ",", scientific = FALSE
@@ -517,10 +551,14 @@ bam_default_resolution <- function(defaults = .config_defaults()) {
 }
 
 #' @noRd
-bam_resolution_value <- function(value, defaults = .config_defaults()) {
+bam_resolution_value <- function(value, defaults = .config_defaults(),
+                                 lang = mamamia_language_default()) {
     range <- bam_resolution_range(defaults)
     if (length(value) != 1L || is.na(value) || !nzchar(as.character(value))) {
-        .mamamia_error("MaMaMIAWindowError", "Choose an analysis resolution")
+        .mamamia_error(
+            "MaMaMIAWindowError",
+            mamamia_tr("errors.choose_resolution", lang)
+        )
     }
     resolution <- suppressWarnings(as.integer(value))
     if (is.na(resolution) || resolution < range$min ||
@@ -528,7 +566,7 @@ bam_resolution_value <- function(value, defaults = .config_defaults()) {
         (resolution - range$min) %% range$step != 0L) {
         .mamamia_error(
             "MaMaMIAWindowError",
-            "Resolution must be between %s and %s in steps of %s",
+            mamamia_tr("errors.resolution_range", lang),
             format(range$min, big.mark = ",", scientific = FALSE),
             format(range$max, big.mark = ",", scientific = FALSE),
             range$step
@@ -538,13 +576,14 @@ bam_resolution_value <- function(value, defaults = .config_defaults()) {
 }
 
 #' @noRd
-bam_integer <- function(value, label, minimum, maximum) {
+bam_integer <- function(value, label, minimum, maximum,
+                        lang = mamamia_language_default()) {
     if (length(value) != 1L || is.na(value) || !is.numeric(value) ||
         !is.finite(value) || value != floor(value) ||
         value < minimum || value > maximum) {
         .mamamia_error(
             "MaMaMIAAnalysisError",
-            "%s must be a whole number between %s and %s",
+            mamamia_tr("errors.whole_number", lang),
             label,
             format(minimum, scientific = FALSE),
             format(maximum, scientific = FALSE)
@@ -573,7 +612,8 @@ bam_max_cores <- function() {
 #'
 #' @return A character vector with zero or one BAM path.
 #' @noRd
-bam_single_upload_path <- function(uploads) {
+bam_single_upload_path <- function(
+        uploads, lang = mamamia_language_default()) {
     if (!is.data.frame(uploads) || !"datapath" %in% names(uploads)) {
         return(character())
     }
@@ -582,10 +622,7 @@ bam_single_upload_path <- function(uploads) {
     if (length(paths) > 1L) {
         .mamamia_error(
             "MaMaMIAUploadError",
-            paste(
-                "The dashboard analyses one BAM per run;",
-                "%d files were supplied. A multi-sample BAM is one file."
-            ),
+            mamamia_tr("errors.bam_count", lang),
             length(paths)
         )
     }
@@ -673,7 +710,8 @@ bam_upload_limit <- function(uploads, max_bytes) {
 #' @return A `bam_error_info()` list, or `NULL` when the payload is invalid or
 #'   the file is not actually over the limit.
 #' @noRd
-bam_upload_payload_info <- function(payload, max_bytes) {
+bam_upload_payload_info <- function(payload, max_bytes,
+                                    lang = mamamia_language_default()) {
     if (!is.list(payload)) {
         return(NULL)
     }
@@ -700,7 +738,7 @@ bam_upload_payload_info <- function(payload, max_bytes) {
     if (!inherits(error, "condition")) {
         return(NULL)
     }
-    bam_error_info(error)
+    bam_error_info(error, lang = lang)
 }
 
 ## BAM staging ---------------------------------------------------------------
@@ -823,26 +861,29 @@ bam_stage_paths <- function(paths, session_dir) {
 #' The footer log is the only place that reports preflight status, detected
 #' assemblies and problems, so the messages are deliberately explicit.
 #' @noRd
-bam_preflight_log <- function(pf) {
+bam_preflight_log <- function(pf, lang = mamamia_language_default()) {
     if (is.null(pf)) {
-        return("Preflight: no state available.")
+        return(mamamia_tr("log.preflight_none", lang))
     }
     if (isTRUE(pf$empty)) {
-        return("Preflight: waiting for a BAM upload.")
+        return(mamamia_tr("log.preflight_waiting", lang))
     }
     if (!isTRUE(pf$ok)) {
         info <- pf$error
         if (is.null(info)) {
-            return("Preflight failed.")
+            return(mamamia_tr("log.preflight_failed", lang))
         }
         lines <- sprintf(
-            "Preflight failed at stage '%s': %s", info$stage, info$message
+            mamamia_tr("log.preflight_failed_stage", lang),
+            info$stage, info$message
         )
-        file_label <- bam_error_file_label(info$files)
+        file_label <- bam_error_file_label(info$files, lang = lang)
         if (!is.null(file_label)) {
             lines <- c(lines, file_label)
         }
-        lines <- c(lines, sprintf("Suggested fix: %s", info$suggestion))
+        lines <- c(lines, sprintf(
+            mamamia_tr("log.suggested_fix", lang), info$suggestion
+        ))
         candidates <- pf$candidates
         if (is.data.frame(candidates) && nrow(candidates) > 0L) {
             labels <- candidates$label
@@ -851,10 +892,10 @@ bam_preflight_log <- function(pf) {
             }
             labels[is.na(labels) | !nzchar(labels)] <-
                 candidates$key[is.na(labels) | !nzchar(labels)]
-            lines <- c(lines, paste0(
-                "Assembly candidates: ",
+            lines <- c(lines, sprintf(
+                mamamia_tr("log.assembly_candidates", lang),
                 paste(sprintf(
-                    "%s (%d/%d targets, %.1f%%)",
+                    mamamia_tr("log.assembly_candidate_item", lang),
                     labels, candidates$n_matched,
                     candidates$n_targets, 100 * candidates$score
                 ), collapse = "; ")
@@ -870,14 +911,23 @@ bam_preflight_log <- function(pf) {
         length(unique(table$path))
     }
     lines <- character()
-    lines <- c(lines, sprintf(
-        "Preflight OK: %d BAM file%s.",
-        n_bams, if (n_bams == 1L) "" else "s"
-    ))
+    if (identical(lang, "ru")) {
+        lines <- c(lines, sprintf(
+            mamamia_tr("log.preflight_ok", "ru"), n_bams
+        ))
+    } else {
+        lines <- c(lines, sprintf(
+            mamamia_tr("log.preflight_ok", "en"),
+            n_bams, if (n_bams == 1L) "" else "s"
+        ))
+    }
     if (!is.null(table) && nrow(table) > 0L) {
         warnings <- unique(table$warnings[nzchar(table$warnings)])
         if (length(warnings) > 0L) {
-            lines <- c(lines, paste0("Preflight note: ", warnings))
+            lines <- c(lines, sprintf(
+                mamamia_tr("log.preflight_note", lang),
+                paste(warnings, collapse = "; ")
+            ))
         }
     }
 
@@ -888,7 +938,9 @@ bam_preflight_log <- function(pf) {
             !nzchar(label)) {
             label <- assembly$key
         }
-        lines <- c(lines, sprintf("Detected assembly: %s.", label))
+        lines <- c(lines, sprintf(
+            mamamia_tr("log.detected_assembly", lang), label
+        ))
     }
     lines
 }
@@ -911,11 +963,12 @@ bam_log_entry <- function(message, time = Sys.time()) {
 #' This must not read or write a reactive value: it runs during server
 #' creation, before Shiny has entered a reactive consumer context.
 #' @noRd
-bam_initial_log <- function(time = Sys.time()) {
+bam_initial_log <- function(time = Sys.time(),
+                            lang = mamamia_language_default()) {
     c(
-        bam_log_entry("MaMaMIA session started.", time),
-        bam_log_entry("Configuration validated.", time),
-        bam_log_entry("BAM header parsed.", time)
+        bam_log_entry(mamamia_tr("log.started", lang), time),
+        bam_log_entry(mamamia_tr("log.config_validated", lang), time),
+        bam_log_entry(mamamia_tr("log.header_parsed", lang), time)
     )
 }
 
@@ -1236,7 +1289,8 @@ bam_error_candidates <- function(e, paths, config) {
 }
 
 #' @noRd
-bam_preflight_failure <- function(e, paths, config, files = NULL) {
+bam_preflight_failure <- function(e, paths, config, files = NULL,
+                                  lang = mamamia_language_default()) {
     list(
         ok = FALSE,
         empty = FALSE,
@@ -1249,7 +1303,8 @@ bam_preflight_failure <- function(e, paths, config, files = NULL) {
         unpaired = NULL,
         error = bam_error_info(
             e,
-            files = if (is.null(files)) paths else files
+            files = if (is.null(files)) paths else files,
+            lang = lang
         ),
         candidates = bam_error_candidates(e, paths, config)
     )
@@ -1279,7 +1334,8 @@ bam_assembly_windows <- function(assembly, resolutions) {
 #'
 #' @return `NULL` or a one-element character message.
 #' @noRd
-bam_resolution_problem <- function(assembly, resolution) {
+bam_resolution_problem <- function(assembly, resolution,
+                                   lang = mamamia_language_default()) {
     if (is.null(assembly) || length(resolution) != 1L || is.na(resolution)) {
         return(NULL)
     }
@@ -1303,11 +1359,14 @@ bam_resolution_problem <- function(assembly, resolution) {
         targets$chr_id[short],
         format(targets$length[short], big.mark = ",", scientific = FALSE)
     )
+    key <- if (sum(short) == 1L) {
+        "errors.short_contigs"
+    } else {
+        "errors.short_contigs_plural"
+    }
     sprintf(
-        "Contig%s %s %s shorter than the requested %s windows; choose a lower resolution.",
-        if (sum(short) == 1L) "" else "s",
+        mamamia_tr(key, lang),
         paste(contigs, collapse = ", "),
-        if (sum(short) == 1L) "is" else "are",
         format(resolution, big.mark = ",", scientific = FALSE)
     )
 }
@@ -1496,14 +1555,15 @@ bam_profile_input_value <- function(input, id, fallback) {
 }
 
 #' @noRd
-bam_profile_whole_number <- function(value, label, minimum, maximum) {
+bam_profile_whole_number <- function(value, label, minimum, maximum,
+                                     lang = mamamia_language_default()) {
     numeric <- suppressWarnings(as.numeric(value))
     if (length(numeric) != 1L || is.na(numeric) || !is.finite(numeric) ||
         numeric != floor(numeric) ||
         numeric < minimum || numeric > maximum) {
         .mamamia_error(
             "MaMaMIAAnalysisError",
-            "%s must be a whole number between %s and %s",
+            mamamia_tr("errors.whole_number", lang),
             label,
             format(minimum, scientific = FALSE),
             format(maximum, scientific = FALSE)
@@ -1539,7 +1599,8 @@ bam_profile_input_resolution <- function(input, config, resolution = NULL,
 #' Current Advanced control values as one flat parameter list
 #' @noRd
 bam_profile_current_parameters <- function(input, config, resolution = NULL,
-                                           fallback = NULL) {
+                                           fallback = NULL,
+                                           lang = mamamia_language_default()) {
     if (is.null(fallback)) {
         fallback <- bam_profile_config_parameters(config)
     }
@@ -1568,7 +1629,7 @@ bam_profile_current_parameters <- function(input, config, resolution = NULL,
         )),
         mapq = bam_profile_whole_number(
             bam_profile_input_value(input, "mapq", fallback$mapq),
-            "MAPQ", 0L, 255L
+            "MAPQ", 0L, 255L, lang = lang
         ),
         calibration_fdr = as.numeric(bam_profile_input_value(
             input, "calibration_fdr", fallback$calibration_fdr
@@ -1582,7 +1643,9 @@ bam_profile_current_parameters <- function(input, config, resolution = NULL,
                 input, "calibration_merge_gap",
                 fallback$calibration_merge_gap
             ),
-            "Calibration merge gap (windows)", 0L, 10000L
+            mamamia_tr(
+                "params.label_calibration_merge_gap", lang
+            ), 0L, 10000L, lang = lang
         )
     )
 }
@@ -1655,57 +1718,18 @@ bam_update_profile_inputs <- function(session, parameters) {
 
 #' Short help text for every Advanced parameter
 #' @noRd
-bam_parameter_help <- function(id, label = NULL) {
+bam_parameter_help <- function(id, label = NULL,
+                               lang = mamamia_language_default()) {
     if (grepl("^calibration_floor_", id)) {
         bin <- sub("^Floor ", "", sub(" Mb$", "", label %||% ""))
         return(sprintf(
-            paste(
-                "Minimum mean score for a call in the %s length bin.",
-                "Raise it to reject weak calls in this size range."
-            ),
+            mamamia_tr("params.help.calibration_floor", lang),
             bin
         ))
     }
-    help <- c(
-        resolution = paste(
-            "Windows per chromosome. More windows give finer breakpoints",
-            "but make the run slower."
-        ),
-        metric = paste(
-            "Window metric used by the score. Breadth uses covered bases,",
-            "count uses read depth, and combined uses both."
-        ),
-        score = paste(
-            "Paired log-ratio compares donor and recipient coverage.",
-            "Donor only ignores the recipient and tolerates copy-number",
-            "changes in the recipient."
-        ),
-        donor_aggregation = paste(
-            "How several donor components are combined in one window:",
-            "max, mean, or sum."
-        ),
-        mapq = paste(
-            "Minimum mapping quality for a read to count. Higher values",
-            "exclude more ambiguous alignments."
-        ),
-        calibration_fdr = paste(
-            "Target false discovery rate for segment thresholds.",
-            "Lower values make calls more conservative."
-        ),
-        calibration_min_mb = paste(
-            "Minimum call width in megabases. Shorter segments are",
-            "excluded."
-        ),
-        calibration_merge_gap = paste(
-            "Largest gap, in windows, between positive segments that may",
-            "be merged into one call."
-        ),
-        control_samples = paste(
-            "Samples used only to calibrate thresholds. Leave empty to",
-            "pool every sample in the cohort."
-        )
-    )
-    help[[id]] %||% ""
+    key <- paste0("params.help.", id)
+    value <- mamamia_tr(key, lang)
+    if (identical(value, key)) "" else value
 }
 
 #' @noRd
@@ -1735,12 +1759,13 @@ bam_profile_parameter_label <- function(id, label, changed, help = NULL) {
 }
 
 #' @noRd
-bam_number <- function(value, label, minimum, maximum) {
+bam_number <- function(value, label, minimum, maximum,
+                       lang = mamamia_language_default()) {
     if (length(value) != 1L || is.na(value) || !is.numeric(value) ||
         !is.finite(value) || value < minimum || value > maximum) {
         .mamamia_error(
             "MaMaMIAAnalysisError",
-            "%s must be a number between %s and %s",
+            mamamia_tr("errors.number", lang),
             label,
             format(minimum, scientific = FALSE),
             format(maximum, scientific = FALSE)
@@ -1763,9 +1788,13 @@ bam_number <- function(value, label, minimum, maximum) {
 #' @return A list with the resolved `analyzeBamInput()` arguments.
 #' @noRd
 bam_run_parameters <- function(input, config, samples, resolution = NULL,
-                               profile_base = NULL) {
+                               profile_base = NULL,
+                               lang = mamamia_language_default()) {
     if (!is.character(samples) || length(samples) == 0L) {
-        .mamamia_error("MaMaMIAAnalysisError", "At least one sample is required")
+        .mamamia_error(
+            "MaMaMIAAnalysisError",
+            mamamia_tr("errors.at_least_sample", lang)
+        )
     }
     defaults <- config$defaults
     requested <- input$analysis_profile
@@ -1780,10 +1809,7 @@ bam_run_parameters <- function(input, config, samples, resolution = NULL,
         range <- bam_resolution_range(defaults)
         .mamamia_error(
             "MaMaMIAProfileError",
-            paste0(
-                "Analysis profile '%s' uses %s windows per chromosome; ",
-                "this configuration allows %s-%s in steps of %s"
-            ),
+            mamamia_tr("errors.profile_resolution", lang),
             profile$label,
             as.integer(profile$parameters$windows_per_chromosome),
             format(range$min, big.mark = ",", scientific = FALSE),
@@ -1803,19 +1829,20 @@ bam_run_parameters <- function(input, config, samples, resolution = NULL,
     }
     fallback <- bam_profile_default_parameters(config, template)
     current <- bam_profile_current_parameters(
-        input, config, resolution = resolution, fallback = fallback
+        input, config, resolution = resolution, fallback = fallback,
+        lang = lang
     )
     resolution <- bam_resolution_value(
-        current$windows_per_chromosome, defaults
+        current$windows_per_chromosome, defaults, lang = lang
     )
-    mapq <- bam_integer(current$mapq, "MAPQ", 0L, 255L)
+    mapq <- bam_integer(current$mapq, "MAPQ", 0L, 255L, lang = lang)
     exclude_flags <- bam_integer(
-        defaults$exclude_flags, "Exclude flags", 0L, 4095L
+        defaults$exclude_flags, "Exclude flags", 0L, 4095L, lang = lang
     )
     available_cores <- min(256L, bam_max_cores())
     cores <- bam_integer(
         mamamia_default_cores(available_cores),
-        "Cores", 1L, available_cores
+        "Cores", 1L, available_cores, lang = lang
     )
     donor_aggregation <- as.character(current$donor_aggregation)
     if (!donor_aggregation %in% c("mean", "max", "sum")) {
@@ -1852,19 +1879,26 @@ bam_run_parameters <- function(input, config, samples, resolution = NULL,
         if (length(floors) != n_floors || anyNA(floors) || any(floors < 0)) {
             .mamamia_error(
                 "MaMaMIAAnalysisError",
-                "Each calibration floor must be a non-negative number"
+                mamamia_tr("errors.calibration_floor", lang)
             )
         }
         list(
-            fdr = bam_number(current$calibration_fdr, "Calibration FDR", 1e-6, 0.999999),
+            fdr = bam_number(
+                current$calibration_fdr, "Calibration FDR", 1e-6, 0.999999,
+                lang = lang
+            ),
             floors = floors,
             min_mb = bam_number(
                 current$calibration_min_mb,
-                "Calibration minimum length (Mb)", 0, Inf
+                mamamia_tr(
+                    "params.label_calibration_min_mb", lang
+                ), 0, Inf, lang = lang
             ),
             merge_gap = bam_integer(
                 current$calibration_merge_gap,
-                "Calibration merge gap (windows)", 0L, 10000L
+                mamamia_tr(
+                    "params.label_calibration_merge_gap", lang
+                ), 0L, 10000L, lang = lang
             )
         )
     } else {
@@ -1881,7 +1915,8 @@ bam_run_parameters <- function(input, config, samples, resolution = NULL,
         if (length(unknown) > 0L) {
             .mamamia_error(
                 "MaMaMIAAnalysisError",
-                "Unknown control sample(s): %s", paste(unknown, collapse = ", ")
+                mamamia_tr("errors.unknown_control", lang),
+                paste(unknown, collapse = ", ")
             )
         }
     }
@@ -1933,34 +1968,36 @@ bam_progress_stages <- function(n_samples, ...) {
     )
 }
 
-.bam_progress_labels <- c(
-    preflight = "Checking BAM",
-    index = "Indexing BAM",
-    windows = "Building windows",
-    gc = "Reading GC content",
-    metrics = "Counting reads",
-    score = "Scoring windows",
-    mask = "Masking windows",
-    segmentation = "Segmenting profiles",
-    calibration = "Calibrating calls"
+.bam_progress_stage_keys <- c(
+    preflight = "progress.preflight",
+    index = "progress.index",
+    windows = "progress.windows",
+    gc = "progress.gc",
+    metrics = "progress.metrics",
+    score = "progress.score",
+    mask = "progress.mask",
+    segmentation = "progress.segmentation",
+    calibration = "progress.calibration"
 )
 
 #' @noRd
-bam_progress_label <- function(stage, detail = list()) {
+bam_progress_label <- function(stage, detail = list(),
+                               lang = mamamia_language_default()) {
     ## Progress text stays short: the counts, sample names and other detail
     ## fields remain available to the pipeline but are not shown in the toast.
-    ## `[` on a named character vector returns NA for an unknown name, so a
-    ## future stage cannot abort the analysis.
-    label <- unname(.bam_progress_labels[stage])
-    if (length(label) != 1L || is.na(label)) {
-        label <- as.character(stage)[[1L]]
+    ## An unknown stage falls back to its raw name so a future stage cannot
+    ## abort the analysis.
+    key <- unname(.bam_progress_stage_keys[stage])
+    if (length(key) != 1L || is.na(key)) {
+        return(as.character(stage)[[1L]])
     }
-    label
+    mamamia_tr(key, lang)
 }
 
 #' @noRd
 bam_progress_callback <- function(n_samples, total_steps = NULL,
-                                  handler = NULL) {
+                                  handler = NULL,
+                                  lang = mamamia_language_default()) {
     stages <- length(bam_progress_stages(n_samples))
     total <- suppressWarnings(as.integer(total_steps))
     if (length(total) != 1L || is.na(total) || total < 1L) {
@@ -1975,7 +2012,7 @@ bam_progress_callback <- function(n_samples, total_steps = NULL,
         } else {
             shiny::incProgress(
                 1 / total,
-                detail = bam_progress_label(stage, detail)
+                detail = bam_progress_label(stage, detail, lang)
             )
         }
         invisible(NULL)
@@ -2003,7 +2040,8 @@ bam_sample_choices <- function(result) {
 #'
 #' @return A character vector of actionable warnings.
 #' @noRd
-bam_coverage_warnings <- function(result, near_zero = 1) {
+bam_coverage_warnings <- function(result, near_zero = 1,
+                                  lang = mamamia_language_default()) {
     samples <- bam_sample_choices(result)
     warnings <- character()
     if (length(samples) == 0L) {
@@ -2022,12 +2060,12 @@ bam_coverage_warnings <- function(result, near_zero = 1) {
             }
             if (total <= 0) {
                 warnings <- c(warnings, sprintf(
-                    "Sample '%s' has no reads on the %s targets.",
+                    mamamia_tr("log.coverage_no_reads", lang),
                     sample, side
                 ))
             } else if (total / n_windows < near_zero) {
                 warnings <- c(warnings, sprintf(
-                    "Sample '%s' has near-zero coverage on the %s side (%s reads over %d windows).",
+                    mamamia_tr("log.coverage_near_zero", lang),
                     sample, side, format(total, scientific = FALSE), n_windows
                 ))
             }
@@ -2212,7 +2250,8 @@ bam_analysis_key <- function(preflight, resolution, donor_aggregation = NULL,
 #'
 #' @return A `shiny.tag` containing the labelled file input.
 #' @noRd
-bam_single_file_input <- function(max_bytes = NULL) {
+bam_single_file_input <- function(max_bytes = NULL,
+                                  lang = mamamia_language_default()) {
     limit <- if (is.numeric(max_bytes) && length(max_bytes) == 1L &&
         is.finite(max_bytes) && max_bytes > 0) {
         sprintf("%.0f", max_bytes)
@@ -2233,41 +2272,76 @@ bam_single_file_input <- function(max_bytes = NULL) {
                 class = "mamamia-upload-copy",
                 shiny::div(
                     class = "mamamia-upload-title-row",
-                    shiny::span(class = "mamamia-upload-title", "BAM file"),
+                    shiny::span(
+                        class = "mamamia-upload-title",
+                        `data-mamamia-i18n` = "sidebar.bam_file",
+                        mamamia_tr("sidebar.bam_file", lang)
+                    ),
                     if (!is.null(limit)) {
                         shiny::span(
                             class = "mamamia-upload-limit",
-                            sprintf("Max %s", bam_format_size(max_bytes)),
+                            `data-mamamia-i18n` = "sidebar.max_size",
+                            `data-mamamia-i18n-arg` = bam_format_size(
+                                max_bytes
+                            ),
+                            sprintf(
+                                mamamia_tr("sidebar.max_size", lang),
+                                bam_format_size(max_bytes)
+                            ),
                             shiny::actionButton(
                                 "bam_upload_help",
                                 label = shiny::icon("circle-question"),
                                 class = "mamamia-upload-help",
-                                title = "About the BAM upload limit",
-                                `aria-label` = "About the BAM upload limit"
+                                title = mamamia_tr(
+                                    "sidebar.about_upload_limit", lang
+                                ),
+                                `aria-label` = mamamia_tr(
+                                    "sidebar.about_upload_limit", lang
+                                ),
+                                `data-mamamia-i18n-title` =
+                                    "sidebar.about_upload_limit",
+                                `data-mamamia-i18n-aria` =
+                                    "sidebar.about_upload_limit"
                             )
                         )
                     }
                 ),
                 shiny::span(
                     class = "mamamia-upload-hint",
-                    "Drag & drop or browse"
+                    `data-mamamia-i18n` = "sidebar.drag_browse",
+                    mamamia_tr("sidebar.drag_browse", lang)
                 )
             )
         ),
-        shiny::fileInput(
-            "bams",
-            "BAM file",
-            multiple = FALSE,
-            accept = ".bam",
-            width = "100%",
-            buttonLabel = "Choose BAM file",
-            placeholder = "No BAM selected"
-        ),
+        local({
+            input <- shiny::fileInput(
+                "bams",
+                mamamia_tr("sidebar.bam_file", lang),
+                multiple = FALSE,
+                accept = ".bam",
+                width = "100%",
+                buttonLabel = mamamia_tr("sidebar.choose_bam", lang),
+                placeholder = mamamia_tr("sidebar.no_bam", lang)
+            )
+            query <- htmltools::tagQuery(input)
+            query$find("label.control-label")$addAttrs(
+                `data-mamamia-i18n` = "sidebar.bam_file"
+            )
+            query$find(".btn-file")$addAttrs(
+                `data-mamamia-i18n` = "sidebar.choose_bam"
+            )
+            query$find("input.form-control")$addAttrs(
+                `data-mamamia-i18n-placeholder` = "sidebar.no_bam"
+            )
+            query$allTags()
+        }),
         shiny::div(
             class = "mamamia-upload-timer",
             `aria-live` = "off",
             shiny::span(
-                class = "mamamia-upload-timer-label", "Time to finish"
+                class = "mamamia-upload-timer-label",
+                `data-mamamia-i18n` = "sidebar.time_to_finish",
+                mamamia_tr("sidebar.time_to_finish", lang)
             ),
             shiny::span(class = "mamamia-upload-timer-value", "--:--")
         )
@@ -2288,7 +2362,8 @@ bam_fixed_control_ui <- function(label, value) {
 }
 
 #' @noRd
-bam_sidebar_recovery_ui <- function(info, show_action = TRUE) {
+bam_sidebar_recovery_ui <- function(info, show_action = TRUE,
+                                   lang = mamamia_language_default()) {
     if (!is.list(info)) {
         return(NULL)
     }
@@ -2306,50 +2381,48 @@ bam_sidebar_recovery_ui <- function(info, show_action = TRUE) {
     suggestion <- text_value(info$suggestion)
     recovery_copy <- if (too_large) {
         list(
-            body = paste(
-                "This BAM is larger than this server's upload limit,",
-                "so it was not analysed."
-            ),
+            body = mamamia_tr("sidebar.recovery.body_too_large", lang),
             note = NULL
         )
     } else if (assembly) {
         if (grepl("missing target", message, ignore.case = TRUE)) {
             list(
-                body = paste(
-                    "This BAM does not contain the contigs required by",
-                    "the selected assembly."
+                body = mamamia_tr(
+                    "sidebar.recovery.body_missing_contigs", lang
                 ),
-                note = "The calculation log lists the missing targets."
+                note = mamamia_tr(
+                    "sidebar.recovery.note_missing_targets", lang
+                )
             )
         } else if (grepl(
             "does not match any configured assembly", message,
             ignore.case = TRUE
         )) {
             list(
-                body = paste(
-                    "This BAM's header does not match any assembly",
-                    "in the registry."
+                body = mamamia_tr(
+                    "sidebar.recovery.body_no_assembly", lang
                 ),
-                note = paste(
-                    "Choose a matching species pair or add the assembly",
-                    "to the registry."
+                note = mamamia_tr(
+                    "sidebar.recovery.note_choose_pair", lang
                 )
             )
         } else if (grepl("Unknown assembly", message, ignore.case = TRUE)) {
             list(
-                body = paste(
-                    "The BAM header names an assembly that is not in",
-                    "the registry."
+                body = mamamia_tr(
+                    "sidebar.recovery.body_unknown_assembly", lang
                 ),
-                note = paste(
-                    "Add the assembly to the registry or choose a matching",
-                    "species pair."
+                note = mamamia_tr(
+                    "sidebar.recovery.note_add_assembly", lang
                 )
             )
         } else {
             list(
-                body = "This BAM does not match a configured assembly.",
-                note = "Check the BAM header and the assembly setup."
+                body = mamamia_tr(
+                    "sidebar.recovery.body_generic", lang
+                ),
+                note = mamamia_tr(
+                    "sidebar.recovery.note_check_header", lang
+                )
             )
         }
     } else {
@@ -2381,11 +2454,11 @@ bam_sidebar_recovery_ui <- function(info, show_action = TRUE) {
             shiny::span(
                 class = "mamamia-recovery-title",
                 if (too_large) {
-                    "BAM is too large"
+                    mamamia_tr("sidebar.recovery.title_too_large", lang)
                 } else if (assembly) {
-                    "No matching assembly"
+                    mamamia_tr("sidebar.recovery.title_assembly", lang)
                 } else {
-                    "Setup needs attention"
+                    mamamia_tr("sidebar.recovery.title_attention", lang)
                 }
             )
         ),
@@ -2396,7 +2469,7 @@ bam_sidebar_recovery_ui <- function(info, show_action = TRUE) {
             shiny::p(
                 class = "mamamia-recovery-message",
                 sprintf(
-                    "This file is %s; the limit is %s.",
+                    mamamia_tr("sidebar.recovery.size_line", lang),
                     bam_format_size(info$size),
                     bam_format_size(info$limit)
                 )
@@ -2409,14 +2482,15 @@ bam_sidebar_recovery_ui <- function(info, show_action = TRUE) {
             shiny::tagList(
                 shiny::p(
                     class = "mamamia-recovery-note",
-                    "Slim it locally with ",
+                    mamamia_tr("sidebar.recovery.slim_hint", lang),
+                    " ",
                     shiny::tags$a(
                         href = .bamhusk_url,
                         target = "_blank",
                         rel = "noopener noreferrer",
                         "bamhusk"
                     ),
-                    ", then upload the smaller BAM."
+                    mamamia_tr("sidebar.recovery.slim_tail", lang)
                 ),
                 shiny::tags$pre(
                     class = "mamamia-recovery-command",
@@ -2427,7 +2501,7 @@ bam_sidebar_recovery_ui <- function(info, show_action = TRUE) {
         if (nzchar(suggestion) && !too_large) {
             shiny::p(
                 class = "mamamia-recovery-suggestion",
-                shiny::strong("Next step: "),
+                shiny::strong(mamamia_tr("sidebar.recovery.next_step", lang)),
                 suggestion
             )
         },
@@ -2438,12 +2512,16 @@ bam_sidebar_recovery_ui <- function(info, show_action = TRUE) {
                 target = "_blank",
                 rel = "noopener noreferrer",
                 shiny::icon("arrow-up-right-from-square"),
-                " Open bamhusk"
+                mamamia_tr("sidebar.recovery.open_bamhusk", lang)
             )
         } else if (isTRUE(show_action)) {
             shiny::actionButton(
                 "unlock_setup",
-                if (assembly) "Choose assembly" else "Review setup",
+                if (assembly) {
+                    mamamia_tr("sidebar.recovery.choose_assembly", lang)
+                } else {
+                    mamamia_tr("sidebar.recovery.review_setup", lang)
+                },
                 icon = shiny::icon("arrow-right"),
                 class = "mamamia-recovery-action"
             )
@@ -2453,13 +2531,16 @@ bam_sidebar_recovery_ui <- function(info, show_action = TRUE) {
 
 #' Modal shown once when an oversized upload is rejected
 #' @noRd
-bam_upload_too_large_modal <- function(info) {
+bam_upload_too_large_modal <- function(info,
+                                      lang = mamamia_language_default()) {
     if (!is.list(info)) {
-        info <- list(message = "The BAM is too large for this server.")
+        info <- list(message = mamamia_tr(
+            "errors.modal_default_message", lang
+        ))
     }
     detail <- if (!is.null(info$size) && !is.null(info$limit)) {
         sprintf(
-            "This BAM is %s; this server accepts at most %s.",
+            mamamia_tr("errors.modal_detail", lang),
             bam_format_size(info$size),
             bam_format_size(info$limit)
         )
@@ -2467,7 +2548,7 @@ bam_upload_too_large_modal <- function(info) {
         as.character(info$message)[[1L]]
     }
     shiny::modalDialog(
-        title = "BAM is too large to upload",
+        title = mamamia_tr("errors.modal_too_large_title", lang),
         easyClose = TRUE,
         shiny::p(detail),
         if (!is.null(info$files) && length(info$files) > 0L) {
@@ -2477,14 +2558,15 @@ bam_upload_too_large_modal <- function(info) {
             )
         },
         shiny::p(
-            "Slim it locally with ",
+            mamamia_tr("sidebar.recovery.slim_hint", lang),
+            " ",
             shiny::tags$a(
                 href = .bamhusk_url,
                 target = "_blank",
                 rel = "noopener noreferrer",
                 "bamhusk"
             ),
-            ", then upload the smaller BAM."
+            mamamia_tr("sidebar.recovery.slim_tail", lang)
         ),
         shiny::tags$pre(
             class = "mamamia-recovery-command",
@@ -2492,16 +2574,13 @@ bam_upload_too_large_modal <- function(info) {
         ),
         shiny::p(
             class = "text-muted small mb-0",
-            paste(
-                "The upload was rejected before staging or analysis;",
-                "no BAM data was processed."
-            )
+            mamamia_tr("errors.modal_rejected_note", lang)
         ),
         footer = shiny::tagList(
-            shiny::modalButton("Close"),
+            shiny::modalButton(mamamia_tr("errors.modal_close", lang)),
             shiny::actionButton(
                 "clear_oversized_upload",
-                "Choose another file",
+                mamamia_tr("errors.modal_choose_another", lang),
                 class = "btn-primary"
             )
         )
@@ -2510,7 +2589,8 @@ bam_upload_too_large_modal <- function(info) {
 
 #' Upload-limit help shown by the `?` next to the size hint
 #' @noRd
-bam_upload_help_ui <- function(max_bytes) {
+bam_upload_help_ui <- function(max_bytes,
+                                lang = mamamia_language_default()) {
     limit <- bam_format_size(max_bytes)
     section <- function(title, ...) {
         shiny::div(
@@ -2523,40 +2603,43 @@ bam_upload_help_ui <- function(max_bytes) {
         class = "mamamia-tooltip-help",
         shiny::p(
             class = "mamamia-help-lead",
-            "This server accepts BAM files up to ",
+            mamamia_tr("sidebar.upload_help.lead", lang),
+            " ",
             shiny::strong(limit),
-            ". The size is checked in your browser before upload."
+            mamamia_tr("sidebar.upload_help.lead_tail", lang)
         ),
         shiny::div(
             class = "mamamia-help-facts",
             shiny::div(
-                shiny::span("Limit"),
+                shiny::span(mamamia_tr("sidebar.upload_help.limit", lang)),
                 shiny::strong(limit)
             ),
             shiny::div(
-                shiny::span("Check"),
-                shiny::strong("Before upload")
+                shiny::span(mamamia_tr("sidebar.upload_help.check", lang)),
+                shiny::strong(mamamia_tr(
+                    "sidebar.upload_help.before_upload", lang
+                ))
             ),
             shiny::div(
-                shiny::span("Typical saving"),
+                shiny::span(mamamia_tr(
+                    "sidebar.upload_help.typical_saving", lang
+                )),
                 shiny::strong("50–90%")
             )
         ),
         shiny::div(
             class = "mamamia-help-callout",
-            paste(
-                "If the BAM is larger, slim it locally with bamhusk.",
-                "The command writes a new file and leaves the original",
-                "untouched."
-            )
+            mamamia_tr("sidebar.upload_help.slim_callout", lang)
         ),
         section(
-            "Slim it locally",
+            mamamia_tr("sidebar.upload_help.slim_section", lang),
             shiny::tags$ol(
                 class = "mamamia-help-steps",
                 shiny::tags$li(
-                    shiny::strong("Get bamhusk"),
-                    " from ",
+                    shiny::strong(mamamia_tr(
+                        "sidebar.upload_help.get_bamhusk", lang
+                    )),
+                    mamamia_tr("sidebar.upload_help.from", lang),
                     shiny::tags$a(
                         href = .bamhusk_url,
                         target = "_blank",
@@ -2566,45 +2649,48 @@ bam_upload_help_ui <- function(max_bytes) {
                     "."
                 ),
                 shiny::tags$li(
-                    shiny::strong("Run"),
-                    " the command below on the large BAM."
+                    shiny::strong(mamamia_tr(
+                        "sidebar.upload_help.run", lang
+                    )),
+                    mamamia_tr("sidebar.upload_help.run_tail", lang)
                 ),
                 shiny::tags$li(
-                    shiny::strong("Upload"),
-                    " the new, smaller BAM here."
+                    shiny::strong(mamamia_tr(
+                        "sidebar.upload_help.upload", lang
+                    )),
+                    mamamia_tr("sidebar.upload_help.upload_tail", lang)
                 )
             ),
             shiny::tags$code(
                 class = "mamamia-help-command",
                 tabindex = "0",
-                `aria-label` = "Command to slim the BAM",
+                `aria-label` = mamamia_tr(
+                    "sidebar.upload_help.command_aria", lang
+                ),
                 .bamhusk_command
             )
         ),
         section(
-            "What changes",
+            mamamia_tr("sidebar.upload_help.what_changes", lang),
             shiny::tags$dl(
                 class = "mamamia-help-list",
-                shiny::tags$dt("Kept"),
+                shiny::tags$dt(mamamia_tr(
+                    "sidebar.upload_help.kept", lang
+                )),
                 shiny::tags$dd(
-                    paste(
-                        "Everything MaMaMIA reads: FLAG, RNAME, POS,",
-                        "MAPQ, CIGAR, @HD/@SQ/@RG and RG tags."
-                    )
+                    mamamia_tr("sidebar.upload_help.kept_desc", lang)
                 ),
-                shiny::tags$dt("Removed"),
+                shiny::tags$dt(mamamia_tr(
+                    "sidebar.upload_help.removed", lang
+                )),
                 shiny::tags$dd(
-                    paste(
-                        "QUAL, read names, optional tags except RG,",
-                        "and @PG/@CO header lines."
-                    )
+                    mamamia_tr("sidebar.upload_help.removed_desc", lang)
                 ),
-                shiny::tags$dt("Optional"),
+                shiny::tags$dt(mamamia_tr(
+                    "sidebar.upload_help.optional", lang
+                )),
                 shiny::tags$dd(
-                    paste(
-                        "SEQ with --drop-seq. Read length still comes",
-                        "from CIGAR, so the analysis is unchanged."
-                    )
+                    mamamia_tr("sidebar.upload_help.optional_desc", lang)
                 )
             )
         )
@@ -2613,10 +2699,11 @@ bam_upload_help_ui <- function(max_bytes) {
 
 #' Modal for the `?` next to the upload size hint
 #' @noRd
-bam_upload_help_modal <- function(max_bytes) {
+bam_upload_help_modal <- function(max_bytes,
+                                  lang = mamamia_language_default()) {
     dialog <- shiny::modalDialog(
-        title = "BAM upload limit",
-        bam_upload_help_ui(max_bytes),
+        title = mamamia_tr("sidebar.upload_help.modal_title", lang),
+        bam_upload_help_ui(max_bytes, lang = lang),
         size = "l",
         easyClose = TRUE,
         footer = shiny::tagList(
@@ -2626,9 +2713,9 @@ bam_upload_help_modal <- function(max_bytes) {
                 rel = "noopener noreferrer",
                 class = "btn btn-outline-secondary",
                 shiny::icon("arrow-up-right-from-square"),
-                " Open bamhusk"
+                mamamia_tr("sidebar.recovery.open_bamhusk", lang)
             ),
-            shiny::modalButton("Close")
+            shiny::modalButton(mamamia_tr("errors.modal_close", lang))
         )
     )
     htmltools::tagAppendAttributes(
@@ -2638,16 +2725,14 @@ bam_upload_help_modal <- function(max_bytes) {
 }
 
 #' @noRd
-bam_sidebar_species_ui <- function(config, selection = NULL, locked = FALSE) {
+bam_sidebar_species_ui <- function(config, selection = NULL, locked = FALSE,
+                                  lang = mamamia_language_default()) {
     species_choices <- bam_species_choices(config)
     species_keys <- names(config$species)
     if (length(species_keys) < 2L) {
         return(shiny::p(
             class = "text-muted small",
-            paste(
-                "This registry has no species section, so the assembly is",
-                "detected from the BAM header."
-            )
+            mamamia_tr("sidebar.no_species_registry", lang)
         ))
     }
 
@@ -2679,34 +2764,36 @@ bam_sidebar_species_ui <- function(config, selection = NULL, locked = FALSE) {
         }
         return(shiny::tagList(
             bam_fixed_control_ui(
-                "Recipient species", species_label(recipient)
+                mamamia_tr("sidebar.recipient_species", lang),
+                species_label(recipient)
             ),
             bam_fixed_control_ui(
-                "Donor species", species_label(donor)
+                mamamia_tr("sidebar.donor_species", lang),
+                species_label(donor)
             ),
             shiny::p(
                 class = "mamamia-fixed-note",
-                paste(
-                    "Fixed for the bundled example.",
-                    "Upload a BAM to change the assembly."
-                )
+                mamamia_tr("sidebar.fixed_example_species", lang)
             )
         ))
     }
 
     shiny::tagList(
         shiny::selectInput(
-            "recipient_species", "Recipient species",
+            "recipient_species",
+            mamamia_tr("sidebar.recipient_species", lang),
             choices = species_choices,
             selected = recipient
         ),
         shiny::selectInput(
-            "donor_species", "Donor species",
+            "donor_species",
+            mamamia_tr("sidebar.donor_species", lang),
             choices = species_choices,
             selected = donor
         ),
         shiny::actionButton(
-            "swap_species", "Swap donor and recipient",
+            "swap_species",
+            mamamia_tr("sidebar.swap_species", lang),
             class = "btn-sm btn-outline-secondary",
             style = "width: 100%"
         )
@@ -2714,22 +2801,35 @@ bam_sidebar_species_ui <- function(config, selection = NULL, locked = FALSE) {
 }
 
 #' @noRd
-bam_sidebar_details_ui <- function(config) {
+bam_sidebar_details_ui <- function(config,
+                                  lang = mamamia_language_default()) {
     shiny::tagList(
         bslib::accordion(
             id = "bam_sidebar_accordion",
             multiple = TRUE,
-            open = "Analysis",
+            open = "analysis",
             bslib::accordion_panel(
-                "Analysis",
+                shiny::span(
+                    `data-mamamia-i18n` = "sidebar.analysis",
+                    "Analysis"
+                ),
+                value = "analysis",
                 shiny::uiOutput("analysis_profile_ui")
             ),
             bslib::accordion_panel(
-                "Assembly",
+                shiny::span(
+                    `data-mamamia-i18n` = "sidebar.assembly",
+                    "Assembly"
+                ),
+                value = "assembly",
                 shiny::uiOutput("species_ui")
             ),
             bslib::accordion_panel(
-                "Advanced",
+                shiny::span(
+                    `data-mamamia-i18n` = "sidebar.advanced",
+                    "Advanced"
+                ),
+                value = "advanced",
                 shiny::uiOutput("advanced_parameters_ui"),
                 shiny::uiOutput("control_samples_ui")
             )
@@ -2755,9 +2855,12 @@ bam_parameter_control_ui <- function(id, input, extra_class = NULL) {
 }
 
 #' @noRd
-bam_calibration_floor_labels <- function(config) {
+bam_calibration_floor_labels <- function(
+        config, lang = mamamia_language_default()) {
     labels <- resolveCalibrationParameters(config$defaults)$labels
-    paste0("Floor ", labels, " Mb")
+    vapply(labels, function(label) {
+        sprintf(mamamia_tr("params.floor_label", lang), label)
+    }, character(1), USE.NAMES = FALSE)
 }
 
 #' Number of floor controls declared by the registry bins
@@ -2768,7 +2871,8 @@ bam_calibration_floor_count <- function(config) {
 
 #' Warning shown when cohort recurrence cannot be computed
 #' @noRd
-bam_cohort_mask_warning_ui <- function(n_samples) {
+bam_cohort_mask_warning_ui <- function(
+        n_samples, lang = mamamia_language_default()) {
     n_samples <- suppressWarnings(as.integer(n_samples))
     if (length(n_samples) != 1L || is.na(n_samples) ||
         n_samples != 1L) {
@@ -2777,28 +2881,27 @@ bam_cohort_mask_warning_ui <- function(n_samples) {
     shiny::div(
         class = "alert alert-warning py-2 px-3 small mb-2",
         role = "status",
-        shiny::strong("Cohort recurrence unavailable."),
-        paste(
-            "This run has one sample. Cohort recurrence masking requires",
-            "at least two samples, so no windows will be masked."
-        )
+        shiny::strong(mamamia_tr("params.cohort_warning_title", lang)),
+        mamamia_tr("params.cohort_warning_body", lang)
     )
 }
 
 #' Every profile parameter is editable under Advanced
 #' @noRd
-bam_advanced_parameters_ui <- function(config, defaults, locked = FALSE) {
+bam_advanced_parameters_ui <- function(config, defaults, locked = FALSE,
+                                       lang = mamamia_language_default()) {
     if (isTRUE(locked)) {
         return(shiny::tagList(
             shiny::p(
                 class = "mamamia-fixed-note",
-                paste(
-                    "Analysis parameters are fixed for the bundled example.",
-                    "Upload a BAM to edit every profile parameter."
-                )
+                `data-mamamia-i18n` = "sidebar.fixed_example_params",
+                mamamia_tr("sidebar.fixed_example_params", lang)
             )
         ))
     }
+    ## Option labels for the three Advanced selects are updated by the
+    ## mamamia-set-language message handler; the initial build is English.
+    localize_choices <- function(input, keys) input
     n_floors <- bam_calibration_floor_count(config)
     floor_values <- rep(
         as.numeric(defaults$calibration_floors), length.out = n_floors
@@ -2822,47 +2925,86 @@ bam_advanced_parameters_ui <- function(config, defaults, locked = FALSE) {
             class = "mamamia-param-actions",
             shiny::actionButton(
                 "reset_profile_parameters",
-                "Reset all to defaults",
+                `data-mamamia-i18n` = "params.reset_all",
+                mamamia_tr("params.reset_all", lang),
                 icon = shiny::icon("rotate-left"),
                 class = "btn-sm btn-outline-secondary",
-                title = paste(
-                    "Restore every profile parameter and control sample",
-                    "to the selected profile's defaults"
-                )
+                title = mamamia_tr("params.reset_title", lang)
             )
         ),
-        shiny::div(class = "mamamia-param-heading", "Resolution"),
+        shiny::div(
+            class = "mamamia-param-heading",
+            `data-mamamia-i18n` = "params.heading_resolution",
+            mamamia_tr("params.heading_resolution", lang)
+        ),
         shiny::uiOutput("resolution_ui"),
-        shiny::div(class = "mamamia-param-heading", "Scoring"),
+        shiny::div(
+            class = "mamamia-param-heading",
+            `data-mamamia-i18n` = "params.heading_scoring",
+            mamamia_tr("params.heading_scoring", lang)
+        ),
         bam_parameter_control_ui(
             "metric",
-            shiny::selectInput(
-                "metric", NULL,
-                choices = c(
-                    "Breadth" = "breadth",
-                    "Count" = "count",
-                    "Combined" = "combined"
+            localize_choices(
+                shiny::selectInput(
+                    "metric", NULL,
+                    choices = stats::setNames(
+                        c("breadth", "count", "combined"),
+                        c(
+                            mamamia_tr("params.metric_breadth", lang),
+                            mamamia_tr("params.metric_count", lang),
+                            mamamia_tr("params.metric_combined", lang)
+                        )
+                    ),
+                    selected = defaults$metric
                 ),
-                selected = defaults$metric
+                c(
+                    breadth = "params.metric_breadth",
+                    count = "params.metric_count",
+                    combined = "params.metric_combined"
+                )
             )
         ),
         bam_parameter_control_ui(
             "score",
-            shiny::selectInput(
-                "score", NULL,
-                choices = c(
-                    "Paired log-ratio" = "paired_log_ratio",
-                    "Donor only" = "donor_only"
+            localize_choices(
+                shiny::selectInput(
+                    "score", NULL,
+                    choices = stats::setNames(
+                        c("paired_log_ratio", "donor_only"),
+                        c(
+                            mamamia_tr("params.score_paired", lang),
+                            mamamia_tr("params.score_donor_only", lang)
+                        )
+                    ),
+                    selected = defaults$score
                 ),
-                selected = defaults$score
+                c(
+                    paired_log_ratio = "params.score_paired",
+                    donor_only = "params.score_donor_only"
+                )
             )
         ),
         bam_parameter_control_ui(
             "donor_aggregation",
-            shiny::selectInput(
-                "donor_aggregation", NULL,
-                choices = c("Max" = "max", "Mean" = "mean", "Sum" = "sum"),
-                selected = defaults$donor_aggregation
+            localize_choices(
+                shiny::selectInput(
+                    "donor_aggregation", NULL,
+                    choices = stats::setNames(
+                        c("max", "mean", "sum"),
+                        c(
+                            mamamia_tr("params.agg_max", lang),
+                            mamamia_tr("params.agg_mean", lang),
+                            mamamia_tr("params.agg_sum", lang)
+                        )
+                    ),
+                    selected = defaults$donor_aggregation
+                ),
+                c(
+                    max = "params.agg_max",
+                    mean = "params.agg_mean",
+                    sum = "params.agg_sum"
+                )
             )
         ),
         bam_parameter_control_ui(
@@ -2874,15 +3016,21 @@ bam_advanced_parameters_ui <- function(config, defaults, locked = FALSE) {
                 width = "100%"
             )
         ),
-        shiny::div(class = "mamamia-param-heading", "Masking"),
+        shiny::div(
+            class = "mamamia-param-heading",
+            `data-mamamia-i18n` = "params.heading_masking",
+            mamamia_tr("params.heading_masking", lang)
+        ),
         shiny::p(
             class = "text-muted small mb-2",
-            paste(
-                "Cohort recurrence cutoff is derived automatically from",
-                "the fitted cohort mixture. Single-sample runs are unmasked."
-            )
+            `data-mamamia-i18n` = "params.masking_note",
+            mamamia_tr("params.masking_note", lang)
         ),
-        shiny::div(class = "mamamia-param-heading", "Calibration"),
+        shiny::div(
+            class = "mamamia-param-heading",
+            `data-mamamia-i18n` = "params.heading_calibration",
+            mamamia_tr("params.heading_calibration", lang)
+        ),
         bam_parameter_control_ui(
             "calibration_fdr",
             shiny::numericInput(
@@ -2916,10 +3064,23 @@ bam_advanced_parameters_ui <- function(config, defaults, locked = FALSE) {
         ),
         shiny::p(
             class = "mamamia-param-legend",
-            shiny::strong("Bold"),
-            " values are the selected profile's defaults;",
-            shiny::span(class = "mamamia-param-changed", "highlighted"),
-            " values were changed and make the run Custom."
+            shiny::strong(
+                `data-mamamia-i18n` = "params.legend_bold",
+                mamamia_tr("params.legend_bold", lang)
+            ),
+            shiny::span(
+                `data-mamamia-i18n` = "params.legend_values",
+                mamamia_tr("params.legend_values", lang)
+            ),
+            shiny::span(
+                class = "mamamia-param-changed",
+                `data-mamamia-i18n` = "params.legend_highlighted",
+                mamamia_tr("params.legend_highlighted", lang)
+            ),
+            shiny::span(
+                `data-mamamia-i18n` = "params.legend_custom",
+                mamamia_tr("params.legend_custom", lang)
+            )
         )
     )
 }
@@ -2927,7 +3088,7 @@ bam_advanced_parameters_ui <- function(config, defaults, locked = FALSE) {
 ## The result area. The view filters stay visible above all tabs;
 ## call filters belong to the segment table and exports have their own tab.
 #' @noRd
-bam_results_ui <- function() {
+bam_results_ui <- function(lang = mamamia_language_default()) {
     ns <- shiny::NS("explorer")
     shiny::tagList(
         shiny::div(
@@ -2937,40 +3098,36 @@ bam_results_ui <- function() {
             ),
             shiny::div(
                 class = "mamamia-filter-controls",
-                explorer_view_filters_ui("explorer")
+                shiny::uiOutput("view_filters_ui")
             )
         ),
         bslib::navset_card_tab(
             id = ns("tabs"),
             bslib::nav_panel(
-                "Karyotype",
-                explorer_karyotype_ui("explorer", height = "100%")
+                mamamia_tr("tabs.karyotype", lang),
+                value = "karyotype",
+                explorer_karyotype_ui("explorer", dynamic = TRUE)
             ),
             bslib::nav_panel(
-                "Calls",
+                mamamia_tr("tabs.calls", lang),
+                value = "calls",
                 shiny::div(
                     class = "mamamia-segment-controls",
-                    explorer_call_filters_ui("explorer"),
-                    explorer_selection_ui("explorer")
+                    shiny::uiOutput("call_filters_ui"),
+                    shiny::uiOutput("selection_ui")
                 ),
                 shiny::p(
                     class = "mamamia-call-note",
-                    paste(
-                        "Brief view of passing calls. Hover a column heading",
-                        "for its description; use Additional columns to add",
-                        "diagnostics. Shift-click headings to sort by several",
-                        "columns. Turn off Passing only to include calls that",
-                        "failed calibration. The full table, BEDPE files and",
-                        "images are in the results bundle."
-                    )
+                    shiny::uiOutput("call_note_ui", inline = TRUE)
                 ),
                 DT::DTOutput(ns("calls"))
             ),
             bslib::nav_panel(
-                "Export",
+                mamamia_tr("tabs.export", lang),
+                value = "export",
                 shiny::div(
                     class = "mamamia-export-panel",
-                    explorer_export_ui("explorer"),
+                    shiny::uiOutput("export_ui"),
                     shiny::uiOutput("cohort_ui")
                 )
             )
@@ -3025,6 +3182,7 @@ bam_launcher_ui <- function(state) {
 
     bslib::page_fluid(
         title = "MaMaMIA",
+        lang = "en",
         theme = bam_dashboard_theme(),
         shiny::tags$head(
             mamamia_font_dependency(),
@@ -3044,12 +3202,27 @@ bam_launcher_ui <- function(state) {
                     "    if (el) { el.scrollTop = el.scrollHeight; }",
                     "  }, 0);",
                     "});",
+                    "function mamamiaTabValue(link) {",
+                    "  var item = link ? link.closest('[data-value]') : null;",
+                    "  return item ? item.getAttribute('data-value') : null;",
+                    "}",
+                    "function mamamiaSetNodeLabel(node, text) {",
+                    "  if (!node) return;",
+                    "  var replaced = false;",
+                    "  Array.prototype.forEach.call(node.childNodes, function(child) {",
+                    "    if (child.nodeType === 3 && child.textContent.trim() !== '') {",
+                    "      child.textContent = text;",
+                    "      replaced = true;",
+                    "    }",
+                    "  });",
+                    "  if (!replaced) node.textContent = text;",
+                    "}",
                     "function mamamiaResultTabs(enabled) {",
                     "  var links = document.querySelectorAll(",
                     "    '#explorer-tabs .nav-link');",
                     "  Array.prototype.forEach.call(links, function(link) {",
-                    "    var label = (link.textContent || '').trim();",
-                    "    if (label !== 'Calls' && label !== 'Export') return;",
+                    "    var value = mamamiaTabValue(link);",
+                    "    if (value !== 'calls' && value !== 'export') return;",
                     "    if (enabled) {",
                     "      link.classList.remove('disabled');",
                     "      link.removeAttribute('aria-disabled');",
@@ -3063,8 +3236,7 @@ bam_launcher_ui <- function(state) {
                     "  if (!enabled) {",
                     "    var active = document.querySelector(",
                     "      '#explorer-tabs .nav-link.active');",
-                    "    if (active &&",
-                    "        (active.textContent || '').trim() !== 'Karyotype') {",
+                    "    if (active && mamamiaTabValue(active) !== 'karyotype') {",
                     "      var first = document.querySelector(",
                     "        '#explorer-tabs .nav-link');",
                     "      if (first) first.click();",
@@ -3074,6 +3246,82 @@ bam_launcher_ui <- function(state) {
                     "$(function() { mamamiaResultTabs(false); });",
                     "Shiny.addCustomMessageHandler('mamamia-result-tabs',",
                     "function(x) { mamamiaResultTabs(!!x.enabled); });",
+                    "Shiny.addCustomMessageHandler('mamamia-set-language',",
+                    "function(x) {",
+                    "  if (x && x.lang) { document.documentElement.lang = x.lang; }",
+                    "  var strings = (x && x.strings) || {};",
+                    "  window.mamamiaI18n = strings;",
+                    "  Array.prototype.forEach.call(",
+                    "    document.querySelectorAll('[data-mamamia-i18n]'),",
+                    "    function(node) {",
+                    "      function localized(key) {",
+                    "        var text = (key && strings[key]) ? strings[key] : null;",
+                    "        var arg = node.getAttribute('data-mamamia-i18n-arg');",
+                    "        if (text !== null && arg !== null &&",
+                    "            text.indexOf('%s') >= 0) {",
+                    "          text = text.replace('%s', arg);",
+                    "        }",
+                    "        return text;",
+                    "      }",
+                    "      var text = localized(",
+                    "        node.getAttribute('data-mamamia-i18n'));",
+                    "      if (text !== null) {",
+                    "        mamamiaSetNodeLabel(node, text);",
+                    "      }",
+                    "      var placeholder = localized(",
+                    "        node.getAttribute('data-mamamia-i18n-placeholder'));",
+                    "      if (placeholder !== null) {",
+                    "        node.setAttribute('placeholder', placeholder);",
+                    "      }",
+                    "      var title = localized(",
+                    "        node.getAttribute('data-mamamia-i18n-title'));",
+                    "      if (title !== null) { node.setAttribute('title', title); }",
+                    "      var aria = localized(",
+                    "        node.getAttribute('data-mamamia-i18n-aria'));",
+                    "      if (aria !== null) { node.setAttribute('aria-label', aria); }",
+                    "    }",
+                    "  );",
+                    "  var choiceMap = (x && x.choices) || {};",
+                    "  Object.keys(choiceMap).forEach(function(id) {",
+                    "    var select = document.getElementById(id);",
+                    "    if (!select) return;",
+                    "    Array.prototype.forEach.call(",
+                    "      select.options || [],",
+                    "      function(option) {",
+                    "        var text = choiceMap[id][option.value];",
+                    "        if (text) option.textContent = text;",
+                    "      }",
+                    "    );",
+                    "  });",
+                    "  if (x && x.tabs) {",
+                    "    var map = {",
+                    "      karyotype: x.tabs.karyotype,",
+                    "      calls: x.tabs.calls,",
+                    "      export: x.tabs.export",
+                    "    };",
+                    "    Array.prototype.forEach.call(",
+                    "      document.querySelectorAll('#explorer-tabs .nav-link'),",
+                    "      function(link) {",
+                    "        var value = mamamiaTabValue(link);",
+                    "        if (value && map[value]) {",
+                    "          mamamiaSetNodeLabel(link, map[value]);",
+                    "        }",
+                    "      }",
+                    "    );",
+                    "  }",
+                    "  var toggle = document.getElementById('footer_toggle');",
+                    "  if (toggle) {",
+                    "    var collapsed = toggle.getAttribute('aria-expanded') === 'false';",
+                    "    var show = strings['footer.show_log'] || 'Show log';",
+                    "    var hide = strings['footer.hide_log'] || 'Hide log';",
+                    "    toggle.textContent = collapsed ? show : hide;",
+                    "    toggle.title = collapsed ?",
+                    "      (strings['footer.expand_log'] ||",
+                    "        'Expand the calculation log') :",
+                    "      (strings['footer.collapse_log'] ||",
+                    "        'Collapse the calculation log');",
+                    "  }",
+                    "});",
                     "var mamamiaAnalysisStartedAt = null;",
                     "var mamamiaAnalysisTimerId = null;",
                     "function mamamiaFormatElapsed(ms) {",
@@ -3247,12 +3495,17 @@ bam_launcher_ui <- function(state) {
                     "    grid.classList.toggle('mamamia-footer-collapsed');",
                     "  this.setAttribute(",
                     "    'aria-expanded', collapsed ? 'false' : 'true');",
-                    "  this.textContent = collapsed ? 'Show log' : 'Hide log';",
+                    "  var strings = window.mamamiaI18n || {};",
+                    "  this.textContent = collapsed ?",
+                    "    (strings['footer.show_log'] || 'Show log') :",
+                    "    (strings['footer.hide_log'] || 'Hide log');",
                     "  this.setAttribute(",
                     "    'title',",
                     "    collapsed ?",
-                    "      'Expand the calculation log' :",
-                    "      'Collapse the calculation log');",
+                    "      (strings['footer.expand_log'] ||",
+                    "        'Expand the calculation log') :",
+                    "      (strings['footer.collapse_log'] ||",
+                    "        'Collapse the calculation log'));",
                     "  var log = document.getElementById('calculation_log');",
                     "  if (!collapsed && log) { log.scrollTop = log.scrollHeight; }",
                     "  setTimeout(function() {",
@@ -3521,21 +3774,26 @@ bam_launcher_ui <- function(state) {
                                 shiny::span(
                                     class = "mamamia-version",
                                     mamamia_app_version()
+                                ),
+                                shiny::div(
+                                    class = "mamamia-lang-switch",
+                                    role = "group",
+                                    `aria-label` = "Language / Язык",
+                                    shinyWidgets::radioGroupButtons(
+                                        inputId = "mamamia_language",
+                                        label = NULL,
+                                        choices = c("EN" = "en", "RU" = "ru"),
+                                        selected = "en",
+                                        size = "sm",
+                                        individual = TRUE,
+                                        direction = "horizontal"
+                                    )
                                 )
                             ),
-                            shiny::p(
-                                class = "mamamia-subtitle",
-                                paste(
-                                    "Max Mapping for Meticulous Introgression",
-                                    "Analysis"
-                                )
-                            )
+                            shiny::uiOutput("mamamia_header_text")
                         )
                     ),
-                    shiny::span(
-                        class = "mamamia-header-note",
-                        "Breadth-aware introgression mapping"
-                    )
+                    shiny::uiOutput("mamamia_header_note")
                 )
             ),
             gridlayout::grid_place(
@@ -3548,16 +3806,10 @@ bam_launcher_ui <- function(state) {
                     ),
                     shiny::div(
                         class = "mamamia-sidebar-section",
-                        shiny::div(class = "mamamia-section-label", "Input"),
+                        shiny::uiOutput("sidebar_input_label"),
                         shiny::uiOutput("bam_upload_ui"),
                         if (example_available) {
-                            shiny::actionButton(
-                                "example_data", "Example data",
-                                class = "btn mamamia-ghost-btn",
-                                title = paste(
-                                    "Load the bundled example dataset"
-                                )
-                            )
+                            shiny::uiOutput("example_data_button")
                         }
                     ),
                     shiny::uiOutput("sidebar_recovery"),
@@ -3591,6 +3843,8 @@ bam_launcher_ui <- function(state) {
                             `aria-expanded` = "false",
                             `aria-controls` = "calculation_log",
                             title = "Expand the calculation log",
+                            `data-mamamia-i18n` = "footer.show_log",
+                            `data-mamamia-i18n-title` = "footer.expand_log",
                             "Show log"
                         )
                     ),
@@ -3622,6 +3876,43 @@ bam_launcher_server <- function(state) {
             unlink(session_dir, recursive = TRUE, force = TRUE)
         })
 
+        language <- shiny::reactiveVal(mamamia_language_default())
+        shiny::observeEvent(input$mamamia_language, {
+            language(mamamia_i18n_valid_lang(input$mamamia_language))
+        }, ignoreNULL = TRUE, ignoreInit = TRUE)
+        shiny::observeEvent(language(), {
+            current <- language()
+            session$sendCustomMessage("mamamia-set-language", list(
+                lang = current,
+                strings = as.list(mamamia_i18n_dicts[[current]]),
+                tabs = list(
+                    karyotype = mamamia_tr("tabs.karyotype", current),
+                    calls = mamamia_tr("tabs.calls", current),
+                    export = mamamia_tr("tabs.export", current)
+                ),
+                choices = list(
+                    metric = list(
+                        breadth = mamamia_tr("params.metric_breadth", current),
+                        count = mamamia_tr("params.metric_count", current),
+                        combined = mamamia_tr("params.metric_combined", current)
+                    ),
+                    score = list(
+                        paired_log_ratio = mamamia_tr(
+                            "params.score_paired", current
+                        ),
+                        donor_only = mamamia_tr(
+                            "params.score_donor_only", current
+                        )
+                    ),
+                    donor_aggregation = list(
+                        max = mamamia_tr("params.agg_max", current),
+                        mean = mamamia_tr("params.agg_mean", current),
+                        sum = mamamia_tr("params.agg_sum", current)
+                    )
+                )
+            ))
+        })
+
         example_available <- bam_example_available()
         example_mode <- shiny::reactiveVal(FALSE)
         sidebar_unlocked <- shiny::reactiveVal(FALSE)
@@ -3649,7 +3940,12 @@ bam_launcher_server <- function(state) {
         result_cache <- bam_result_cache()
         active_key <- shiny::reactiveVal(NULL)
 
-        log_entries <- shiny::reactiveVal(bam_initial_log())
+        ## Construction runs before Shiny enters a reactive context, so the
+        ## initial language must be the static default. Later language
+        ## switches only affect new messages; they never reset the log.
+        log_entries <- shiny::reactiveVal(bam_initial_log(
+            lang = mamamia_language_default()
+        ))
         log_line <- function(...) {
             entry <- bam_log_entry(paste0(...))
             if (is.null(entry)) {
@@ -3679,21 +3975,120 @@ bam_launcher_server <- function(state) {
             invisible(NULL)
         }
 
+        module_input <- function(name) {
+            tryCatch(
+                shiny::isolate(input[[name]]),
+                error = function(e) NULL
+            )
+        }
+
+        output$mamamia_header_text <- shiny::renderUI({
+            shiny::p(
+                class = "mamamia-subtitle",
+                mamamia_tr("header.subtitle", language())
+            )
+        })
+
+        output$mamamia_header_note <- shiny::renderUI({
+            shiny::span(
+                class = "mamamia-header-note",
+                mamamia_tr("header.note", language())
+            )
+        })
+
+        output$sidebar_input_label <- shiny::renderUI({
+            shiny::div(
+                class = "mamamia-section-label",
+                mamamia_tr("sidebar.input", language())
+            )
+        })
+
+        output$example_data_button <- shiny::renderUI({
+            if (!example_available) {
+                return(NULL)
+            }
+            label <- if (isTRUE(example_mode())) {
+                mamamia_tr("sidebar.clear_example_data", language())
+            } else {
+                mamamia_tr("sidebar.example_data", language())
+            }
+            shiny::actionButton(
+                "example_data", label,
+                class = "btn mamamia-ghost-btn",
+                title = if (isTRUE(example_mode())) {
+                    mamamia_tr("sidebar.example_data_title", language())
+                } else {
+                    mamamia_tr("sidebar.example_data_title", language())
+                }
+            )
+        })
+
+        output$view_filters_ui <- shiny::renderUI({
+            lang <- language()
+            shiny::req(lang)
+            explorer_view_filters_ui(
+                "explorer",
+                lang = lang,
+                selected = list(
+                    class = module_input("explorer-class"),
+                    class_status = module_input("explorer-class_status"),
+                    copy_state = module_input("explorer-copy_state"),
+                    confidence = module_input("explorer-confidence"),
+                    pass_only = module_input("explorer-pass_only")
+                )
+            )
+        })
+
+        output$call_filters_ui <- shiny::renderUI({
+            lang <- language()
+            shiny::req(lang)
+            explorer_call_filters_ui(
+                "explorer",
+                lang = lang,
+                selected = list(
+                    min_width = module_input("explorer-min_width"),
+                    call_columns = module_input("explorer-call_columns")
+                )
+            )
+        })
+
+        output$selection_ui <- shiny::renderUI({
+            explorer_selection_ui("explorer", lang = language())
+        })
+
+        output$call_note_ui <- shiny::renderUI({
+            mamamia_tr("results.call_note", language())
+        })
+
+        output$export_ui <- shiny::renderUI({
+            explorer_export_ui("explorer", lang = language())
+        })
+
+        output$karyotype_controls_ui <- shiny::renderUI({
+            explorer_karyotype_controls_ui(
+                "explorer",
+                lang = language(),
+                selected = list(
+                    mode = module_input("explorer-karyotype_mode"),
+                    hide_deletions = module_input("explorer-hide_deletions"),
+                    hide_unplaced = module_input("explorer-hide_unplaced")
+                )
+            )
+        })
+
         output$bam_mode_note <- shiny::renderUI({
+            lang <- language()
             if (isTRUE(example_mode())) {
                 return(shiny::p(
                     class = "text-muted small mb-2",
-                    "Example data: events on eight chromosomes."
+                    mamamia_tr("sidebar.mode_example", lang)
                 ))
             }
             pf <- preflight_state()
             if (isTRUE(pf$empty)) {
                 return(shiny::p(
                     class = "text-muted small mb-2",
-                    paste(
-                        "One BAM per run. The BAM header is matched to the",
-                        "configured assembly."
-                    )
+                    mamamia_tr("sidebar.mode_intro", lang)
                 ))
             }
             if (!isTRUE(pf$ok) || is.null(pf$table)) {
@@ -3701,7 +4096,7 @@ bam_launcher_server <- function(state) {
             }
             shiny::p(
                 class = "text-muted small mb-2",
-                "BAM ready. The assembly was matched from the header."
+                mamamia_tr("sidebar.mode_ready", lang)
             )
         })
 
@@ -3729,11 +4124,8 @@ bam_launcher_server <- function(state) {
                 result(NULL)
                 last_error(NULL)
                 upload_epoch(upload_epoch() + 1L)
-                shiny::updateActionButton(
-                    session, "example_data", label = "Example data"
-                )
                 log_line(
-                    "Example data cleared. Upload a BAM to start a new run."
+                    mamamia_tr("log.example_cleared", language())
                 )
                 return()
             }
@@ -3742,11 +4134,8 @@ bam_launcher_server <- function(state) {
             result(NULL)
             last_error(NULL)
             upload_epoch(upload_epoch() + 1L)
-            shiny::updateActionButton(
-                session, "example_data", label = "Clear example data"
-            )
-            log_line(bam_example_note())
-            log_line("Example data selected.")
+            log_line(bam_example_note(language()))
+            log_line(mamamia_tr("log.example_selected", language()))
         }, ignoreInit = FALSE)
 
         shiny::observeEvent(input$unlock_setup, {
@@ -3766,12 +4155,12 @@ bam_launcher_server <- function(state) {
                     silent = TRUE
                 )
             }, once = TRUE)
-            log_line("Setup panels opened after a preflight failure.")
+            log_line(mamamia_tr("log.setup_panels", language()))
         }, ignoreInit = TRUE)
 
         uploaded_paths <- shiny::reactive({
             tryCatch(
-                bam_single_upload_path(input$bams),
+                bam_single_upload_path(input$bams, lang = language()),
                 MaMaMIAUploadError = function(e) {
                     log_line(conditionMessage(e))
                     shiny::showNotification(
@@ -3788,9 +4177,6 @@ bam_launcher_server <- function(state) {
             if (length(uploaded_paths()) > 0L && isTRUE(example_mode())) {
                 example_mode(FALSE)
                 sidebar_unlocked(FALSE)
-                shiny::updateActionButton(
-                    session, "example_data", label = "Example data"
-                )
                 log_line(
                     "Uploaded BAM selected; example data is no longer active."
                 )
@@ -3922,7 +4308,7 @@ bam_launcher_server <- function(state) {
                 recipient <- pair$recipient
                 donor <- pair$donor
                 detected_label <- sprintf(
-                    "%s recipient, %s donor",
+                    mamamia_tr("log.detected_pair", language()),
                     pair$recipient_label, pair$donor_label
                 )
             } else {
@@ -3958,7 +4344,7 @@ bam_launcher_server <- function(state) {
                 session, "donor_species", selected = donor
             )
             log_line(sprintf(
-                "Detected species from the BAM header: %s.",
+                mamamia_tr("log.detected_species", language()),
                 detected_label
             ))
         }, ignoreInit = TRUE)
@@ -4021,7 +4407,7 @@ bam_launcher_server <- function(state) {
             if (is.null(recipient_key) || is.null(donor_key)) {
                 empty$error <- tryCatch(
                     .config_error(
-                        "Choose a recipient species and a donor species"
+                        "%s", mamamia_tr("errors.choose_pair", language())
                     ),
                     error = function(e) e
                 )
@@ -4032,7 +4418,7 @@ bam_launcher_server <- function(state) {
             if (is.null(recipient) || is.null(donor)) {
                 empty$error <- tryCatch(
                     .config_error(
-                        "Unknown species selection ('%s' recipient, '%s' donor)",
+                        mamamia_tr("errors.unknown_species", language()),
                         recipient_key, donor_key
                     ),
                     error = function(e) e
@@ -4059,7 +4445,9 @@ bam_launcher_server <- function(state) {
                 return(tryCatch(
                     bam_example_preflight_state(),
                     error = function(e) {
-                        bam_preflight_failure(e, character(), config)
+                        bam_preflight_failure(
+                            e, character(), config, lang = language()
+                        )
                     }
                 ))
             }
@@ -4071,12 +4459,15 @@ bam_launcher_server <- function(state) {
                 error = function(e) e
             )
             if (inherits(too_large, "condition")) {
-                return(bam_preflight_failure(too_large, character(), config))
+                return(bam_preflight_failure(
+                    too_large, character(), config, lang = language()
+                ))
             }
             selection <- assembly_selection()
             if (!isTRUE(selection$ok)) {
                 failure <- bam_preflight_failure(
-                    selection$error, character(), selection$config
+                    selection$error, character(), selection$config,
+                    lang = language()
                 )
                 failure$config <- selection$config
                 failure$key <- selection$key
@@ -4096,20 +4487,22 @@ bam_launcher_server <- function(state) {
             staged <- tryCatch(staged_bams(), error = function(e) e)
             if (inherits(staged, "condition")) {
                 return(bam_preflight_failure(
-                    staged, paths, selection$config, files = paths
+                    staged, paths, selection$config, files = paths,
+                    lang = language()
                 ))
             }
             table <- tryCatch(
                 preflightBams(
                     staged$path, selection$config,
-                    assembly = selection$key
+                    assembly = selection$key,
+                    lang = language()
                 ),
                 error = function(e) e
             )
             if (inherits(table, "condition")) {
                 return(bam_preflight_failure(
                     table, staged$path, selection$config,
-                    files = staged$source
+                    files = staged$source, lang = language()
                 ))
             }
             table$source <- staged$source
@@ -4141,14 +4534,18 @@ bam_launcher_server <- function(state) {
                 return()
             }
             oversized_upload_key(key)
-            shiny::showModal(bam_upload_too_large_modal(pf$error))
+            shiny::showModal(bam_upload_too_large_modal(
+                pf$error, lang = language()
+            ))
         }, ignoreInit = TRUE)
 
         shiny::observeEvent(input$bam_upload_help, {
             server <- config$server %||% .config_server_defaults()
             limit <- server$max_total_bytes %||%
                 .config_server_defaults()$max_total_bytes
-            shiny::showModal(bam_upload_help_modal(limit))
+            shiny::showModal(bam_upload_help_modal(
+                limit, lang = language()
+            ))
         }, ignoreInit = TRUE)
 
         shiny::observeEvent(input$oversized_upload, {
@@ -4156,13 +4553,15 @@ bam_launcher_server <- function(state) {
             limit <- server$max_total_bytes %||%
                 .config_server_defaults()$max_total_bytes
             info <- bam_upload_payload_info(
-                input$oversized_upload, limit
+                input$oversized_upload, limit, lang = language()
             )
             if (is.null(info)) {
                 return()
             }
             upload_epoch(upload_epoch() + 1L)
-            shiny::showModal(bam_upload_too_large_modal(info))
+            shiny::showModal(bam_upload_too_large_modal(
+                info, lang = language()
+            ))
         }, ignoreInit = TRUE)
 
         shiny::observeEvent(input$clear_oversized_upload, {
@@ -4204,7 +4603,9 @@ bam_launcher_server <- function(state) {
             )
         })
         shiny::observeEvent(preflight_log_signature(), {
-            for (line in bam_preflight_log(preflight_state())) {
+            for (line in bam_preflight_log(
+                preflight_state(), lang = language()
+            )) {
                 log_line(line)
             }
         }, ignoreInit = FALSE)
@@ -4243,12 +4644,14 @@ bam_launcher_server <- function(state) {
             if (isTRUE(example_mode())) {
                 return(shiny::tagList(
                     bam_fixed_control_ui(
-                        "Analysis profile",
+                        mamamia_tr("params.analysis_profile", language()),
                         mamamia_analysis_profiles()$balanced$label
                     ),
                     shiny::p(
                         class = "mamamia-fixed-note",
-                        "Fixed for the bundled example."
+                        mamamia_tr(
+                            "params.example_profile_note", language()
+                        )
                     )
                 ))
             }
@@ -4259,19 +4662,20 @@ bam_launcher_server <- function(state) {
             profile <- mamamia_analysis_profile(base)
             caption <- if (custom) {
                 paste0(
-                    "Custom settings based on ",
+                    mamamia_tr("params.profile_custom_based", language()),
+                    " ",
                     if (is.null(profile)) base else profile$label,
-                    ". Highlighted Advanced values differ from the ",
-                    "profile defaults."
+                    mamamia_tr("params.profile_custom_tail", language())
                 )
             } else if (is.null(profile)) {
-                "Custom analysis settings."
+                mamamia_tr("params.profile_custom", language())
             } else {
                 profile$short_description
             }
             shiny::tagList(
                 shiny::selectInput(
-                    "analysis_profile", "Analysis profile",
+                    "analysis_profile",
+                    mamamia_tr("params.analysis_profile", language()),
                     choices = choices,
                     selected = selected
                 ),
@@ -4328,10 +4732,13 @@ bam_launcher_server <- function(state) {
             profile <- mamamia_analysis_profile(profile_base())
             label <- if (is.null(profile)) profile_base() else profile$label
             log_line(sprintf(
-                "Reset every Advanced parameter to the %s defaults.", label
+                mamamia_tr("log.reset_params", language()), label
             ))
             shiny::showNotification(
-                sprintf("Advanced parameters reset to %s defaults.", label),
+                sprintf(
+                    mamamia_tr("log.reset_params_notify", language()),
+                    label
+                ),
                 type = "message", duration = 4
             )
         }, ignoreInit = TRUE)
@@ -4353,7 +4760,8 @@ bam_launcher_server <- function(state) {
                 return(NULL)
             }
             bam_cohort_mask_warning_ui(
-                length(unique(as.character(pf$table$sample)))
+                length(unique(as.character(pf$table$sample))),
+                lang = language()
             )
         })
         shiny::outputOptions(
@@ -4366,49 +4774,65 @@ bam_launcher_server <- function(state) {
             current <- profile_current()$windows_per_chromosome
             default <- profile_defaults()$windows_per_chromosome
             bam_profile_parameter_label(
-                "resolution", "Resolution",
+                "resolution",
+                mamamia_tr("params.label_resolution", language()),
                 bam_profile_value_changed(current, default),
-                help = bam_parameter_help("resolution")
+                help = bam_parameter_help(
+                    "resolution", lang = language()
+                )
             )
         })
-        parameter_labels <- list(
-            metric = "Metric",
-            score = "Score",
-            donor_aggregation = "Donor aggregation",
-            mapq = "Minimum MAPQ",
-            calibration_fdr = "Calibration FDR",
-            calibration_min_mb = "Calibration minimum length (Mb)",
-            calibration_merge_gap = "Calibration merge gap (windows)"
+        parameter_label_keys <- c(
+            metric = "params.label_metric",
+            score = "params.label_score",
+            donor_aggregation = "params.label_donor_aggregation",
+            mapq = "params.label_mapq",
+            calibration_fdr = "params.label_calibration_fdr",
+            calibration_min_mb = "params.label_calibration_min_mb",
+            calibration_merge_gap = "params.label_calibration_merge_gap"
         )
-        for (parameter_id in names(parameter_labels)) {
+        for (parameter_id in names(parameter_label_keys)) {
             local({
                 id <- parameter_id
-                label <- parameter_labels[[id]]
+                key <- parameter_label_keys[[id]]
                 output[[paste0("param_label_", id)]] <- shiny::renderUI({
                     bam_profile_parameter_label(
-                        id, label,
+                        id, mamamia_tr(key, language()),
                         bam_profile_value_changed(
                             profile_current()[[id]],
                             profile_defaults()[[id]]
                         ),
-                        help = bam_parameter_help(id, label)
+                        help = bam_parameter_help(id, lang = language())
                     )
                 })
             })
         }
-        floor_labels <- bam_calibration_floor_labels(config)
-        for (i in seq_along(floor_labels)) {
+        floor_key <- "params.floor_label"
+        for (i in seq_along(bam_calibration_floor_labels(config))) {
             local({
                 index <- i
                 id <- paste0("calibration_floor_", index)
-                label <- floor_labels[[index]]
                 output[[paste0("param_label_", id)]] <- shiny::renderUI({
                     current <- profile_current()$calibration_floors[[index]]
                     default <- profile_defaults()$calibration_floors[[index]]
+                    bin <- sub(
+                        "^Floor ", "",
+                        sub(
+                            " Mb$", "",
+                            bam_calibration_floor_labels(
+                                config, lang = "en"
+                            )[[index]]
+                        )
+                    )
+                    label <- sprintf(
+                        mamamia_tr(floor_key, language()), bin
+                    )
                     bam_profile_parameter_label(
                         id, label,
                         bam_profile_value_changed(current, default),
-                        help = bam_parameter_help(id, label)
+                        help = bam_parameter_help(
+                            id, label, lang = language()
+                        )
                     )
                 })
             })
@@ -4434,7 +4858,7 @@ bam_launcher_server <- function(state) {
             value <- suppressWarnings(as.integer(input$resolution_number))
             if (length(value) == 1L && !is.na(value)) {
                 typed <- tryCatch(
-                    bam_resolution_value(value, defaults),
+                    bam_resolution_value(value, defaults, lang = language()),
                     error = function(e) NULL
                 )
                 if (!is.null(typed)) {
@@ -4442,7 +4866,9 @@ bam_launcher_server <- function(state) {
                 }
             }
             tryCatch(
-                bam_resolution_value(input$resolution, defaults),
+                bam_resolution_value(
+                    input$resolution, defaults, lang = language()
+                ),
                 error = function(e) {
                     fallback <- tryCatch(
                         profile_defaults()$windows_per_chromosome,
@@ -4531,7 +4957,9 @@ bam_launcher_server <- function(state) {
                 return()
             }
             valid <- tryCatch(
-                bam_resolution_value(value, config$defaults),
+                bam_resolution_value(
+                    value, config$defaults, lang = language()
+                ),
                 error = function(e) e
             )
             if (inherits(valid, "condition")) {
@@ -4569,7 +4997,9 @@ bam_launcher_server <- function(state) {
             if (length(samples) < 2L) {
                 return(shiny::p(
                     class = "text-muted small mb-0",
-                    "Control samples apply only to multi-sample cohorts."
+                    mamamia_tr(
+                        "params.control_multi_note", language()
+                    )
                 ))
             }
             selected <- shiny::isolate(input$control_samples)
@@ -4578,13 +5008,15 @@ bam_launcher_server <- function(state) {
                 shiny::selectizeInput(
                     "control_samples",
                     shiny::tagList(
-                        "Calibration controls",
+                        mamamia_tr("params.control_samples", language()),
                         bslib::tooltip(
                             shiny::span(
                                 class = "mamamia-param-help",
                                 shiny::icon("circle-question")
                             ),
-                            bam_parameter_help("control_samples"),
+                            bam_parameter_help(
+                                "control_samples", lang = language()
+                            ),
                             placement = "right"
                         )
                     ),
@@ -4592,16 +5024,15 @@ bam_launcher_server <- function(state) {
                     selected = selected,
                     multiple = TRUE,
                     options = list(
-                        placeholder = "All samples (default)",
+                        placeholder = mamamia_tr(
+                            "params.control_placeholder", language()
+                        ),
                         plugins = list("remove_button")
                     )
                 ),
                 shiny::p(
                     class = "text-muted small mb-0",
-                    paste(
-                        "Used only to calibrate call thresholds.",
-                        "Leave empty to pool all samples."
-                    )
+                    mamamia_tr("params.control_note", language())
                 )
             )
         })
@@ -4613,36 +5044,44 @@ bam_launcher_server <- function(state) {
             }
             bam_sidebar_recovery_ui(
                 pf$error,
-                show_action = !isTRUE(sidebar_unlocked())
+                show_action = !isTRUE(sidebar_unlocked()),
+                lang = language()
             )
         })
 
         output$footer_status <- shiny::renderUI({
+            lang <- language()
             pf <- preflight_state()
             if (isTRUE(pf$ok)) {
                 table <- pf$table
                 n_bams <- length(unique(table$path))
-                label <- "Preflight OK"
+                label <- mamamia_tr("footer.preflight_ok", lang)
                 badge <- "text-bg-success"
-                detail <- sprintf(
-                    "%d BAM file%s",
-                    n_bams,
-                    if (n_bams == 1L) "" else "s"
-                )
+                detail <- if (identical(lang, "ru")) {
+                    sprintf(
+                        mamamia_tr("footer.bam_file_count", lang), n_bams
+                    )
+                } else {
+                    sprintf(
+                        mamamia_tr("footer.bam_file_count", lang),
+                        n_bams,
+                        if (n_bams == 1L) "" else "s"
+                    )
+                }
             } else if (isTRUE(pf$empty)) {
-                label <- "Waiting"
+                label <- mamamia_tr("footer.waiting", lang)
                 badge <- "text-bg-secondary"
-                detail <- "Upload a BAM or use the example data."
+                detail <- mamamia_tr("footer.upload_hint", lang)
             } else {
                 stage <- if (is.null(pf$error)) NULL else pf$error$stage
                 assembly_error <- identical(as.character(stage), "assembly")
                 upload_error <- identical(as.character(stage), "upload")
                 label <- if (upload_error) {
-                    "BAM too large"
+                    mamamia_tr("footer.bam_too_large", lang)
                 } else if (assembly_error) {
-                    "Needs assembly"
+                    mamamia_tr("footer.needs_assembly", lang)
                 } else {
-                    "Preflight failed"
+                    mamamia_tr("footer.preflight_failed", lang)
                 }
                 badge <- if (upload_error || assembly_error) {
                     "text-bg-warning"
@@ -4650,14 +5089,11 @@ bam_launcher_server <- function(state) {
                     "text-bg-danger"
                 }
                 detail <- if (is.null(pf$error)) {
-                    "See the calculation log."
+                    mamamia_tr("footer.see_log", lang)
                 } else if (upload_error) {
-                    paste(
-                        "Slim it locally with bamhusk, then upload",
-                        "the smaller BAM."
-                    )
+                    mamamia_tr("footer.slim_smaller", lang)
                 } else if (assembly_error) {
-                    "Choose a matching assembly in the sidebar."
+                    mamamia_tr("footer.choose_assembly", lang)
                 } else {
                     sprintf(
                         "Stage '%s': %s",
@@ -4666,7 +5102,9 @@ bam_launcher_server <- function(state) {
                 }
             }
             if (isTRUE(example_mode())) {
-                detail <- paste("Example data |", detail)
+                detail <- paste(
+                    mamamia_tr("footer.example_prefix", lang), detail
+                )
             }
             shiny::div(
                 class = "d-flex align-items-center gap-2",
@@ -4684,7 +5122,8 @@ bam_launcher_server <- function(state) {
                 return(bam_sidebar_species_ui(
                     bam_example_config(),
                     selection = bam_example_species_selection(),
-                    locked = TRUE
+                    locked = TRUE,
+                    lang = language()
                 ))
             }
             bam_sidebar_species_ui(
@@ -4692,7 +5131,8 @@ bam_launcher_server <- function(state) {
                 selection = list(
                     recipient = recipient_species(),
                     donor = donor_species()
-                )
+                ),
+                lang = language()
             )
         })
 
@@ -4700,16 +5140,16 @@ bam_launcher_server <- function(state) {
             pf <- preflight_state()
             if (isTRUE(pf$empty)) {
                 return(data.frame(
-                    status = paste(
-                        "Upload a BAM or select the bundled example",
-                        "to see the preflight."
-                    ),
+                    status = "Upload a BAM or select the bundled example to see the preflight.",
                     stringsAsFactors = FALSE
                 ))
             }
             if (!isTRUE(pf$ok)) {
                 return(data.frame(
-                    status = "Preflight failed; see the calculation log.",
+                    status = paste(
+                        "Preflight failed; see the calculation log.",
+                        mamamia_tr("footer.see_log", language())
+                    ),
                     stringsAsFactors = FALSE
                 ))
             }
@@ -4724,16 +5164,16 @@ bam_launcher_server <- function(state) {
             if (isTRUE(pf$empty)) {
                 return(shiny::p(
                     class = "text-muted",
-                    paste(
-                        "Upload a BAM or select the bundled example",
-                        "to detect an assembly."
-                    )
+                    "Upload a BAM or select the bundled example to detect an assembly."
                 ))
             }
             if (!isTRUE(pf$ok)) {
                 return(shiny::p(
                     class = "text-muted",
-                    "No assembly was detected. See the calculation log."
+                    paste(
+                        "No assembly was detected.",
+                        mamamia_tr("footer.see_log", language())
+                    )
                 ))
             }
             assembly <- pf$assembly_config
@@ -4780,7 +5220,7 @@ bam_launcher_server <- function(state) {
             if (length(resolution) != 1L || is.na(resolution) ||
                 !resolution %in% resolutions) {
                 return(sprintf(
-                    "The bundled example supports resolution(s): %s.",
+                    mamamia_tr("errors.example_resolution", language()),
                     paste(resolutions, collapse = ", ")
                 ))
             }
@@ -4794,7 +5234,7 @@ bam_launcher_server <- function(state) {
             if (ready) {
                 resolution <- resolution_value()
                 problem <- bam_resolution_problem(
-                    pf$assembly_config, resolution
+                    pf$assembly_config, resolution, lang = language()
                 )
                 if (is.null(problem)) {
                     problem <- example_resolution_problem(resolution)
@@ -4809,7 +5249,10 @@ bam_launcher_server <- function(state) {
                         if (!ready) "disabled"
                     ),
                     disabled = if (ready) NULL else "",
-                    shiny::span(class = "action-label", "Run analysis"),
+                    shiny::span(
+                        class = "action-label",
+                        mamamia_tr("run.run_analysis", language())
+                    ),
                     shiny::icon("arrow-right", `aria-hidden` = "true")
                 ),
                 if (!is.null(problem)) {
@@ -4841,10 +5284,9 @@ bam_launcher_server <- function(state) {
                 active_key(key)
                 result(cached)
                 last_error(NULL)
-                log_line(
-                    "Restored a cached analysis result for these inputs; ",
-                    "no recalculation was needed."
-                )
+                log_line(mamamia_tr(
+                    "log.restored_cached", language()
+                ))
                 return()
             }
             had_result <- !is.null(result())
@@ -4852,10 +5294,9 @@ bam_launcher_server <- function(state) {
             result(NULL)
             last_error(NULL)
             if (had_result) {
-                log_line(
-                    "Analysis inputs changed; the previous result was cleared. ",
-                    "Run the analysis for the new inputs."
-                )
+                log_line(mamamia_tr(
+                    "log.cleared_result", language()
+                ))
             }
         }, ignoreInit = TRUE)
 
@@ -4915,12 +5356,11 @@ bam_launcher_server <- function(state) {
         shiny::observeEvent(input$run, {
             pf <- preflight_state()
             if (!isTRUE(pf$ok)) {
-                log_line(paste(
-                    "Run refused: preflight is not ready.",
-                    "Fix the problems reported in this log first."
+                log_line(mamamia_tr(
+                    "errors.run_refused_log", language()
                 ))
                 shiny::showNotification(
-                    "Fix the preflight problems before running the analysis.",
+                    mamamia_tr("errors.fix_preflight", language()),
                     type = "warning", duration = 8
                 )
                 return()
@@ -4930,22 +5370,27 @@ bam_launcher_server <- function(state) {
                 bam_run_parameters(
                     input, pf$config, samples,
                     resolution = resolution_value(),
-                    profile_base = profile_base()
+                    profile_base = profile_base(),
+                    lang = language()
                 ),
                 error = function(e) e
             )
             if (inherits(params, "condition")) {
                 info <- bam_error_info(
-                    params, files = pf$table$source, table = pf$table
+                    params, files = pf$table$source, table = pf$table,
+                    lang = language()
                 )
                 last_error(info)
                 log_line(sprintf(
-                    "Run parameters rejected at stage '%s': %s",
+                    mamamia_tr("log.run_params_rejected", language()),
                     info$stage, info$message
                 ))
-                log_line(sprintf("Suggested fix: %s", info$suggestion))
+                log_line(sprintf(
+                    mamamia_tr("log.suggested_fix", language()),
+                    info$suggestion
+                ))
                 shiny::showNotification(
-                    bam_error_text(info),
+                    bam_error_text(info, language()),
                     type = "error", duration = 12
                 )
                 return()
@@ -4962,7 +5407,7 @@ bam_launcher_server <- function(state) {
             }
 
             resolution_problem <- bam_resolution_problem(
-                pf$assembly_config, params$resolution
+                pf$assembly_config, params$resolution, lang = language()
             )
             if (is.null(resolution_problem)) {
                 resolution_problem <- example_resolution_problem(
@@ -4974,15 +5419,16 @@ bam_launcher_server <- function(state) {
                     .mamamia_error(
                         "MaMaMIAWindowError", "%s", resolution_problem
                     ),
-                    files = pf$table$source, table = pf$table
+                    files = pf$table$source, table = pf$table,
+                    lang = language()
                 )
                 last_error(info)
                 log_line(sprintf(
-                    "Run refused at stage '%s': %s",
+                    mamamia_tr("log.run_refused_stage", language()),
                     info$stage, info$message
                 ))
                 shiny::showNotification(
-                    bam_error_text(info),
+                    bam_error_text(info, language()),
                     type = "error", duration = 12
                 )
                 return()
@@ -4993,12 +5439,13 @@ bam_launcher_server <- function(state) {
             cached <- result_cache$get(key)
             if (!is.null(cached)) {
                 if (!identical(active_key(), key)) {
-                    log_line(
-                        "Using the cached analysis result; no recalculation ",
-                        "was needed."
-                    )
+                    log_line(mamamia_tr(
+                        "log.using_cached", language()
+                    ))
                     shiny::showNotification(
-                        "Using the cached analysis result for these inputs.",
+                        mamamia_tr(
+                            "log.using_cached_notify", language()
+                        ),
                         type = "message", duration = 5
                     )
                     active_key(key)
@@ -5008,16 +5455,13 @@ bam_launcher_server <- function(state) {
                 return()
             }
             log_line(sprintf(
-                paste(
-                    "Starting analysis: %s windows/chromosome,",
-                    "metric '%s', score '%s', donor aggregation '%s'."
-                ),
+                mamamia_tr("log.analysis_start", language()),
                 format(params$resolution, big.mark = ",", scientific = FALSE),
                 params$metric, params$score, params$donor_aggregation
             ))
             if (length(params$control_samples) > 0L) {
                 log_line(paste(
-                    "Calibration controls:",
+                    mamamia_tr("log.calibration_controls", language()),
                     paste(params$control_samples, collapse = ", ")
                 ))
             }
@@ -5055,7 +5499,8 @@ bam_launcher_server <- function(state) {
                     total_steps = total_steps,
                     handler = function(stage, detail, progress) {
                         label <- paste0(
-                            prefix, bam_progress_label(stage, detail)
+                            prefix,
+                            bam_progress_label(stage, detail, language())
                         )
                         log_line(label)
                         send_analysis_state(TRUE, label, progress)
@@ -5063,7 +5508,9 @@ bam_launcher_server <- function(state) {
                 )
             }
 
-            send_analysis_state(TRUE, "Preparing analysis", 0)
+            send_analysis_state(
+                TRUE, mamamia_tr("run.preparing", language()), 0
+            )
             session$onFlushed(
                 function() send_analysis_state(FALSE),
                 once = TRUE
@@ -5079,16 +5526,20 @@ bam_launcher_server <- function(state) {
                 },
                 error = function(e) {
                     info <- bam_error_info(
-                        e, files = pf$table$source, table = pf$table
+                        e, files = pf$table$source, table = pf$table,
+                        lang = language()
                     )
                     last_error(info)
                     log_line(sprintf(
-                        "Run failed at stage '%s': %s",
+                        mamamia_tr("log.run_failed_stage", language()),
                         info$stage, info$message
                     ))
-                    log_line(sprintf("Suggested fix: %s", info$suggestion))
+                    log_line(sprintf(
+                    mamamia_tr("log.suggested_fix", language()),
+                    info$suggestion
+                ))
                     shiny::showNotification(
-                        bam_error_text(info),
+                        bam_error_text(info, language()),
                         type = "error", duration = 20
                     )
                     NULL
@@ -5103,24 +5554,38 @@ bam_launcher_server <- function(state) {
             active_key(key)
             result(new_result)
             n_calls <- sum(new_result$samples$n_calls, na.rm = TRUE)
-            call_word <- if (n_calls == 1L) {
-                "calibrated call"
+            if (identical(language(), "ru")) {
+                log_line(sprintf(
+                    mamamia_tr("log.analysis_finished", "ru"), n_calls
+                ))
+                run_summary <- sprintf(
+                    mamamia_tr("log.analysis_finished", "ru"), n_calls
+                )
             } else {
-                "calibrated calls"
+                call_word <- if (n_calls == 1L) {
+                    "calibrated call"
+                } else {
+                    "calibrated calls"
+                }
+                log_line(sprintf(
+                    mamamia_tr("log.analysis_finished", "en"),
+                    n_calls, call_word
+                ))
+                run_summary <- sprintf("%d %s", n_calls, call_word)
             }
-            log_line(sprintf(
-                "Analysis finished: %d %s.",
-                n_calls, call_word
-            ))
-            run_summary <- sprintf("%d %s", n_calls, call_word)
             shiny::showNotification(
                 run_summary,
                 type = "message",
                 duration = 6
             )
-            coverage <- bam_coverage_warnings(new_result)
+            coverage <- bam_coverage_warnings(
+                new_result, lang = language()
+            )
             for (warning in coverage) {
-                log_line(paste("Coverage warning:", warning))
+                log_line(paste(
+                    mamamia_tr("log.coverage_warning", language()),
+                    warning
+                ))
             }
         })
 
@@ -5133,7 +5598,7 @@ bam_launcher_server <- function(state) {
                 return(NULL)
             }
             shiny::selectInput(
-                "result_sample", "Sample",
+                "result_sample", mamamia_tr("results.sample", language()),
                 choices = samples,
                 selected = shiny::isolate(result_sample())
             )
@@ -5158,7 +5623,7 @@ bam_launcher_server <- function(state) {
             shiny::validate(
                 shiny::need(
                     !is.null(summary),
-                    "Run the analysis to see the cohort summary"
+                    mamamia_tr("results.run_cohort", language())
                 )
             )
             bam_cohort_table(
@@ -5179,7 +5644,8 @@ bam_launcher_server <- function(state) {
         explorer_server(
             "explorer",
             result = result_view,
-            sample = result_sample
+            sample = result_sample,
+            lang = language
         )
     }
 }

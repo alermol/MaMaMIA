@@ -478,6 +478,59 @@ karyotype_compress_scores <- function(scores, intervals, surviving) {
 #'
 #' @return A list suitable for `mamamia_karyotype()`.
 #' @noRd
+#' Server-resolved labels for the browser karyotype adapter
+#'
+#' The JavaScript widget keeps its English literals as fallbacks so a legacy
+#' payload still renders; a current payload carries this block and prefers it.
+#' @noRd
+mamamia_karyotype_labels <- function(lang = mamamia_language_default()) {
+    list(
+        lang = lang,
+        omitted_note = mamamia_tr("results.deletions_omitted", lang),
+        aria_label = mamamia_tr("karyotype.aria_label", lang),
+        empty = mamamia_tr("karyotype.empty", lang),
+        call = mamamia_tr("tooltip.call", lang),
+        no_call = mamamia_tr("tooltip.no_call", lang),
+        component = mamamia_tr("tooltip.component", lang),
+        state = mamamia_tr("tooltip.state", lang),
+        state_unplaced = mamamia_tr("tooltip.state_unplaced", lang),
+        state_deleted = mamamia_tr("tooltip.state_deleted", lang),
+        state_added = mamamia_tr("tooltip.state_added", lang),
+        state_recipient = mamamia_tr("tooltip.state_recipient", lang),
+        length = mamamia_tr("tooltip.length", lang),
+        chromosome = mamamia_tr("tooltip.chromosome", lang),
+        position = mamamia_tr("tooltip.position", lang),
+        score = mamamia_tr("tooltip.score", lang),
+        group = mamamia_tr("tooltip.group", lang),
+        click_hint = mamamia_tr("tooltip.click_to_filter", lang),
+        no_segment = mamamia_tr("tooltip.no_segment", lang),
+        legacy_unavailable = mamamia_tr("tooltip.legacy_unavailable", lang),
+        unplaced_donor = mamamia_tr("tooltip.unplaced_donor_title", lang),
+        deleted_recipient = mamamia_tr(
+            "tooltip.deleted_recipient_title", lang
+        ),
+        added_donor = mamamia_tr("tooltip.added_donor_title", lang),
+        recipient_chromosome = mamamia_tr(
+            "tooltip.recipient_chromosome_title", lang
+        ),
+        call_section = mamamia_tr("tooltip.call", lang),
+        chromosome_section = mamamia_tr("tooltip.chromosome", lang),
+        position_section = mamamia_tr("tooltip.position", lang),
+        legend_score = mamamia_tr("karyotype.legend_score", lang),
+        legend_substitution = mamamia_tr("karyotype.legend_substitution", lang),
+        legend_addition = mamamia_tr("karyotype.legend_addition", lang),
+        legend_deletion = mamamia_tr("karyotype.legend_deletion", lang),
+        legend_complex = mamamia_tr("karyotype.legend_complex", lang),
+        legend_other = mamamia_tr("karyotype.legend_other", lang),
+        legend_deleted = mamamia_tr("karyotype.legend_deleted_recipient", lang),
+        legend_added = mamamia_tr("karyotype.legend_added_donor", lang),
+        legend_unplaced = mamamia_tr("karyotype.legend_unplaced_donor", lang),
+        caption_deleted = mamamia_tr("karyotype.caption_deleted", lang),
+        caption_unplaced = mamamia_tr("karyotype.caption_unplaced", lang),
+        caption_added = mamamia_tr("karyotype.caption_added", lang)
+    )
+}
+
 karyotype_payload <- function(result, sample = NULL,
                               mode = c("heatmap", "calls"),
                               calls = NULL, selected_groups = NULL,
@@ -485,7 +538,8 @@ karyotype_payload <- function(result, sample = NULL,
                               deletion_relative = 0.1,
                               hide_deletions = FALSE,
                               hide_unplaced = FALSE,
-                              show_unplaced = FALSE) {
+                              show_unplaced = FALSE,
+                              lang = mamamia_language_default()) {
     mode <- match.arg(mode)
     hide_deletions <- isTRUE(hide_deletions)
     hide_unplaced <- isTRUE(hide_unplaced)
@@ -863,7 +917,8 @@ karyotype_payload <- function(result, sample = NULL,
             record,
             sample = sample,
             chromosome_group = chromosome_group,
-            palette = karyotype_palette()
+            palette = karyotype_palette(),
+            lang = lang
         )
         record
     }
@@ -1389,11 +1444,14 @@ karyotype_payload <- function(result, sample = NULL,
         ),
         rendered_call_ids = rendered_call_ids,
         unplaced_call_ids = unplaced_call_ids,
-        chromosomes = chromosome_payload
+        chromosomes = chromosome_payload,
+        labels = mamamia_karyotype_labels(lang)
     )
     ## Display policy is resolved once here so the browser and the static SVG
     ## consume the same legend, call styles, labels and omitted note.
-    payload$scene <- karyotype_scene(payload)
+    payload$scene <- karyotype_scene(
+        payload, labels = payload$labels
+    )
     payload
 }
 
@@ -1415,7 +1473,7 @@ mamamia_karyotype_dependencies <- function() {
         ## file.
         htmltools::htmlDependency(
             name = "mamamiaKaryotypeCard-binding",
-            version = "0.1.4",
+            version = "0.1.5",
             src = src,
             script = "mamamiaKaryotypeCard.js",
             all_files = FALSE

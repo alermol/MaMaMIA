@@ -4,7 +4,7 @@ HTMLWidgets.widget({
 
   factory: function (el, width, height) {
     var payload = null;
-    var plotFont = "'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
+    var plotFont = "'Inter', 'Noto Sans', 'DejaVu Sans', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif";
     var legendFontSize = 10;
     var legendRowHeight = 19;
     var legendSwatch = 11;
@@ -34,6 +34,10 @@ HTMLWidgets.widget({
 
     function sceneSpec() {
       return (payload && payload.scene) || {};
+    }
+
+    function labels() {
+      return (payload && payload.labels) || {};
     }
 
     function sceneLegend() {
@@ -107,7 +111,7 @@ HTMLWidgets.widget({
         });
         defs.appendChild(gradient);
         legend.appendChild(defs);
-        legend.appendChild(textEl("Score", {
+        legend.appendChild(textEl(labels().legend_score || "Score", {
           x: x, y: y, "font-size": 10, "font-weight": 600,
           fill: palette.text
         }));
@@ -284,10 +288,10 @@ HTMLWidgets.widget({
         accent + ";--tip-accent:" + accent + '">' +
         '<div class="mamamia-tip-head">' +
         '<div class="mamamia-tip-title"><span class="mamamia-tip-class">' +
-        escapeHtml(tooltip.title || "call") +
+        escapeHtml(tooltip.title || labels().call || "call") +
         '</span><span class="mamamia-tip-status ' +
         escapeHtml(status.class || "mamamia-tip-status-neutral") + '">' +
-        escapeHtml(status.text || "call") + "</span></div>" +
+        escapeHtml(status.text || labels().call || "call") + "</span></div>" +
         '<div class="mamamia-tip-sub">' +
         escapeHtml(tooltip.subtitle || "") + "</div></div>";
     }
@@ -376,20 +380,21 @@ HTMLWidgets.widget({
           legacyParts.push(payload.sample);
         }
         if (hasValue(chromosome.group)) {
-          legacyParts.push("group " + chromosome.group);
+          legacyParts.push((labels().group || "group") + " " + chromosome.group);
         }
         html = tooltipHeader({
           accent: "#6c757d",
-          title: "call",
+          title: labels().call || "call",
           status: {
-            text: "call",
+            text: labels().call || "call",
             class: "mamamia-tip-status-neutral"
           },
           subtitle: legacyParts.join(" · ")
         }) + tipSection(
-          "Call",
+          labels().call_section || "Call",
           '<div class="mamamia-tip-empty">' +
-            "Call details unavailable in this legacy payload.</div>"
+            escapeHtml(labels().legacy_unavailable ||
+              "Call details unavailable in this legacy payload.") + "</div>"
         );
       } else {
         var subParts = [];
@@ -397,54 +402,70 @@ HTMLWidgets.widget({
           subParts.push(payload.sample);
         }
         if (hasValue(chromosome.group)) {
-          subParts.push("group " + chromosome.group);
+          subParts.push((labels().group || "group") + " " + chromosome.group);
         }
         if (isNumber(chromosome.length)) {
           subParts.push(fmtBp(sourceFraction(fraction, chromosome) *
             chromosome.length));
         }
         var className = chromosome.unplaced
-          ? "unplaced donor"
+          ? (labels().unplaced_donor || "unplaced donor")
           : chromosome.deleted
-            ? "deleted recipient"
+            ? (labels().deleted_recipient || "deleted recipient")
             : chromosome.added
-              ? "added donor"
-              : "recipient chromosome";
+              ? (labels().added_donor || "added donor")
+              : (labels().recipient_chromosome || "recipient chromosome");
         html = tooltipHeader({
           accent: "#6c757d",
           title: className,
           status: {
-            text: "no call",
+            text: labels().no_call || "no call",
             class: "mamamia-tip-status-neutral"
           },
           subtitle: subParts.join(" · ")
         });
         var chromosomeRows = [];
         if (hasValue(chromosome.component)) {
-          chromosomeRows.push(tipRow("Component", chromosome.component));
+          chromosomeRows.push(tipRow(
+            labels().component || "Component", chromosome.component
+          ));
         }
         if (chromosome.unplaced === true) {
           chromosomeRows.push(tipRow(
-            "State", "unplaced donor chromosome"
+            labels().state || "State",
+            labels().state_unplaced || "unplaced donor chromosome"
           ));
         } else if (chromosome.deleted === true) {
           chromosomeRows.push(tipRow(
-            "State", "deleted recipient (no coverage)"
+            labels().state || "State",
+            labels().state_deleted || "deleted recipient (no coverage)"
           ));
         } else if (chromosome.added === true) {
-          chromosomeRows.push(tipRow("State", "added donor chromosome"));
+          chromosomeRows.push(tipRow(
+            labels().state || "State",
+            labels().state_added || "added donor chromosome"
+          ));
         } else {
-          chromosomeRows.push(tipRow("State", "recipient chromosome"));
+          chromosomeRows.push(tipRow(
+            labels().state || "State",
+            labels().state_recipient || "recipient chromosome"
+          ));
         }
         if (isNumber(chromosome.length)) {
-          chromosomeRows.push(tipRow("Length", fmtBp(chromosome.length)));
+          chromosomeRows.push(tipRow(
+            labels().length || "Length", fmtBp(chromosome.length)
+          ));
         }
-        html += tipSection("Chromosome", tipGrid(chromosomeRows));
+        html += tipSection(
+          labels().chromosome_section || "Chromosome",
+          tipGrid(chromosomeRows)
+        );
         if (payload.mode === "calls") {
           html += tipSection(
-            "Call",
+            labels().call_section || "Call",
             '<div class="mamamia-tip-empty">' +
-              "No assigned donor segment at this position.</div>"
+              escapeHtml(labels().no_segment ||
+                "No assigned donor segment at this position.") + "</div>"
           );
         }
       }
@@ -458,19 +479,22 @@ HTMLWidgets.widget({
           ))
           : -1;
         var position = [
-          tipRow("Position", fmtBp(
+          tipRow(labels().position || "Position", fmtBp(
             sourceFraction(fraction, chromosome) * (chromosome.length || 0)
           )),
           tipRow(
-            "Score",
+            labels().score || "Score",
             index >= 0 ? fmtSigned(scores[index]) : "NA"
           )
         ];
-        html += tipSection("Position", tipGrid(position));
+        html += tipSection(
+          labels().position_section || "Position", tipGrid(position)
+        );
       }
 
       html += '<div class="mamamia-tip-footer">' +
-        "Click to filter this group</div></div>";
+        escapeHtml(labels().click_hint || "Click to filter this group") +
+        "</div></div>";
       if (matched && calls) {
         calls.__tipCache = {call: matched, html: html};
       }
@@ -658,7 +682,7 @@ HTMLWidgets.widget({
         var title = document.createElement("p");
         title.className = "mamamia-empty-title";
         title.textContent = payload.message ||
-          "No chromosomes in this result.";
+          labels().empty || "No chromosomes in this result.";
         empty.appendChild(title);
 
         if (payload.hint) {
@@ -748,7 +772,8 @@ HTMLWidgets.widget({
         height: totalHeight,
         viewBox: "0 0 " + totalWidth + " " + totalHeight,
         role: "img",
-        "aria-label": "Karyotype in assembly order"
+        "aria-label": labels().aria_label ||
+          "Karyotype in assembly order"
       });
       svg.style.display = "block";
       root.appendChild(svg);
